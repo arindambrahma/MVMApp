@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { runAnalysis } from '../utils/api';
 import { sanitize } from '../utils/helpers';
 
@@ -80,36 +80,12 @@ function SectionTable({ title, subtitle, rows, labelCol, valueLabel = 'Sensitivi
   );
 }
 
-function StudyTypeButton({ active, label, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        width: '100%',
-        display: 'block',
-        marginTop: 6,
-        padding: '8px 10px',
-        background: active ? '#EFF6FF' : '#FFFFFF',
-        border: `1px solid ${active ? '#93C5FD' : '#E2E8F0'}`,
-        borderRadius: 8,
-        color: '#334155',
-        fontSize: 12,
-        fontWeight: 600,
-        textAlign: 'left',
-        cursor: 'pointer',
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
 function MarginLineChart({
   series,
   xLabel,
   yLabel,
   height = 340,
+  width = 860,
   extraLines = [],
   axisFontSize = 10,
 }) {
@@ -133,12 +109,12 @@ function MarginLineChart({
   const minY = Math.min(minYRaw - yPad, 0);
   const maxY = Math.max(maxYRaw + yPad, 0);
 
-  const width = 860;
+  const viewWidth = width;
   const left = 58;
   const right = 20;
   const top = 16;
   const bottom = 40;
-  const w = width - left - right;
+  const w = viewWidth - left - right;
   const h = height - top - bottom;
   const xScale = (x) => {
     if (maxX === minX) return left + w / 2;
@@ -159,7 +135,7 @@ function MarginLineChart({
 
   return (
     <div style={{ marginTop: 8, border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', padding: 8 }}>
-      <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
+      <svg width="100%" viewBox={`0 0 ${viewWidth} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
         {tickVals.map((tv, i) => {
           const yy = yScale(tv);
           return (
@@ -270,6 +246,7 @@ function SensitivityStudyModule({
   const [subError, setSubError] = useState('');
   const [subRun, setSubRun] = useState(null);
   const [comparisonSubRun, setComparisonSubRun] = useState(null);
+  const [chartWidth, setChartWidth] = useState(860);
   const chartHeightMin = 220;
   const chartHeightMax = 640;
   const chartHeightStep = 10;
@@ -286,6 +263,23 @@ function SensitivityStudyModule({
     if (!Number.isFinite(parsed)) return;
     const clamped = Math.min(chartHeightMax, Math.max(chartHeightMin, parsed));
     setChartHeight(clamped);
+  };
+  const chartWidthMin = 520;
+  const chartWidthMax = 1200;
+  const chartWidthStep = 40;
+  const adjustChartWidth = (delta) => {
+    setChartWidth((w) => {
+      const next = w + delta;
+      if (next < chartWidthMin) return chartWidthMin;
+      if (next > chartWidthMax) return chartWidthMax;
+      return next;
+    });
+  };
+  const handleChartWidthInput = (value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    const clamped = Math.min(chartWidthMax, Math.max(chartWidthMin, parsed));
+    setChartWidth(clamped);
   };
   const [axisFontSize, setAxisFontSize] = useState(10);
   const axisFontSizeMin = 8;
@@ -398,23 +392,35 @@ function SensitivityStudyModule({
   }, [selectedMargins, marginKeys]);
   const recordedMargins = marginKeys; // keep every margin in the sweep even if not displayed
   const displayedMargins = activeMargins.length ? activeMargins : marginKeys;
-  const rowsForDisplay = useMemo(() => {
-    const rows = subRun?.rows || [];
-    if (!displayedMargins.length) return rows;
-    return rows.filter((row) => displayedMargins.every((m) => {
+  const sanitizedMarginName = useMemo(() => sanitize(effectiveMargin || ''), [effectiveMargin]);
+  const marginThresholdValue = useMemo(() => {
+    if (!sanitizedMarginName) return NaN;
+    const key = `${sanitizedMarginName}_threshold`;
+    return Number(analysisResult?.paramValues?.[key] ?? NaN);
+  }, [analysisResult, sanitizedMarginName]);
+  const marginDecidedValue = useMemo(() => {
+    if (!sanitizedMarginName) return NaN;
+    const key = `${sanitizedMarginName}_decided`;
+    return Number(analysisResult?.paramValues?.[key] ?? NaN);
+  }, [analysisResult, sanitizedMarginName]);
+  const marginExcess = useMemo(() => {
+    if (!Number.isFinite(marginThresholdValue) || !Number.isFinite(marginDecidedValue)) return NaN;
+    if (Math.abs(marginThresholdValue) < 1e-12) return NaN;
+    return (marginDecidedValue - marginThresholdValue) / Math.abs(marginThresholdValue);
+  }, [marginThresholdValue, marginDecidedValue]);
+  const filterNonNegativeRows = useCallback((rows = []) => {
+    if (!recordedMargins.length) return rows;
+    return rows.filter((row) => recordedMargins.every((m) => {
       const val = Number(row?.margins?.[m]);
       return Number.isFinite(val) ? val >= 0 : true;
     }));
-  }, [subRun, displayedMargins]);
+  }, [recordedMargins]);
 
-  const rowsForComparison = useMemo(() => {
-    if (!comparisonSubRun?.rows?.length) return [];
-    if (!displayedMargins.length) return comparisonSubRun.rows;
-    return comparisonSubRun.rows.filter((row) => displayedMargins.every((m) => {
-      const val = Number(row?.margins?.[m]);
-      return Number.isFinite(val) ? val >= 0 : true;
-    }));
-  }, [comparisonSubRun, displayedMargins]);
+  const rowsForDisplay = useMemo(() => filterNonNegativeRows(subRun?.rows || []), [subRun, filterNonNegativeRows]);
+  const rowsForComparison = useMemo(
+    () => filterNonNegativeRows(comparisonSubRun?.rows || []),
+    [comparisonSubRun, filterNonNegativeRows]
+  );
   const activePerformances = useMemo(() => {
     const runtimeSet = new Set(performanceNodes.map((n) => sanitize(n.label || '')));
     return (selectedPerformances || []).filter((p) => runtimeSet.has(p));
@@ -438,12 +444,24 @@ function SensitivityStudyModule({
   }, [marginKeys, selectedMargins]);
 
   useEffect(() => {
+    if (!selectedMargin && marginKeys.length) {
+      setSelectedMargin(marginKeys[0]);
+    }
+  }, [marginKeys, selectedMargin]);
+
+  useEffect(() => {
     const runtimePerf = performanceNodes.map((n) => sanitize(n.label || '')).filter(Boolean);
     const cleaned = (selectedPerformances || []).filter((p) => runtimePerf.includes(p));
     if (cleaned.length !== (selectedPerformances || []).length) {
       setSelectedPerformances(cleaned);
     }
   }, [performanceNodes, selectedPerformances]);
+
+  useEffect(() => {
+    if (studyType === 'margin_effect' && direction !== 'increase') {
+      setDirection('increase');
+    }
+  }, [studyType, direction]);
 
   if (analysisError) {
     return (
@@ -607,11 +625,135 @@ function SensitivityStudyModule({
     }
   };
 
+  const runMarginEffectStudy = async () => {
+    if (!effectiveMargin) {
+      setSubError('Select a margin to explore.');
+      return;
+    }
+    const marginName = sanitize(effectiveMargin);
+    let marginNode = nodes.find((n) => n.label === effectiveMargin);
+    if (!marginNode) {
+      marginNode = nodes.find((n) => sanitize(n.label || '') === marginName);
+    }
+    if (!marginNode) {
+      setSubError(`Margin ${effectiveMargin} is not present in the model.`);
+      return;
+    }
+
+    const marginEdges = edges.filter((e) => e.to === marginNode.id);
+    const decidedEdge = marginEdges.find((e) => e.edgeType === 'decided');
+    const fallbackEdge = marginEdges.find((e) => {
+      const src = nodes.find((node) => node.id === e.from);
+      return src?.type === 'decision';
+    });
+    const activeEdge = decidedEdge || fallbackEdge;
+    if (!activeEdge) {
+      setSubError('Unable to find the decision connection for the selected margin.');
+      return;
+    }
+    const decisionNode = nodes.find((n) => n.id === activeEdge.from && n.type === 'decision');
+    if (!decisionNode) {
+      setSubError('Decision node for the margin cannot be located.');
+      return;
+    }
+
+    const thresholdValue = Number(analysisResult?.paramValues?.[`${marginName}_threshold`] ?? NaN);
+    const decidedValue = Number(analysisResult?.paramValues?.[`${marginName}_decided`] ?? NaN);
+    if (!Number.isFinite(thresholdValue) || !Number.isFinite(decidedValue)) {
+      setSubError('Baseline decision or threshold for the margin is missing.');
+      return;
+    }
+
+    const marginDifference = decidedValue - thresholdValue;
+    if (Math.abs(marginDifference) <= 1e-9) {
+      setSubError('The selected margin already sits at its threshold.');
+      return;
+    }
+
+    const incFrac = Number(incrementPercent) / 100;
+    if (!Number.isFinite(incFrac) || incFrac <= 0) {
+      setSubError('Increment must be a positive percentage.');
+      return;
+    }
+
+    const localInc = Math.max(1e-6, Math.abs(marginDifference) * incFrac);
+    if (!Number.isFinite(localInc) || localInc <= 0) {
+      setSubError('Increment is too small for this margin range.');
+      return;
+    }
+
+    setSubLoading(true);
+    setSubError('');
+    setSubRun(null);
+
+    try {
+      const sweepRows = [];
+      const sign = Math.sign(marginDifference) || 1;
+      const maxMargin = Math.abs(marginDifference);
+      let currentMargin = 0;
+      let steps = 0;
+      const maxSteps = Math.ceil(maxMargin / localInc) + 4;
+
+      const captureRow = async (marginValue) => {
+        const decidedVal = thresholdValue + sign * marginValue;
+        const variedNodes = nodes.map((node) => (
+          node.id === decisionNode.id ? { ...node, decidedValue: String(decidedVal) } : node
+        ));
+        const subRes = await runAnalysis(variedNodes, edges, appliedWeights);
+        const rec = {
+          t: sign * marginValue,
+          x: decidedVal,
+          margins: {},
+          performances: {},
+        };
+        for (const m of recordedMargins) {
+          rec.margins[m] = Number(subRes?.result?.excess?.[m] || 0);
+        }
+        for (const p of activePerformances) {
+          const baselineP = analysisResult?.paramValues?.[p];
+          const runP = subRes?.paramValues?.[p];
+          rec.performances[p] = relChange(runP, baselineP);
+        }
+        sweepRows.push(rec);
+      };
+
+      while (currentMargin <= maxMargin + 1e-12 && steps < maxSteps) {
+        const marginValue = Math.min(maxMargin, currentMargin);
+        await captureRow(marginValue);
+        if (Math.abs(marginValue - maxMargin) <= 1e-12) break;
+        currentMargin += localInc;
+        steps += 1;
+      }
+
+      const lastRow = sweepRows[sweepRows.length - 1];
+      const finalMarginReached = Boolean(lastRow && Math.abs(Math.abs(lastRow.t) - maxMargin) <= 1e-6);
+      if (!finalMarginReached) {
+        await captureRow(maxMargin);
+      }
+
+      setSubRun({
+        studyType: 'margin_effect',
+        marginLabel: effectiveMargin,
+        marginThreshold: thresholdValue,
+        marginDecided: decidedValue,
+        direction: 'increase',
+        incrementUsed: localInc,
+        rows: sweepRows,
+      });
+    } catch (err) {
+      setSubError(err.message || 'Sub-analysis failed.');
+    } finally {
+      setSubLoading(false);
+    }
+  };
+
   const impactRows = rankedEntries(result.impact_matrix?.[effectiveMargin] || {});
   const weightedImpact = result.weighted_impact?.[effectiveMargin] || 0;
   const excess = result.excess?.[effectiveMargin] || 0;
   const extraLines = [];
-  const chartXLabel = `${selectedInputNode?.label || 'Input'} value (${selectedInputUnit})`;
+  const chartXLabel = studyType === 'input_variation'
+    ? `${selectedInputNode?.label || 'Input'} value (${selectedInputUnit})`
+    : `Margin ${(subRun?.marginLabel || effectiveMargin || 'Margin').replace('E_', 'E')} decided value`;
   if (showWeightedAbsorption && result.weighted_absorption) {
     activeMargins.forEach((m) => {
       const v = result.weighted_absorption[m];
@@ -655,19 +797,14 @@ function SensitivityStudyModule({
   const columnCount = comparisonSubRun ? 2 : 1;
   const gapSize = 14;
   const totalGap = columnCount > 1 ? gapSize * (columnCount - 1) : 0;
-  const availableGraphWidth = Math.max(480, graphAreaWidth - totalGap);
-  const columnWidth = Math.max(
-    360,
-    Math.floor(availableGraphWidth / columnCount)
-  );
+  const availableGraphWidth = Math.max(columnCount * 360, graphAreaWidth - totalGap);
+  const columnMinWidth = Math.max(320, Math.floor(availableGraphWidth / columnCount));
   const renderSubRunColumn = (title, rows) => (
     <div
       key={title}
       style={{
-        flex: `0 0 ${columnWidth}px`,
-        width: `${columnWidth}px`,
-        maxWidth: `${columnWidth}px`,
-        minWidth: `${columnWidth}px`,
+        flex: `1 1 ${columnMinWidth}px`,
+        minWidth: `${columnMinWidth}px`,
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -682,14 +819,15 @@ function SensitivityStudyModule({
       }}>
         {title}
       </div>
-        <MarginLineChart
-          series={buildSeriesForRows(rows)}
-          xLabel={chartXLabel}
-          yLabel="Local excess / response (%)"
-          height={chartHeight}
-          extraLines={extraLines}
-          axisFontSize={axisFontSize}
-        />
+      <MarginLineChart
+        series={buildSeriesForRows(rows)}
+        xLabel={chartXLabel}
+        yLabel="Local excess / response (%)"
+        height={chartHeight}
+        extraLines={extraLines}
+        axisFontSize={axisFontSize}
+        width={chartWidth}
+      />
       {rows.length ? (
         <div style={{ marginTop: 12, border: '1px solid #E2E8F0', borderRadius: 6, background: '#FFFFFF', overflow: 'hidden' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', padding: '8px 10px', borderBottom: '1px solid #E2E8F0' }}>
@@ -764,16 +902,22 @@ function SensitivityStudyModule({
           Sensitivity Settings
         </div>
 
-        <StudyTypeButton
-          active={studyType === 'input_variation'}
-          label="Input Variation Study"
-          onClick={() => setStudyType('input_variation')}
-        />
-        <StudyTypeButton
-          active={studyType === 'margin_effect'}
-          label="Margin Effect on Performance"
-          onClick={() => setStudyType('margin_effect')}
-          />
+        <div className="study-type-tabs">
+          <button
+            type="button"
+            className={`study-type-tab ${studyType === 'input_variation' ? 'active' : ''}`}
+            onClick={() => setStudyType('input_variation')}
+          >
+            Input Variation Study
+          </button>
+          <button
+            type="button"
+            className={`study-type-tab ${studyType === 'margin_effect' ? 'active' : ''}`}
+            onClick={() => setStudyType('margin_effect')}
+          >
+            Margin Effect on Performance
+          </button>
+        </div>
         <div style={{ marginTop: 10, fontSize: 11, color: '#334155', fontWeight: 600 }}>
           Chart height
         </div>
@@ -812,6 +956,57 @@ function SensitivityStudyModule({
           <button
             type="button"
             onClick={() => adjustChartHeight(chartHeightStep)}
+            style={{
+              border: '1px solid #CBD5E1',
+              borderRadius: 6,
+              background: '#fff',
+              padding: '4px 8px',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            +
+          </button>
+          <span style={{ fontSize: 11, color: '#0F172A' }}>px</span>
+        </div>
+        <div style={{ marginTop: 10, fontSize: 11, color: '#334155', fontWeight: 600 }}>
+          Chart width
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => adjustChartWidth(-chartWidthStep)}
+            style={{
+              border: '1px solid #CBD5E1',
+              borderRadius: 6,
+              background: '#fff',
+              padding: '4px 8px',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            -
+          </button>
+          <input
+            type="number"
+            min={chartWidthMin}
+            max={chartWidthMax}
+            step={chartWidthStep}
+            value={chartWidth}
+            onChange={(e) => handleChartWidthInput(e.target.value)}
+            style={{
+              width: 68,
+              border: '1px solid #CBD5E1',
+              borderRadius: 6,
+              padding: '4px 6px',
+              fontSize: 11,
+              color: '#0F172A',
+              textAlign: 'center',
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => adjustChartWidth(chartWidthStep)}
             style={{
               border: '1px solid #CBD5E1',
               borderRadius: 6,
@@ -938,137 +1133,16 @@ function SensitivityStudyModule({
                 <div style={{ color: '#0F172A', fontWeight: 700 }}>{selectedInputUnit}</div>
               </div>
             </div>
-
-            <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#64748B' }}>
-              Margins to record
-            </div>
-            <div style={{ marginTop: 6, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', padding: 8, maxHeight: 170, overflowY: 'auto' }}>
-              {marginKeys.map((m) => {
-                const checked = activeMargins.includes(m);
-                return (
-                  <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', marginBottom: 5, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        setSelectedMargins((prev) => {
-                          const cur = (prev || []).filter(x => marginKeys.includes(x));
-                          if (e.target.checked) return [...new Set([...cur, m])];
-                          return cur.filter(x => x !== m);
-                        });
-                      }}
-                    />
-                    <span>{m.replace('E_', 'E')}</span>
-                  </label>
-                );
-              })}
-            </div>
-
-            <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#64748B' }}>
-              Performance parameters in graph (optional)
-            </div>
-            <div style={{ marginTop: 6, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', padding: 8, maxHeight: 130, overflowY: 'auto' }}>
-              {performanceNodes.length === 0 && (
-                <div style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>
-                  No performance parameters available.
-                </div>
-              )}
-              {performanceNodes.map((pNode) => {
-                const runtime = sanitize(pNode.label || '');
-                const checked = activePerformances.includes(runtime);
-                return (
-                  <label key={pNode.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', marginBottom: 5, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        setSelectedPerformances((prev) => {
-                          const cur = prev || [];
-                          if (e.target.checked) return [...new Set([...cur, runtime])];
-                          return cur.filter((x) => x !== runtime);
-                        });
-                      }}
-                    />
-                    <span>{pNode.label || runtime}</span>
-                  </label>
-                );
-              })}
-            </div>
-
-            <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#64748B' }}>
-              Additional overlays
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 10 }}>
-              <label style={{ fontSize: 11, color: '#334155', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={showWeightedAbsorption}
-                  onChange={(e) => setShowWeightedAbsorption(e.target.checked)}
-                  style={{ marginRight: 6 }}
-                />
-                Show weighted absorption lines
-              </label>
-              <label style={{ fontSize: 11, color: '#334155', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={showWeightedImpact}
-                  onChange={(e) => setShowWeightedImpact(e.target.checked)}
-                  style={{ marginRight: 6 }}
-                />
-                Show weighted impact lines
-              </label>
-            </div>
-
-            <label style={{ display: 'block', marginTop: 10 }}>
+          </>
+        ) : (
+          <>
+            <label style={{ display: 'block', marginTop: 12 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: '#64748B', display: 'block', marginBottom: 4 }}>
-                Direction
+                Margin
               </span>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                <button
-                  type="button"
-                  onClick={() => setDirection('increase')}
-                  style={{
-                    padding: '7px 8px',
-                    borderRadius: 6,
-                    border: `1px solid ${direction === 'increase' ? '#93C5FD' : '#CBD5E1'}`,
-                    background: direction === 'increase' ? '#EFF6FF' : '#FFFFFF',
-                    color: '#0F172A',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  + Increase
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDirection('decrease')}
-                  style={{
-                    padding: '7px 8px',
-                    borderRadius: 6,
-                    border: `1px solid ${direction === 'decrease' ? '#93C5FD' : '#CBD5E1'}`,
-                    background: direction === 'decrease' ? '#EFF6FF' : '#FFFFFF',
-                    color: '#0F172A',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  - Decrease
-                </button>
-              </div>
-            </label>
-
-            <label style={{ display: 'block', marginTop: 10 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: '#64748B', display: 'block', marginBottom: 4 }}>
-                Increment (% of baseline P)
-              </span>
-              <input
-                type="number"
-                step="0.1"
-                min="0.01"
-                value={incrementPercent}
-                onChange={(e) => setIncrementPercent(e.target.value)}
+              <select
+                value={effectiveMargin}
+                onChange={(e) => setSelectedMargin(e.target.value)}
                 style={{
                   width: '100%',
                   border: '1px solid #CBD5E1',
@@ -1077,55 +1151,207 @@ function SensitivityStudyModule({
                   fontSize: 12,
                   color: '#0F172A',
                   background: '#FFFFFF',
-                  boxSizing: 'border-box',
                 }}
-              />
+              >
+                {marginKeys.map((m) => (
+                  <option key={m} value={m}>{m.replace('E_', 'E')}</option>
+                ))}
+              </select>
             </label>
+            <div style={{ marginTop: 10, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', padding: 8 }}>
+              <div style={{ fontSize: 10, color: '#64748B', marginBottom: 6 }}>Margin baseline</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 4, columnGap: 8, fontSize: 11 }}>
+                <div style={{ color: '#64748B' }}>Threshold</div>
+                <div style={{ color: '#0F172A', fontWeight: 700 }}>
+                  {Number.isFinite(marginThresholdValue) ? num(marginThresholdValue, 4) : 'n/a'}
+                </div>
+                <div style={{ color: '#64748B' }}>Decided</div>
+                <div style={{ color: '#0F172A', fontWeight: 700 }}>
+                  {Number.isFinite(marginDecidedValue) ? num(marginDecidedValue, 4) : 'n/a'}
+                </div>
+                <div style={{ color: '#64748B' }}>Local excess</div>
+                <div style={{ color: '#0F172A', fontWeight: 700 }}>
+                  {Number.isFinite(marginExcess) ? pct(marginExcess, 2) : 'n/a'}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
+        <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+          Margins to record
+        </div>
+        <div style={{ marginTop: 6, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', padding: 8, maxHeight: 170, overflowY: 'auto' }}>
+          {marginKeys.map((m) => {
+            const checked = activeMargins.includes(m);
+            return (
+              <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', marginBottom: 5, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => {
+                    setSelectedMargins((prev) => {
+                      const cur = (prev || []).filter(x => marginKeys.includes(x));
+                      if (e.target.checked) return [...new Set([...cur, m])];
+                      return cur.filter(x => x !== m);
+                    });
+                  }}
+                />
+                <span>{m.replace('E_', 'E')}</span>
+              </label>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+          Performance parameters in graph (optional)
+        </div>
+        <div style={{ marginTop: 6, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', padding: 8, maxHeight: 130, overflowY: 'auto' }}>
+          {performanceNodes.length === 0 && (
+            <div style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>
+              No performance parameters available.
+            </div>
+          )}
+          {performanceNodes.map((pNode) => {
+            const runtime = sanitize(pNode.label || '');
+            const checked = activePerformances.includes(runtime);
+            return (
+              <label key={pNode.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', marginBottom: 5, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => {
+                    setSelectedPerformances((prev) => {
+                      const cur = prev || [];
+                      if (e.target.checked) return [...new Set([...cur, runtime])];
+                      return cur.filter((x) => x !== runtime);
+                    });
+                  }}
+                />
+                <span>{pNode.label || runtime}</span>
+              </label>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+          Additional overlays
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 10 }}>
+          <label style={{ fontSize: 11, color: '#334155', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={showWeightedAbsorption}
+              onChange={(e) => setShowWeightedAbsorption(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            Show weighted absorption lines
+          </label>
+          <label style={{ fontSize: 11, color: '#334155', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={showWeightedImpact}
+              onChange={(e) => setShowWeightedImpact(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            Show weighted impact lines
+          </label>
+        </div>
+
+        <label style={{ display: 'block', marginTop: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#64748B', display: 'block', marginBottom: 4 }}>
+            Direction
+          </span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
             <button
               type="button"
-              onClick={runInputVariationStudy}
-              disabled={subLoading || !inputNodes.length}
+              onClick={() => setDirection('increase')}
               style={{
-                width: '100%',
-                marginTop: 12,
-                padding: '8px 10px',
-                border: '1px solid #93C5FD',
-                borderRadius: 8,
-                background: (subLoading || !inputNodes.length) ? '#DBEAFE' : '#EFF6FF',
-                color: '#1E3A8A',
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: subLoading ? 'wait' : (!inputNodes.length ? 'not-allowed' : 'pointer'),
-              }}
-            >
-              {subLoading ? 'Running sub-analysis...' : 'Run Sub-Analysis'}
-            </button>
-          </>
-        ) : (
-          <label style={{ display: 'block', marginTop: 12 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#64748B', display: 'block', marginBottom: 4 }}>
-              Margin
-            </span>
-            <select
-              value={effectiveMargin}
-              onChange={(e) => setSelectedMargin(e.target.value)}
-              style={{
-                width: '100%',
-                border: '1px solid #CBD5E1',
+                padding: '7px 8px',
                 borderRadius: 6,
-                padding: '6px 8px',
-                fontSize: 12,
+                border: `1px solid ${direction === 'increase' ? '#93C5FD' : '#CBD5E1'}`,
+                background: direction === 'increase' ? '#EFF6FF' : '#FFFFFF',
                 color: '#0F172A',
-                background: '#FFFFFF',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
               }}
             >
-              {marginKeys.map((m) => (
-                <option key={m} value={m}>{m.replace('E_', 'E')}</option>
-              ))}
-            </select>
-          </label>
-        )}
+              + Increase
+            </button>
+            <button
+              type="button"
+              onClick={() => setDirection('decrease')}
+              disabled={studyType === 'margin_effect'}
+              style={{
+                padding: '7px 8px',
+                borderRadius: 6,
+                border: `1px solid ${direction === 'decrease' ? '#93C5FD' : '#CBD5E1'}`,
+                background: direction === 'decrease' ? '#EFF6FF' : '#FFFFFF',
+                color: studyType === 'margin_effect' ? '#94A3B8' : '#0F172A',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: studyType === 'margin_effect' ? 'not-allowed' : 'pointer',
+              }}
+            >
+              - Decrease
+            </button>
+          </div>
+        </label>
+
+        <label style={{ display: 'block', marginTop: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#64748B', display: 'block', marginBottom: 4 }}>
+            Increment (% of baseline P)
+          </span>
+          <input
+            type="number"
+            step="0.1"
+            min="0.01"
+            value={incrementPercent}
+            onChange={(e) => setIncrementPercent(e.target.value)}
+            style={{
+              width: '100%',
+              border: '1px solid #CBD5E1',
+              borderRadius: 6,
+              padding: '6px 8px',
+              fontSize: 12,
+              color: '#0F172A',
+              background: '#FFFFFF',
+              boxSizing: 'border-box',
+            }}
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (studyType === 'input_variation') {
+              runInputVariationStudy();
+            } else {
+              runMarginEffectStudy();
+            }
+          }}
+          disabled={(() => {
+            if (subLoading) return true;
+            if (studyType === 'input_variation') return !inputNodes.length;
+            if (studyType === 'margin_effect') return !effectiveMargin;
+            return false;
+          })()}
+          style={{
+            width: '100%',
+            marginTop: 12,
+            padding: '8px 10px',
+            border: '1px solid #93C5FD',
+            borderRadius: 8,
+            background: (subLoading) ? '#DBEAFE' : '#EFF6FF',
+            color: '#1E3A8A',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: subLoading ? 'wait' : 'pointer',
+          }}
+        >
+          {subLoading ? 'Running sub-analysis...' : 'Run Sub-Analysis'}
+        </button>
       </div>
 
       <div style={{
@@ -1159,11 +1385,20 @@ function SensitivityStudyModule({
 
               {subRun && (
                 <div style={{ fontSize: 11, color: '#64748B', marginTop: 10 }}>
-                  Sweep: {subRun.direction === 'increase' ? 'increase' : 'decrease'} from base to Pmax,
-                  increment {pct(subRun.incrementUsed, 2)} ({subRun.rows.length} points)
+                  {subRun.studyType === 'margin_effect' ? (
+                    <>
+                      Margin sweep for {(subRun.marginLabel || effectiveMargin || '').replace('E_', 'E')} from threshold to decided value,
+                      increment {pct(subRun.incrementUsed, 2)} ({subRun.rows.length} points)
+                    </>
+                  ) : (
+                    <>
+                      Sweep: {subRun.direction === 'increase' ? 'increase' : 'decrease'} from base to Pmax,
+                      increment {pct(subRun.incrementUsed, 2)} ({subRun.rows.length} points)
+                    </>
+                  )}
                 </div>
               )}
-              {subRun && !subRun.collapseReached && (
+              {studyType === 'input_variation' && subRun && !subRun.collapseReached && (
                 <div style={{ marginTop: 6, fontSize: 11, color: '#B45309' }}>
                   No selected margin crossed zero local excess within sweep range.
                 </div>

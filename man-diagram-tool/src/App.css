@@ -183,6 +183,39 @@
   color: #1e40af;
 }
 
+.study-type-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  margin-bottom: 10px;
+}
+
+.study-type-tab {
+  flex: 1;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  text-align: center;
+}
+
+.study-type-tab:not(.active):hover {
+  border-color: #93C5FD;
+  background: #EFF6FF;
+}
+
+.study-type-tab.active {
+  border-color: #2563EB;
+  background: #EFF6FF;
+  color: #0F172A;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+}
+
 .app-body {
   flex: 1;
   display: flex;
