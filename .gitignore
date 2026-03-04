@@ -1,0 +1,31 @@
+# Virtual environments
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.pyc
+
+# Node modules and build artifacts
+node_modules/
+dist/
+build/
+
+# Logs and dumps
+*.log
+*.torchsave
+*.pid
+*.out
+*.err
+*.seed
+*.stackdump
+*.out.log
+*.err.log
+
+# IDE / Editor
+.idea/
+.vscode/
+.DS_Store
+.claude/
+
+# Misc
+pytest_cache/
+*.pdf
