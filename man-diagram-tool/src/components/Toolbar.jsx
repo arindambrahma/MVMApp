@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 
 function Toolbar({
   onLoadExample, onPreAnalysis, onExport, onImport,
-  onRunAnalysis, analysisLoading, analysisBlocked, onClear,
+  onRunAnalysis, analysisLoading, analysisProgress, analysisBlocked, onClear,
 }) {
   const fileRef = useRef();
   const btnStyle = (bg) => ({
@@ -49,9 +49,28 @@ function Toolbar({
           ...btnStyle((analysisLoading || analysisBlocked) ? '#6B7280' : '#059669'),
           opacity: (analysisLoading || analysisBlocked) ? 0.7 : 1,
           cursor: analysisLoading ? 'wait' : (analysisBlocked ? 'not-allowed' : 'pointer'),
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
-        {analysisLoading ? 'Analysing...' : '\u25B6 Run Analysis'}
+        {analysisLoading && (
+          <span
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: `${Math.max(0, Math.min(100, Number(analysisProgress) || 0))}%`,
+              background: 'rgba(59, 130, 246, 0.28)',
+              transition: 'width 140ms linear',
+            }}
+          />
+        )}
+        <span style={{ position: 'relative' }}>
+          {analysisLoading
+            ? `Analysing... ${Math.max(0, Math.min(100, Number(analysisProgress) || 0))}%`
+            : '\u25B6 Run Analysis'}
+        </span>
       </button>
 
       <div style={{ flex: 1 }} />

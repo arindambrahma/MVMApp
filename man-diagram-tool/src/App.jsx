@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import './App.css';
 import { useGraphStore } from './state/useGraphStore';
 import MenuBar from './components/MenuBar';
@@ -7,6 +7,7 @@ import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
 import MarginValuePlot from './components/MarginValuePlot';
 import SensitivityStudyModule from './components/SensitivityStudyModule';
+import RedesignAnalysisModule from './components/RedesignAnalysisModule';
 import ExportModal from './components/ExportModal';
 import PreAnalysisModal from './components/PreAnalysisModal';
 import { importJSON } from './utils/jsonSerializer';
@@ -36,12 +37,14 @@ function App() {
   // Analysis state
   const [analysisResult, setAnalysisResult] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(null);
   const [analysisError, setAnalysisError] = useState(null);
   const [analysisWeights, setAnalysisWeights] = useState({ perf: {}, input: {} });
   const [backendVersion, setBackendVersion] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
   const [workspaceTabs, setWorkspaceTabs] = useState(['model']);
   const [activeTab, setActiveTab] = useState('model');
+  const analysisProgressTimerRef = useRef(null);
 
   useEffect(() => {
     fetchHealth().then(v => setBackendVersion(v));
@@ -178,21 +181,56 @@ function App() {
       return;
     }
     setAnalysisLoading(true);
+    setAnalysisProgress(4);
+    if (analysisProgressTimerRef.current) {
+      clearInterval(analysisProgressTimerRef.current);
+      analysisProgressTimerRef.current = null;
+    }
+    analysisProgressTimerRef.current = setInterval(() => {
+      setAnalysisProgress((prev) => {
+        const p = Number(prev);
+        if (!Number.isFinite(p)) return 4;
+        if (p >= 90) return 90;
+        const next = p + Math.max(1, (90 - p) * 0.14);
+        return Math.min(90, Math.round(next));
+      });
+    }, 220);
     setAnalysisError(null);
     try {
       const data = await runAnalysis(state.nodes, state.edges, effectiveWeights);
+      setAnalysisProgress(96);
       setAnalysisResult(data);
-      setWorkspaceTabs((prev) => (prev.includes('sensitivity') ? prev : [...prev, 'sensitivity']));
+      setWorkspaceTabs((prev) => {
+        const next = [...prev];
+        if (!next.includes('sensitivity')) next.push('sensitivity');
+        if (!next.includes('redesign')) next.push('redesign');
+        return next;
+      });
     } catch (e) {
       setAnalysisError(e.message);
       setAnalysisResult(null);
     } finally {
+      if (analysisProgressTimerRef.current) {
+        clearInterval(analysisProgressTimerRef.current);
+        analysisProgressTimerRef.current = null;
+      }
+      setAnalysisProgress(100);
       setAnalysisLoading(false);
+      setTimeout(() => setAnalysisProgress(null), 180);
     }
   }, [state.nodes, state.edges, graphValidation, effectiveWeights]);
 
+  useEffect(() => {
+    return () => {
+      if (analysisProgressTimerRef.current) {
+        clearInterval(analysisProgressTimerRef.current);
+        analysisProgressTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const openWorkspaceTab = useCallback((tabId) => {
-    if (tabId !== 'sensitivity') return;
+    if (tabId !== 'sensitivity' && tabId !== 'redesign') return;
     if (!analysisResult) {
       setAnalysisError('Run analysis first to open Sensitivity Study.');
       return;
@@ -214,6 +252,7 @@ function App() {
 
   const tabLabel = useCallback((tabId) => {
     if (tabId === 'model') return 'Model';
+    if (tabId === 'redesign') return 'Redesign';
     return 'Sensitivity';
   }, []);
 
@@ -264,6 +303,7 @@ function App() {
         onOpenSensitivity={() => openWorkspaceTab('sensitivity')}
         analysisReady={Boolean(analysisResult)}
         analysisLoading={analysisLoading}
+        analysisProgress={analysisProgress}
         analysisBlocked={!graphValidation.isValid}
       />
 
@@ -366,9 +406,19 @@ function App() {
             />
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'sensitivity' ? (
         <div className="analysis-workspace">
           <SensitivityStudyModule
+            analysisResult={analysisResult}
+            analysisError={analysisError}
+            nodes={state.nodes}
+            edges={state.edges}
+            appliedWeights={effectiveWeights}
+          />
+        </div>
+      ) : (
+        <div className="analysis-workspace">
+          <RedesignAnalysisModule
             analysisResult={analysisResult}
             analysisError={analysisError}
             nodes={state.nodes}

@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 function MenuBar({
   onLoadExample, onPreAnalysis, onExport, onImport, onClear, onRunAnalysis,
   onOpenModel, onOpenSensitivity,
-  analysisReady, analysisLoading, analysisBlocked,
+  analysisReady, analysisLoading, analysisProgress, analysisBlocked,
 }) {
   const [openMenu, setOpenMenu] = useState(null);
   const fileRef = useRef(null);
@@ -171,8 +171,26 @@ function MenuBar({
         onClick={onRunAnalysis}
         disabled={analysisLoading || analysisBlocked}
         title={analysisBlocked ? 'Fix graph validation issues before analysis.' : ''}
+        style={{ position: 'relative', overflow: 'hidden' }}
       >
-        {analysisLoading ? 'Analysing...' : 'Run Analysis'}
+        {analysisLoading && (
+          <span
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: `${Math.max(0, Math.min(100, Number(analysisProgress) || 0))}%`,
+              background: 'rgba(59, 130, 246, 0.28)',
+              transition: 'width 140ms linear',
+            }}
+          />
+        )}
+        <span style={{ position: 'relative' }}>
+          {analysisLoading
+            ? `Analysing... ${Math.max(0, Math.min(100, Number(analysisProgress) || 0))}%`
+            : 'Run Analysis'}
+        </span>
       </button>
 
       <input

@@ -16,6 +16,28 @@ function rankedEntries(obj) {
   return Object.entries(obj || {}).sort((a, b) => Math.abs(b[1] || 0) - Math.abs(a[1] || 0));
 }
 
+function extremaWithResponsible(obj) {
+  const entries = Object.entries(obj || {})
+    .map(([k, v]) => [k, Number(v)])
+    .filter(([, v]) => Number.isFinite(v));
+  if (!entries.length) {
+    return {
+      max: { value: NaN, responsible: [] },
+      min: { value: NaN, responsible: [] },
+    };
+  }
+  const vals = entries.map(([, v]) => v);
+  const maxVal = Math.max(...vals);
+  const minVal = Math.min(...vals);
+  const tol = 1e-9;
+  const maxResponsible = entries.filter(([, v]) => Math.abs(v - maxVal) <= tol).map(([k]) => k);
+  const minResponsible = entries.filter(([, v]) => Math.abs(v - minVal) <= tol).map(([k]) => k);
+  return {
+    max: { value: maxVal, responsible: maxResponsible },
+    min: { value: minVal, responsible: minResponsible },
+  };
+}
+
 function relChange(value, baseline) {
   const v = Number(value);
   const b = Number(baseline);
@@ -88,6 +110,8 @@ function MarginLineChart({
   width = 860,
   extraLines = [],
   axisFontSize = 10,
+  xDomain = null,
+  yDomain = null,
 }) {
   if (!series?.length) {
     return (
@@ -101,13 +125,17 @@ function MarginLineChart({
   const allPoints = series.flatMap(s => s.points || []);
   const xs = allPoints.map(p => p.x);
   const ys = allPoints.map(p => p.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
+  const minXRaw = Math.min(...xs);
+  const maxXRaw = Math.max(...xs);
   const minYRaw = Math.min(...ys);
   const maxYRaw = Math.max(...ys);
+  const minX = Number.isFinite(xDomain?.min) ? xDomain.min : minXRaw;
+  const maxX = Number.isFinite(xDomain?.max) ? xDomain.max : maxXRaw;
   const yPad = Math.max(0.02, (maxYRaw - minYRaw) * 0.08);
-  const minY = Math.min(minYRaw - yPad, 0);
-  const maxY = Math.max(maxYRaw + yPad, 0);
+  const autoMinY = Math.min(minYRaw - yPad, 0);
+  const autoMaxY = Math.max(maxYRaw + yPad, 0);
+  const minY = Number.isFinite(yDomain?.min) ? yDomain.min : autoMinY;
+  const maxY = Number.isFinite(yDomain?.max) ? yDomain.max : autoMaxY;
 
   const viewWidth = width;
   const left = 58;
@@ -134,8 +162,8 @@ function MarginLineChart({
   const axisLabelFontSize = Math.max(axisFontSize + 1, 11);
 
   return (
-    <div style={{ marginTop: 8, border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', padding: 8 }}>
-      <svg width="100%" viewBox={`0 0 ${viewWidth} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
+    <div style={{ marginTop: 8, border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', padding: 8, width: `${viewWidth}px`, maxWidth: '100%', boxSizing: 'border-box' }}>
+      <svg width={viewWidth} height={height} viewBox={`0 0 ${viewWidth} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
         {tickVals.map((tv, i) => {
           const yy = yScale(tv);
           return (
@@ -224,6 +252,7 @@ function MarginLineChart({
   );
 }
 
+
 function SensitivityStudyModule({
   analysisResult,
   analysisError,
@@ -238,26 +267,22 @@ function SensitivityStudyModule({
   const [selectedMargins, setSelectedMargins] = useState([]);
   const [selectedPerformances, setSelectedPerformances] = useState([]);
   const [chartHeight, setChartHeight] = useState(340);
+  const [lockXAxisScale, setLockXAxisScale] = useState(false);
+  const [lockYAxisScale, setLockYAxisScale] = useState(false);
   const [showWeightedAbsorption, setShowWeightedAbsorption] = useState(false);
   const [showWeightedImpact, setShowWeightedImpact] = useState(false);
   const [direction, setDirection] = useState('increase');
   const [incrementPercent, setIncrementPercent] = useState('2');
   const [subLoading, setSubLoading] = useState(false);
+  const [subRunProgress, setSubRunProgress] = useState(null);
   const [subError, setSubError] = useState('');
   const [subRun, setSubRun] = useState(null);
   const [comparisonSubRun, setComparisonSubRun] = useState(null);
+  const [marginSubRun, setMarginSubRun] = useState(null);
+  const [marginComparisonSubRun, setMarginComparisonSubRun] = useState(null);
   const [chartWidth, setChartWidth] = useState(860);
   const chartHeightMin = 220;
   const chartHeightMax = 640;
-  const chartHeightStep = 10;
-  const adjustChartHeight = (delta) => {
-    setChartHeight((h) => {
-      const next = h + delta;
-      if (next < chartHeightMin) return chartHeightMin;
-      if (next > chartHeightMax) return chartHeightMax;
-      return next;
-    });
-  };
   const handleChartHeightInput = (value) => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
@@ -266,15 +291,6 @@ function SensitivityStudyModule({
   };
   const chartWidthMin = 520;
   const chartWidthMax = 1200;
-  const chartWidthStep = 40;
-  const adjustChartWidth = (delta) => {
-    setChartWidth((w) => {
-      const next = w + delta;
-      if (next < chartWidthMin) return chartWidthMin;
-      if (next > chartWidthMax) return chartWidthMax;
-      return next;
-    });
-  };
   const handleChartWidthInput = (value) => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
@@ -284,14 +300,6 @@ function SensitivityStudyModule({
   const [axisFontSize, setAxisFontSize] = useState(10);
   const axisFontSizeMin = 8;
   const axisFontSizeMax = 16;
-  const adjustAxisFontSize = (delta) => {
-    setAxisFontSize((size) => {
-      const next = size + delta;
-      if (next < axisFontSizeMin) return axisFontSizeMin;
-      if (next > axisFontSizeMax) return axisFontSizeMax;
-      return next;
-    });
-  };
   const handleAxisFontInput = (value) => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
@@ -386,6 +394,9 @@ function SensitivityStudyModule({
   const effectiveMargin = useMemo(() => (
     (selectedMargin && marginKeys.includes(selectedMargin)) ? selectedMargin : (marginKeys[0] || '')
   ), [selectedMargin, marginKeys]);
+  const summaryMargin = useMemo(() => (
+    studyType === 'input_variation' ? (governingMargin || marginKeys[0] || '') : effectiveMargin
+  ), [studyType, governingMargin, marginKeys, effectiveMargin]);
 
   const activeMargins = useMemo(() => {
     return (selectedMargins || []).filter(m => marginKeys.includes(m));
@@ -408,6 +419,60 @@ function SensitivityStudyModule({
     if (Math.abs(marginThresholdValue) < 1e-12) return NaN;
     return (marginDecidedValue - marginThresholdValue) / Math.abs(marginThresholdValue);
   }, [marginThresholdValue, marginDecidedValue]);
+  const marginUtilisationRows = useMemo(
+    () => rankedEntries(result.utilisation_matrix?.[effectiveMargin] || {}),
+    [result, effectiveMargin]
+  );
+  const maxUtilisationForMargin = useMemo(() => {
+    if (!marginUtilisationRows.length) return NaN;
+    return Math.max(...marginUtilisationRows.map(([, v]) => Number(v)).filter(Number.isFinite));
+  }, [marginUtilisationRows]);
+  const governingInputsForMargin = useMemo(() => {
+    if (!Number.isFinite(maxUtilisationForMargin)) return [];
+    const tol = 1e-3;
+    return marginUtilisationRows
+      .filter(([, v]) => Number.isFinite(Number(v)) && Math.abs(Number(v) - maxUtilisationForMargin) <= tol)
+      .map(([name]) => name);
+  }, [marginUtilisationRows, maxUtilisationForMargin]);
+  const isLimitingForAnyInput = useMemo(
+    () => Number.isFinite(maxUtilisationForMargin) && maxUtilisationForMargin >= 0.995,
+    [maxUtilisationForMargin]
+  );
+  const marginThresholdNewByInput = useMemo(() => {
+    if (!Number.isFinite(marginDecidedValue) || !Number.isFinite(marginThresholdValue)) return [];
+    const denom = marginDecidedValue - marginThresholdValue;
+    if (Math.abs(denom) < 1e-12) return [];
+    return marginUtilisationRows
+      .map(([inputName, util]) => {
+        const u = Number(util);
+        if (!Number.isFinite(u)) return null;
+        const thresholdNew = marginDecidedValue - (1 - u) * denom;
+        return { inputName, util: u, thresholdNew };
+      })
+      .filter(Boolean);
+  }, [marginUtilisationRows, marginDecidedValue, marginThresholdValue]);
+  const minThresholdNew = useMemo(() => {
+    if (!marginThresholdNewByInput.length) return NaN;
+    return Math.min(...marginThresholdNewByInput.map((x) => x.thresholdNew));
+  }, [marginThresholdNewByInput]);
+  const nonUtilizedFraction = useMemo(() => {
+    if (!Number.isFinite(marginDecidedValue) || !Number.isFinite(marginThresholdValue) || !Number.isFinite(minThresholdNew)) return NaN;
+    const denom = marginDecidedValue - marginThresholdValue;
+    if (Math.abs(denom) < 1e-12) return NaN;
+    return Math.max(0, (marginDecidedValue - minThresholdNew) / Math.abs(denom));
+  }, [marginDecidedValue, marginThresholdValue, minThresholdNew]);
+  const marginImpactStats = useMemo(
+    () => extremaWithResponsible(result.impact_matrix?.[effectiveMargin] || {}),
+    [result, effectiveMargin]
+  );
+  const marginAbsorptionStats = useMemo(
+    () => extremaWithResponsible(result.absorption_matrix?.[effectiveMargin] || {}),
+    [result, effectiveMargin]
+  );
+  const marginUtilisationStats = useMemo(
+    () => extremaWithResponsible(result.utilisation_matrix?.[effectiveMargin] || {}),
+    [result, effectiveMargin]
+  );
   const filterNonNegativeRows = useCallback((rows = []) => {
     if (!recordedMargins.length) return rows;
     return rows.filter((row) => recordedMargins.every((m) => {
@@ -420,6 +485,25 @@ function SensitivityStudyModule({
   const rowsForComparison = useMemo(
     () => filterNonNegativeRows(comparisonSubRun?.rows || []),
     [comparisonSubRun, filterNonNegativeRows]
+  );
+  const filterMarginEffectRows = useCallback((rows = [], marginLabel = '') => {
+    if (!marginLabel) return rows;
+    return rows.filter((row) => {
+      const val = Number(row?.margins?.[marginLabel]);
+      return !Number.isFinite(val) || val >= 0;
+    });
+  }, []);
+
+  const marginRowsForDisplay = useMemo(
+    () => filterMarginEffectRows(marginSubRun?.rows || [], effectiveMargin),
+    [marginSubRun, effectiveMargin, filterMarginEffectRows]
+  );
+  const marginRowsForComparison = useMemo(
+    () => filterMarginEffectRows(
+      marginComparisonSubRun?.rows || [],
+      marginComparisonSubRun?.marginLabel || effectiveMargin
+    ),
+    [marginComparisonSubRun, effectiveMargin, filterMarginEffectRows]
   );
   const activePerformances = useMemo(() => {
     const runtimeSet = new Set(performanceNodes.map((n) => sanitize(n.label || '')));
@@ -509,6 +593,7 @@ function SensitivityStudyModule({
     const maxSteps = Math.ceil(maxTarget / localInc) + 4;
 
     setSubLoading(true);
+    setSubRunProgress(0);
     setSubError('');
     setSubRun(null);
 
@@ -550,6 +635,7 @@ function SensitivityStudyModule({
           rec.performances[p] = relChange(runP, baselineP);
         }
         sweepRows.push(rec);
+        setSubRunProgress(Math.round(((steps + 1) / Math.max(1, maxSteps)) * 100));
 
         for (const m of stopCandidateMargins) {
           const prev = Number(prevExcess[m]);
@@ -618,10 +704,12 @@ function SensitivityStudyModule({
         collapseReached,
         rows: sweepRows,
       });
+      setSubRunProgress(100);
     } catch (err) {
       setSubError(err.message || 'Sub-analysis failed.');
     } finally {
       setSubLoading(false);
+      setSubRunProgress(null);
     }
   };
 
@@ -683,6 +771,7 @@ function SensitivityStudyModule({
     }
 
     setSubLoading(true);
+    setSubRunProgress(0);
     setSubError('');
     setSubRun(null);
 
@@ -690,7 +779,7 @@ function SensitivityStudyModule({
       const sweepRows = [];
       const sign = Math.sign(marginDifference) || 1;
       const maxMargin = Math.abs(marginDifference);
-      let currentMargin = 0;
+      let currentMargin = maxMargin;
       let steps = 0;
       const maxSteps = Math.ceil(maxMargin / localInc) + 4;
 
@@ -717,38 +806,41 @@ function SensitivityStudyModule({
         sweepRows.push(rec);
       };
 
-      while (currentMargin <= maxMargin + 1e-12 && steps < maxSteps) {
-        const marginValue = Math.min(maxMargin, currentMargin);
+      while (currentMargin >= -1e-12 && steps < maxSteps) {
+        const marginValue = Math.max(0, currentMargin);
         await captureRow(marginValue);
-        if (Math.abs(marginValue - maxMargin) <= 1e-12) break;
-        currentMargin += localInc;
+        setSubRunProgress(Math.round(((steps + 1) / Math.max(1, maxSteps)) * 100));
+        if (marginValue <= 1e-12) break;
+        currentMargin -= localInc;
         steps += 1;
       }
 
       const lastRow = sweepRows[sweepRows.length - 1];
-      const finalMarginReached = Boolean(lastRow && Math.abs(Math.abs(lastRow.t) - maxMargin) <= 1e-6);
+      const finalMarginReached = Boolean(lastRow && Math.abs(lastRow.t) <= 1e-6);
       if (!finalMarginReached) {
-        await captureRow(maxMargin);
+        await captureRow(0);
       }
 
-      setSubRun({
+      setMarginSubRun({
         studyType: 'margin_effect',
         marginLabel: effectiveMargin,
         marginThreshold: thresholdValue,
         marginDecided: decidedValue,
-        direction: 'increase',
+        direction: 'decrease',
         incrementUsed: localInc,
         rows: sweepRows,
       });
+      setSubRunProgress(100);
     } catch (err) {
       setSubError(err.message || 'Sub-analysis failed.');
     } finally {
       setSubLoading(false);
+      setSubRunProgress(null);
     }
   };
 
-  const impactRows = rankedEntries(result.impact_matrix?.[effectiveMargin] || {});
   const weightedImpact = result.weighted_impact?.[effectiveMargin] || 0;
+  const weightedAbsorption = result.weighted_absorption?.[effectiveMargin] || 0;
   const excess = result.excess?.[effectiveMargin] || 0;
   const extraLines = [];
   const chartXLabel = studyType === 'input_variation'
@@ -778,6 +870,21 @@ function SensitivityStudyModule({
       }
     });
   }
+  const buildPerfLabel = (perfName) => {
+    const perfNode = performanceNodes.find((n) => sanitize(n.label || '') === perfName);
+    return perfNode?.label || perfName;
+  };
+  const buildInputLabel = (inputName) => {
+    const inNode = inputNodes.find((n) => sanitize(n.label || '') === inputName);
+    return inNode?.label || inputName;
+  };
+  const summaryImpactRows = rankedEntries(result.impact_matrix?.[summaryMargin] || {})
+    .map(([k, v]) => [buildPerfLabel(k), v]);
+  const summaryAbsorptionRows = rankedEntries(result.absorption_matrix?.[summaryMargin] || {})
+    .map(([k, v]) => [buildInputLabel(k), v]);
+  const summaryUtilisationRows = rankedEntries(result.utilisation_matrix?.[summaryMargin] || {})
+    .map(([k, v]) => [buildInputLabel(k), v]);
+
   const buildSeriesForRows = (rows = []) => ([
     ...displayedMargins.map((m) => ({
       key: m,
@@ -794,17 +901,75 @@ function SensitivityStudyModule({
     }),
   ]);
 
-  const columnCount = comparisonSubRun ? 2 : 1;
+  const buildMarginEffectSeries = (rows = [], marginLabel = effectiveMargin) => {
+    if (!marginLabel || !rows.length) return [];
+    return activePerformances.map((p) => {
+      const perfLabel = buildPerfLabel(p);
+      const points = rows
+        .map((row) => {
+          const xVal = Number(row?.margins?.[marginLabel]);
+          const yVal = Number(row?.performances?.[p] || 0);
+          if (!Number.isFinite(xVal) || !Number.isFinite(yVal)) return null;
+          return { x: xVal, y: yVal };
+        })
+        .filter(Boolean);
+      return {
+        key: `perf_margin_${p}`,
+        label: `P: ${perfLabel}`,
+        points,
+      };
+    }).filter((series) => series.points.length > 0);
+  };
+
+  const getSeriesDomain = (series = []) => {
+    const points = (series || []).flatMap((s) => s.points || []);
+    if (!points.length) return null;
+    const xs = points.map((p) => Number(p.x)).filter(Number.isFinite);
+    const ys = points.map((p) => Number(p.y)).filter(Number.isFinite);
+    if (!xs.length || !ys.length) return null;
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minYRaw = Math.min(...ys);
+    const maxYRaw = Math.max(...ys);
+    const yPad = Math.max(0.02, (maxYRaw - minYRaw) * 0.08);
+    return {
+      x: { min: minX, max: maxX },
+      y: { min: Math.min(minYRaw - yPad, 0), max: Math.max(maxYRaw + yPad, 0) },
+    };
+  };
+  const inputComparisonDomain = useMemo(() => {
+    const combinedRows = [...(rowsForDisplay || []), ...(comparisonSubRun ? rowsForComparison : [])];
+    return getSeriesDomain(buildSeriesForRows(combinedRows));
+  }, [rowsForDisplay, rowsForComparison, comparisonSubRun, displayedMargins, activePerformances]);
+  const marginComparisonDomain = useMemo(() => {
+    const combinedRows = [...(marginRowsForDisplay || []), ...(marginComparisonSubRun ? marginRowsForComparison : [])];
+    return getSeriesDomain(buildMarginEffectSeries(combinedRows, effectiveMargin));
+  }, [marginRowsForDisplay, marginRowsForComparison, marginComparisonSubRun, effectiveMargin, activePerformances]);
+
+  const hasComparisonRun = studyType === 'input_variation'
+    ? Boolean(comparisonSubRun)
+    : Boolean(marginComparisonSubRun);
+  const columnCount = hasComparisonRun ? 2 : 1;
   const gapSize = 14;
   const totalGap = columnCount > 1 ? gapSize * (columnCount - 1) : 0;
   const availableGraphWidth = Math.max(columnCount * 360, graphAreaWidth - totalGap);
-  const columnMinWidth = Math.max(320, Math.floor(availableGraphWidth / columnCount));
+  const columnWidth = Math.max(320, Math.floor(availableGraphWidth / columnCount));
+  const chartWidthForRender = Math.max(360, Math.min(chartWidth, columnWidth));
+  const graphAreaStyle = {
+    display: 'flex',
+    gap: gapSize,
+    marginTop: 10,
+    flexWrap: 'nowrap',
+    overflowX: 'auto',
+    paddingBottom: 8,
+  };
   const renderSubRunColumn = (title, rows) => (
     <div
       key={title}
       style={{
-        flex: `1 1 ${columnMinWidth}px`,
-        minWidth: `${columnMinWidth}px`,
+        flex: `1 1 ${columnWidth}px`,
+        minWidth: `${columnWidth}px`,
+        maxWidth: `${columnWidth}px`,
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -826,13 +991,15 @@ function SensitivityStudyModule({
         height={chartHeight}
         extraLines={extraLines}
         axisFontSize={axisFontSize}
-        width={chartWidth}
+        width={chartWidthForRender}
+        xDomain={lockXAxisScale ? (inputComparisonDomain?.x || null) : null}
+        yDomain={lockYAxisScale ? (inputComparisonDomain?.y || null) : null}
       />
-      {rows.length ? (
-        <div style={{ marginTop: 12, border: '1px solid #E2E8F0', borderRadius: 6, background: '#FFFFFF', overflow: 'hidden' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', padding: '8px 10px', borderBottom: '1px solid #E2E8F0' }}>
-            Sweep Samples
-          </div>
+        {rows.length ? (
+          <div style={{ marginTop: 12, border: '1px solid #E2E8F0', borderRadius: 6, background: '#FFFFFF', overflow: 'hidden' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', padding: '8px 10px', borderBottom: '1px solid #E2E8F0' }}>
+              Sweep Samples
+            </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: columnTableFont }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
@@ -870,14 +1037,107 @@ function SensitivityStudyModule({
               ))}
             </tbody>
           </table>
+          </div>
+        ) : (
+          <div style={{ marginTop: 12, fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>
+            No sweep samples remain after filtering out negative margins.
+          </div>
+        )}
+      </div>
+  );
+
+  const renderMarginEffectColumn = (
+    title,
+    rows = [],
+    marginLabel = effectiveMargin,
+    emptyMessage = 'No sweep samples have been generated yet.'
+  ) => {
+    const displayMarginLabel = (marginLabel || '').replace('E_', 'E') || 'Margin';
+    return (
+      <div
+        key={title}
+        style={{
+        flex: `1 1 ${columnWidth}px`,
+        minWidth: `${columnWidth}px`,
+        maxWidth: `${columnWidth}px`,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div style={{
+        fontSize: columnLabelFont,
+        fontWeight: 600,
+        color: '#475569',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: 6,
+      }}>
+        {title}
+      </div>
+      <MarginLineChart
+        series={buildMarginEffectSeries(rows, marginLabel)}
+        xLabel={`E: ${displayMarginLabel} (local excess)`}
+        yLabel="Performance change (%)"
+        height={chartHeight}
+        extraLines={[]}
+        axisFontSize={axisFontSize}
+        width={chartWidthForRender}
+        xDomain={lockXAxisScale ? (marginComparisonDomain?.x || null) : null}
+        yDomain={lockYAxisScale ? (marginComparisonDomain?.y || null) : null}
+      />
+      {rows.length ? (
+        <div style={{ marginTop: 12, border: '1px solid #E2E8F0', borderRadius: 6, background: '#FFFFFF', overflow: 'hidden' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', padding: '8px 10px', borderBottom: '1px solid #E2E8F0' }}>
+            Sweep Samples
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: columnTableFont }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
+                <th style={{ textAlign: 'right', padding: '5px 8px', color: '#64748B', fontSize: columnTableFont }}>
+                  Local excess (E)
+                </th>
+                {activePerformances.map((p) => (
+                  <th
+                    key={`perf_head_${p}`}
+                    style={{
+                      textAlign: 'right',
+                      padding: '5px 8px',
+                      color: '#64748B',
+                      fontSize: columnTableFont,
+                    }}
+                  >
+                    {buildPerfLabel(p)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, idx) => (
+                <tr key={`row_margin_${idx}`} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                  <td style={{ textAlign: 'right', padding: '5px 8px', color: '#334155', fontWeight: 600 }}>
+                    {pct(row?.margins?.[marginLabel], 2)}
+                  </td>
+                  {activePerformances.map((p) => (
+                    <td
+                      key={`cell_margin_${idx}_${p}`}
+                      style={{ ...tableCell(row?.performances?.[p]), fontSize: columnTableFont }}
+                    >
+                      {pct(row?.performances?.[p], 2)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <div style={{ marginTop: 12, fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>
-          No sweep samples remain after filtering out negative margins.
+          {emptyMessage}
         </div>
       )}
     </div>
   );
+};
 
   return (
     <div style={containerStyle}>
@@ -917,159 +1177,6 @@ function SensitivityStudyModule({
           >
             Margin Effect on Performance
           </button>
-        </div>
-        <div style={{ marginTop: 10, fontSize: 11, color: '#334155', fontWeight: 600 }}>
-          Chart height
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => adjustChartHeight(-chartHeightStep)}
-            style={{
-              border: '1px solid #CBD5E1',
-              borderRadius: 6,
-              background: '#fff',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            -
-          </button>
-          <input
-            type="number"
-            min={chartHeightMin}
-            max={chartHeightMax}
-            step={chartHeightStep}
-            value={chartHeight}
-            onChange={(e) => handleChartHeightInput(e.target.value)}
-            style={{
-              width: 68,
-              border: '1px solid #CBD5E1',
-              borderRadius: 6,
-              padding: '4px 6px',
-              fontSize: 11,
-              color: '#0F172A',
-              textAlign: 'center',
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => adjustChartHeight(chartHeightStep)}
-            style={{
-              border: '1px solid #CBD5E1',
-              borderRadius: 6,
-              background: '#fff',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            +
-          </button>
-          <span style={{ fontSize: 11, color: '#0F172A' }}>px</span>
-        </div>
-        <div style={{ marginTop: 10, fontSize: 11, color: '#334155', fontWeight: 600 }}>
-          Chart width
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => adjustChartWidth(-chartWidthStep)}
-            style={{
-              border: '1px solid #CBD5E1',
-              borderRadius: 6,
-              background: '#fff',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            -
-          </button>
-          <input
-            type="number"
-            min={chartWidthMin}
-            max={chartWidthMax}
-            step={chartWidthStep}
-            value={chartWidth}
-            onChange={(e) => handleChartWidthInput(e.target.value)}
-            style={{
-              width: 68,
-              border: '1px solid #CBD5E1',
-              borderRadius: 6,
-              padding: '4px 6px',
-              fontSize: 11,
-              color: '#0F172A',
-              textAlign: 'center',
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => adjustChartWidth(chartWidthStep)}
-            style={{
-              border: '1px solid #CBD5E1',
-              borderRadius: 6,
-              background: '#fff',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            +
-          </button>
-          <span style={{ fontSize: 11, color: '#0F172A' }}>px</span>
-        </div>
-        <div style={{ marginTop: 6, fontSize: 11, color: '#334155', fontWeight: 600 }}>
-          Axis font
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => adjustAxisFontSize(-1)}
-            style={{
-              border: '1px solid #CBD5E1',
-              borderRadius: 6,
-              background: '#fff',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            -
-          </button>
-          <input
-            type="number"
-            min={axisFontSizeMin}
-            max={axisFontSizeMax}
-            step="1"
-            value={axisFontSize}
-            onChange={(e) => handleAxisFontInput(e.target.value)}
-            style={{
-              width: 52,
-              border: '1px solid #CBD5E1',
-              borderRadius: 6,
-              padding: '4px 6px',
-              fontSize: 11,
-              color: '#0F172A',
-              textAlign: 'center',
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => adjustAxisFontSize(1)}
-            style={{
-              border: '1px solid #CBD5E1',
-              borderRadius: 6,
-              background: '#fff',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            +
-          </button>
-          <span style={{ fontSize: 11, color: '#0F172A' }}>px</span>
         </div>
 
         {studyType === 'input_variation' ? (
@@ -1173,38 +1280,78 @@ function SensitivityStudyModule({
                 <div style={{ color: '#0F172A', fontWeight: 700 }}>
                   {Number.isFinite(marginExcess) ? pct(marginExcess, 2) : 'n/a'}
                 </div>
+                <div style={{ color: '#64748B' }}>Max absorption</div>
+                <div style={{ color: '#0F172A', fontWeight: 700 }}>
+                  {Number.isFinite(marginAbsorptionStats.max.value)
+                    ? `${pct(marginAbsorptionStats.max.value, 2)} (${marginAbsorptionStats.max.responsible.join(', ') || 'n/a'})`
+                    : 'n/a'}
+                </div>
+                <div style={{ color: '#64748B' }}>Min absorption</div>
+                <div style={{ color: '#0F172A', fontWeight: 700 }}>
+                  {Number.isFinite(marginAbsorptionStats.min.value)
+                    ? `${pct(marginAbsorptionStats.min.value, 2)} (${marginAbsorptionStats.min.responsible.join(', ') || 'n/a'})`
+                    : 'n/a'}
+                </div>
+                <div style={{ color: '#64748B' }}>Max impact</div>
+                <div style={{ color: '#0F172A', fontWeight: 700 }}>
+                  {Number.isFinite(marginImpactStats.max.value)
+                    ? `${pct(marginImpactStats.max.value, 2)} (${marginImpactStats.max.responsible.join(', ') || 'n/a'})`
+                    : 'n/a'}
+                </div>
+                <div style={{ color: '#64748B' }}>Min impact</div>
+                <div style={{ color: '#0F172A', fontWeight: 700 }}>
+                  {Number.isFinite(marginImpactStats.min.value)
+                    ? `${pct(marginImpactStats.min.value, 2)} (${marginImpactStats.min.responsible.join(', ') || 'n/a'})`
+                    : 'n/a'}
+                </div>
+                <div style={{ color: '#64748B' }}>Max utilisation</div>
+                <div style={{ color: '#0F172A', fontWeight: 700 }}>
+                  {Number.isFinite(marginUtilisationStats.max.value)
+                    ? `${pct(marginUtilisationStats.max.value, 2)} (${marginUtilisationStats.max.responsible.join(', ') || 'n/a'})`
+                    : 'n/a'}
+                </div>
+                <div style={{ color: '#64748B' }}>Min utilisation</div>
+                <div style={{ color: '#0F172A', fontWeight: 700 }}>
+                  {Number.isFinite(marginUtilisationStats.min.value)
+                    ? `${pct(marginUtilisationStats.min.value, 2)} (${marginUtilisationStats.min.responsible.join(', ') || 'n/a'})`
+                    : 'n/a'}
+                </div>
               </div>
             </div>
           </>
         )}
 
-        <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#64748B' }}>
-          Margins to record
-        </div>
-        <div style={{ marginTop: 6, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', padding: 8, maxHeight: 170, overflowY: 'auto' }}>
-          {marginKeys.map((m) => {
-            const checked = activeMargins.includes(m);
-            return (
-              <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', marginBottom: 5, cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(e) => {
-                    setSelectedMargins((prev) => {
-                      const cur = (prev || []).filter(x => marginKeys.includes(x));
-                      if (e.target.checked) return [...new Set([...cur, m])];
-                      return cur.filter(x => x !== m);
-                    });
-                  }}
-                />
-                <span>{m.replace('E_', 'E')}</span>
-              </label>
-            );
-          })}
-        </div>
+        {studyType === 'input_variation' && (
+          <>
+            <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#64748B' }}>
+              Margins to record
+            </div>
+            <div style={{ marginTop: 6, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', padding: 8, maxHeight: 170, overflowY: 'auto' }}>
+              {marginKeys.map((m) => {
+                const checked = activeMargins.includes(m);
+                return (
+                  <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', marginBottom: 5, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        setSelectedMargins((prev) => {
+                          const cur = (prev || []).filter(x => marginKeys.includes(x));
+                          if (e.target.checked) return [...new Set([...cur, m])];
+                          return cur.filter(x => x !== m);
+                        });
+                      }}
+                    />
+                    <span>{m.replace('E_', 'E')}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#64748B' }}>
-          Performance parameters in graph (optional)
+          Performance parameters to record
         </div>
         <div style={{ marginTop: 6, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', padding: 8, maxHeight: 130, overflowY: 'auto' }}>
           {performanceNodes.length === 0 && (
@@ -1232,30 +1379,6 @@ function SensitivityStudyModule({
               </label>
             );
           })}
-        </div>
-
-        <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#64748B' }}>
-          Additional overlays
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingLeft: 10 }}>
-          <label style={{ fontSize: 11, color: '#334155', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={showWeightedAbsorption}
-              onChange={(e) => setShowWeightedAbsorption(e.target.checked)}
-              style={{ marginRight: 6 }}
-            />
-            Show weighted absorption lines
-          </label>
-          <label style={{ fontSize: 11, color: '#334155', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={showWeightedImpact}
-              onChange={(e) => setShowWeightedImpact(e.target.checked)}
-              style={{ marginRight: 6 }}
-            />
-            Show weighted impact lines
-          </label>
         </div>
 
         <label style={{ display: 'block', marginTop: 10 }}>
@@ -1301,7 +1424,7 @@ function SensitivityStudyModule({
 
         <label style={{ display: 'block', marginTop: 10 }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: '#64748B', display: 'block', marginBottom: 4 }}>
-            Increment (% of baseline P)
+            Increment in selected E
           </span>
           <input
             type="number"
@@ -1348,10 +1471,129 @@ function SensitivityStudyModule({
             fontSize: 12,
             fontWeight: 700,
             cursor: subLoading ? 'wait' : 'pointer',
+            position: 'relative',
+            overflow: 'hidden',
           }}
         >
-          {subLoading ? 'Running sub-analysis...' : 'Run Sub-Analysis'}
+          {subLoading && (
+            <span
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: `${Math.max(0, Math.min(100, Number(subRunProgress) || 0))}%`,
+                background: 'rgba(37, 99, 235, 0.22)',
+                transition: 'width 120ms linear',
+              }}
+            />
+          )}
+          <span style={{ position: 'relative' }}>
+            {subLoading
+              ? `Running sub-analysis... ${Math.max(0, Math.min(100, Number(subRunProgress) || 0))}%`
+              : 'Run Sub-Analysis'}
+          </span>
         </button>
+
+        <div style={{ marginTop: 10, border: '1px solid #E2E8F0', borderRadius: 6, background: '#FFFFFF', padding: '8px 9px' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: 8 }}>
+            Chart Settings
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 11, color: '#334155', fontWeight: 600 }}>
+                Chart height
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <input
+                  type="number"
+                  min={chartHeightMin}
+                  max={chartHeightMax}
+                  step="10"
+                  value={chartHeight}
+                  onChange={(e) => handleChartHeightInput(e.target.value)}
+                  style={{
+                    width: '100%',
+                    border: '1px solid #CBD5E1',
+                    borderRadius: 6,
+                    padding: '6px 8px',
+                    fontSize: 11,
+                    color: '#0F172A',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#334155' }}>
+                Chart width
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <input
+                  type="number"
+                  min={chartWidthMin}
+                  max={chartWidthMax}
+                  step="10"
+                  value={chartWidth}
+                  onChange={(e) => handleChartWidthInput(e.target.value)}
+                  style={{
+                    width: '100%',
+                    border: '1px solid #CBD5E1',
+                    borderRadius: 6,
+                    padding: '6px 8px',
+                    fontSize: 11,
+                    color: '#0F172A',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 11, color: '#334155', fontWeight: 600 }}>
+              Font size
+            </div>
+            <div style={{ marginTop: 6 }}>
+              <input
+                type="number"
+                min={axisFontSizeMin}
+                max={axisFontSizeMax}
+                step="1"
+                value={axisFontSize}
+                onChange={(e) => handleAxisFontInput(e.target.value)}
+                style={{
+                  width: '100%',
+                  border: '1px solid #CBD5E1',
+                  borderRadius: 6,
+                  padding: '6px 8px',
+                  fontSize: 11,
+                  color: '#0F172A',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginTop: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', cursor: 'pointer', marginBottom: 5 }}>
+              <input
+                type="checkbox"
+                checked={lockXAxisScale}
+                onChange={(e) => setLockXAxisScale(e.target.checked)}
+              />
+              <span>Use same horizontal axis (X)</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={lockYAxisScale}
+                onChange={(e) => setLockYAxisScale(e.target.checked)}
+              />
+              <span>Use same vertical axis (Y)</span>
+            </label>
+          </div>
+        </div>
       </div>
 
       <div style={{
@@ -1387,7 +1629,7 @@ function SensitivityStudyModule({
                 <div style={{ fontSize: 11, color: '#64748B', marginTop: 10 }}>
                   {subRun.studyType === 'margin_effect' ? (
                     <>
-                      Margin sweep for {(subRun.marginLabel || effectiveMargin || '').replace('E_', 'E')} from threshold to decided value,
+                      Margin sweep for {(subRun.marginLabel || effectiveMargin || '').replace('E_', 'E')} from decided value to threshold,
                       increment {pct(subRun.incrementUsed, 2)} ({subRun.rows.length} points)
                     </>
                   ) : (
@@ -1444,14 +1686,7 @@ function SensitivityStudyModule({
                 </div>
                 <div
                   ref={graphAreaRef}
-                  style={{
-                    display: 'flex',
-                    gap: gapSize,
-                    marginTop: 10,
-                    flexWrap: 'nowrap',
-                    overflowX: 'auto',
-                    paddingBottom: 8,
-                  }}
+                  style={graphAreaStyle}
                 >
                   {renderSubRunColumn('Primary run', rowsForDisplay)}
                   {comparisonSubRun && renderSubRunColumn('Comparison run', rowsForComparison)}
@@ -1545,33 +1780,179 @@ function SensitivityStudyModule({
                   </tbody>
                 </table>
               </div>
+              <SectionTable
+                title="Impact"
+                subtitle={`Change in performance parameters for ${(summaryMargin || 'n/a').replace('E_', 'E')}.`}
+                rows={summaryImpactRows}
+                labelCol="Performance Parameter"
+              />
+              <SectionTable
+                title="Absorption"
+                subtitle={`Input absorption for ${(summaryMargin || 'n/a').replace('E_', 'E')}.`}
+                rows={summaryAbsorptionRows}
+                labelCol="Input Parameter"
+              />
+              <SectionTable
+                title="Utilisation"
+                subtitle={`Margin utilisation for ${(summaryMargin || 'n/a').replace('E_', 'E')}.`}
+                rows={summaryUtilisationRows}
+                labelCol="Input Parameter"
+                valueLabel="Utilisation"
+              />
             </div>
           </div>
         ) : (
-          <>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-              <div style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: 8, background: '#FFFFFF' }}>
-                <div style={{ fontSize: 10, color: '#64748B' }}>Selected Margin</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>
-                  {(effectiveMargin || 'n/a').replace('E_', 'E')}
+          <div style={{ display: 'flex', minHeight: 0 }}>
+            <div style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+              {subError && (
+                <div style={{
+                  marginTop: 10,
+                  fontSize: 12,
+                  color: '#B91C1C',
+                  background: '#FEF2F2',
+                  border: '1px solid #FCA5A5',
+                  borderRadius: 6,
+                  padding: '7px 9px',
+                }}>
+                  {subError}
                 </div>
-              </div>
-              <div style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: 8, background: '#FFFFFF' }}>
-                <div style={{ fontSize: 10, color: '#64748B' }}>Weighted Impact</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>{pct(weightedImpact)}</div>
-                <div style={{ fontSize: 10, color: excess < 0 ? '#DC2626' : '#64748B' }}>
-                  Excess: {pct(excess)}
+              )}
+              {marginSubRun && (
+                <div style={{ fontSize: 11, color: '#64748B', marginTop: 10 }}>
+                  Margin sweep from decided value to threshold,
+                  increment {pct(marginSubRun.incrementUsed, 2)} ({marginSubRun.rows.length} points)
+                </div>
+              )}
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!marginSubRun) return;
+                      setMarginComparisonSubRun({
+                        ...marginSubRun,
+                        rows: [...(marginSubRun.rows || [])],
+                      });
+                    }}
+                    disabled={!marginSubRun}
+                    style={{
+                      border: '1px solid #CBD5E1',
+                      borderRadius: 6,
+                      background: marginSubRun ? '#EFF6FF' : '#F8FAFC',
+                      padding: '6px 10px',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: marginSubRun ? '#1E3A8A' : '#94A3B8',
+                      cursor: marginSubRun ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    Save run for comparison
+                  </button>
+                  {marginComparisonSubRun && (
+                    <button
+                      type="button"
+                      onClick={() => setMarginComparisonSubRun(null)}
+                      style={{
+                        border: '1px solid #CBD5E1',
+                        borderRadius: 6,
+                        background: '#FFFFFF',
+                        padding: '6px 10px',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: '#0F172A',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Clear comparison
+                    </button>
+                  )}
+                </div>
+                <div ref={graphAreaRef} style={graphAreaStyle}>
+                  {renderMarginEffectColumn(
+                    'Primary run',
+                    marginRowsForDisplay,
+                    effectiveMargin,
+                    marginSubRun ? undefined : 'No sweep samples have been generated yet.'
+                  )}
+                  {marginComparisonSubRun && renderMarginEffectColumn(
+                    'Comparison run',
+                    marginRowsForComparison,
+                    marginComparisonSubRun?.marginLabel || effectiveMargin,
+                    'Comparison run has no sweep samples after filtering negatives.'
+                  )}
                 </div>
               </div>
             </div>
 
-            <SectionTable
-              title="Performance Effect Ranking"
-              subtitle="Change in each performance parameter when the selected margin excess is zeroed."
-              rows={impactRows}
-              labelCol="Performance Parameter"
-            />
-          </>
+            <div style={{
+              width: 320,
+              minWidth: 320,
+              borderLeft: '1px solid #E2E8F0',
+              background: '#F1F5F9',
+              padding: '10px 10px 12px',
+              overflowY: 'auto',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                Static Summary
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 6 }}>
+                <div style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: 8, background: '#FFFFFF' }}>
+                  <div style={{ fontSize: 10, color: '#64748B' }}>Selected Margin</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>
+                    {(effectiveMargin || 'n/a').replace('E_', 'E')}
+                  </div>
+                </div>
+                <div style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: 8, background: '#FFFFFF' }}>
+                  <div style={{ fontSize: 10, color: '#64748B' }}>Impact</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>{pct(weightedImpact)}</div>
+                  <div style={{ fontSize: 10, color: excess < 0 ? '#DC2626' : '#64748B' }}>
+                    Excess: {pct(excess)}
+                  </div>
+                </div>
+                <div style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: 8, background: '#FFFFFF' }}>
+                  <div style={{ fontSize: 10, color: '#64748B' }}>Absorption</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>{pct(weightedAbsorption)}</div>
+                  <div style={{ fontSize: 10, color: '#64748B' }}>
+                    Max: {Number.isFinite(marginAbsorptionStats.max.value) ? pct(marginAbsorptionStats.max.value, 2) : 'n/a'}
+                    {marginAbsorptionStats.max.responsible.length ? ` (${marginAbsorptionStats.max.responsible.join(', ')})` : ''}
+                  </div>
+                </div>
+                <div style={{ border: '1px solid #E2E8F0', borderRadius: 6, padding: 8, background: '#FFFFFF' }}>
+                  <div style={{ fontSize: 10, color: '#64748B' }}>Utilisation Status</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#0F172A' }}>
+                    {isLimitingForAnyInput ? 'Limiting for at least one input' : 'Nonlimiting across inputs'}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#64748B' }}>
+                    Max util: {Number.isFinite(marginUtilisationStats.max.value) ? pct(marginUtilisationStats.max.value, 2) : 'n/a'}
+                    {marginUtilisationStats.max.responsible.length ? ` (${marginUtilisationStats.max.responsible.join(', ')})` : ''}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#64748B' }}>
+                    Min util: {Number.isFinite(marginUtilisationStats.min.value) ? pct(marginUtilisationStats.min.value, 2) : 'n/a'}
+                    {marginUtilisationStats.min.responsible.length ? ` (${marginUtilisationStats.min.responsible.join(', ')})` : ''}
+                  </div>
+                </div>
+              </div>
+              <SectionTable
+                title="Impact"
+                subtitle={`Change in performance parameters for ${(summaryMargin || 'n/a').replace('E_', 'E')}.`}
+                rows={summaryImpactRows}
+                labelCol="Performance Parameter"
+              />
+              <SectionTable
+                title="Absorption"
+                subtitle={`Input absorption for ${(summaryMargin || 'n/a').replace('E_', 'E')}.`}
+                rows={summaryAbsorptionRows}
+                labelCol="Input Parameter"
+              />
+              <SectionTable
+                title="Utilisation"
+                subtitle={`Margin utilisation for ${(summaryMargin || 'n/a').replace('E_', 'E')}.`}
+                rows={summaryUtilisationRows}
+                labelCol="Input Parameter"
+                valueLabel="Utilisation"
+              />
+            </div>
+          </div>
         )}
       </div>
     </div>

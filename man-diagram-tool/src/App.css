@@ -59,7 +59,7 @@
   left: 0;
   min-width: 220px;
   padding: 8px;
-  border: 1px solid #CBD5E1;
+  border: 1px solid transparent;
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
@@ -210,10 +210,10 @@
 }
 
 .study-type-tab.active {
-  border-color: #2563EB;
-  background: #EFF6FF;
+  border-color: #93C5FD;
+  background: #E0E7FF;
   color: #0F172A;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+  box-shadow: none;
 }
 
 .app-body {

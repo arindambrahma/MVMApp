@@ -445,7 +445,7 @@ class MANEngine:
         Gradually change *input_name* until any target threshold reaches its
         decided value (with decisions fixed at baseline).
         Optionally also stop when a performance parameter changes.
-        Returns (pmax_value, direction) where direction is +1 or -1.
+        Returns (pmax_value, direction) where direction is +1.
         """
         p0 = base[input_name]
         step = abs(p0) * step_frac if abs(p0) > 1e-10 else step_frac
@@ -457,68 +457,88 @@ class MANEngine:
                 base[mn2.decided_name] - base[mn2.threshold_name]
             )
 
-        probe_steps = 50  # steps before checking if direction causes deterioration
+        probe_steps = 50  # steps before checking if increase direction shrinks any margin
 
-        for direction in (+1, -1):
-            current = p0
-            for i in range(max_iter):
-                current += direction * step
-                test_params = dict(self._params)
-                test_params[input_name] = current
-                try:
-                    run = self._run_with_fixed_decisions(test_params, base)
-                except Exception:
-                    # Invalid formula region (division by zero/domain errors)
-                    # is treated as the boundary of feasible deterioration.
-                    return current - direction * step, direction
+        # Per manuscript definition, Pmax_i is found by gradually increasing input i.
+        direction = +1
+        current = p0
+        prev_run = self._run_with_fixed_decisions(
+            {**self._params, input_name: current}, base
+        )
+        for i in range(max_iter):
+            next_value = current + direction * step
+            test_params = dict(self._params)
+            test_params[input_name] = next_value
+            try:
+                run = self._run_with_fixed_decisions(test_params, base)
+            except Exception:
+                # Invalid formula region (division by zero/domain errors)
+                # is treated as the boundary of feasible deterioration.
+                return current, direction
 
-                # Check whether any margin is violated (threshold >= decided)
-                violated = False
+            # Check whether any margin is violated (threshold >= decided)
+            violated = False
+            crossing_alphas: List[float] = []
+            for mn2 in self._margin_nodes:
+                decided2 = base[mn2.decided_name]
+                prev_threshold = prev_run.get(
+                    mn2.threshold_name, base[mn2.threshold_name]
+                )
+                threshold2 = run.get(
+                    mn2.threshold_name, base[mn2.threshold_name]
+                )
+                if decided2 < threshold2 - 1e-9:
+                    violated = True
+                # Detect first crossing within this step.
+                g0 = decided2 - prev_threshold
+                g1 = decided2 - threshold2
+                if g0 >= -1e-12 and g1 < -1e-12 and abs(g0 - g1) > 1e-12:
+                    alpha = g0 / (g0 - g1)
+                    if 0 <= alpha <= 1:
+                        crossing_alphas.append(alpha)
+
+            if violated:
+                if crossing_alphas:
+                    alpha_first = min(crossing_alphas)
+                    return current + direction * step * alpha_first, direction
+                return current, direction
+
+            if stop_on_performance_change:
+                perf_reduced = False
+                for pp in self._perf_param_names:
+                    base_pp = base.get(pp, 0.0)
+                    run_pp = run.get(pp, base_pp)
+                    # Use a practical tolerance so tiny continuous drift or
+                    # floating-point jitter does not force immediate Pmax=base.
+                    rel_tol = max(1e-6, step_frac * 1.5)
+                    abs_tol = 1e-9
+                    tol = max(abs_tol, rel_tol * max(1.0, abs(base_pp), abs(run_pp)))
+                    # Optional performance stop is directional:
+                    # stop only when performance decreases beyond tolerance.
+                    if (base_pp - run_pp) > tol:
+                        perf_reduced = True
+                        break
+                if perf_reduced:
+                    return current, direction
+
+            # Early exit: if after probe_steps no margin is shrinking,
+            # increasing direction does not consume margins for this input.
+            if i == probe_steps:
+                any_shrinking = False
                 for mn2 in self._margin_nodes:
                     decided2 = base[mn2.decided_name]
                     threshold2 = run.get(
                         mn2.threshold_name, base[mn2.threshold_name]
                     )
-                    if decided2 < threshold2 - 1e-9:
-                        violated = True
+                    curr_gap = decided2 - threshold2
+                    if curr_gap < base_gaps[mn2.name] - 1e-9:
+                        any_shrinking = True
                         break
+                if not any_shrinking:
+                    break
 
-                if violated:
-                    return current - direction * step, direction
-
-                if stop_on_performance_change:
-                    perf_reduced = False
-                    for pp in self._perf_param_names:
-                        base_pp = base.get(pp, 0.0)
-                        run_pp = run.get(pp, base_pp)
-                        # Use a practical tolerance so tiny continuous drift or
-                        # floating-point jitter does not force immediate Pmax=base.
-                        rel_tol = max(1e-6, step_frac * 1.5)
-                        abs_tol = 1e-9
-                        tol = max(abs_tol, rel_tol * max(1.0, abs(base_pp), abs(run_pp)))
-                        # Optional performance stop is directional:
-                        # stop only when performance decreases beyond tolerance.
-                        if (base_pp - run_pp) > tol:
-                            perf_reduced = True
-                            break
-                    if perf_reduced:
-                        return current - direction * step, direction
-
-                # Early exit: if after probe_steps no margin is shrinking,
-                # this is the wrong direction — try the other one.
-                if i == probe_steps:
-                    any_shrinking = False
-                    for mn2 in self._margin_nodes:
-                        decided2 = base[mn2.decided_name]
-                        threshold2 = run.get(
-                            mn2.threshold_name, base[mn2.threshold_name]
-                        )
-                        curr_gap = decided2 - threshold2
-                        if curr_gap < base_gaps[mn2.name] - 1e-9:
-                            any_shrinking = True
-                            break
-                    if not any_shrinking:
-                        break  # wrong direction
+            current = next_value
+            prev_run = run
 
         # If nothing violated, return original value (deterioration = 0)
         warnings.warn(

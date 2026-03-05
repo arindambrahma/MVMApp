@@ -12,7 +12,28 @@ function pct(v, decimals = 1) {
   return ((v || 0) * 100).toFixed(decimals) + '%';
 }
 
-function MatrixTable({ rowKeys, colKeys, data, rowLabel, emptyMsg }) {
+function cellHeat(value, mode = 'green') {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n) || n <= 0) return 'transparent';
+  if (mode === 'orange') {
+    if (n < 0.01) return 'transparent';
+    if (n < 0.05) return '#FFF7ED';
+    if (n < 0.15) return '#FED7AA';
+    return '#FDBA74';
+  }
+  if (mode === 'red') {
+    if (n < 0.01) return 'transparent';
+    if (n < 0.05) return '#FEF2F2';
+    if (n < 0.15) return '#FECACA';
+    return '#FCA5A5';
+  }
+  if (n < 0.01) return 'transparent';
+  if (n < 0.05) return '#F0FDF4';
+  if (n < 0.15) return '#DCFCE7';
+  return '#BBF7D0';
+}
+
+function MatrixTable({ rowKeys, colKeys, data, rowLabel, emptyMsg, colorMode = 'green' }) {
   if (!rowKeys.length || !colKeys.length) {
     return <div style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>{emptyMsg}</div>;
   }
@@ -35,11 +56,7 @@ function MatrixTable({ rowKeys, colKeys, data, rowLabel, emptyMsg }) {
               </td>
               {colKeys.map(c => {
                 const v = (data[r] || {})[c] || 0;
-                const abs = Math.abs(v * 100);
-                const bg = abs < 1 ? 'transparent'
-                  : abs < 20 ? '#F0FDF4'
-                  : abs < 50 ? '#DCFCE7'
-                  : '#BBF7D0';
+                const bg = cellHeat(v, colorMode);
                 return <td key={c} style={{ ...cellStyle, background: bg }}>{pct(v)}</td>;
               })}
             </tr>
@@ -158,13 +175,34 @@ function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes 
                     <td style={{ padding: '3px 4px', fontWeight: 600, color: '#334155' }}>
                       {m.replace('E_', 'E')}
                     </td>
-                    <td style={{ textAlign: 'right', padding: '3px 4px', color: (result.excess[m] || 0) < 0 ? '#DC2626' : '#334155' }}>
+                    <td
+                      style={{
+                        textAlign: 'right',
+                        padding: '3px 4px',
+                        color: (result.excess[m] || 0) < 0 ? '#DC2626' : '#334155',
+                        background: cellHeat(result.excess[m], 'orange'),
+                      }}
+                    >
                       {pct(result.excess[m])}
                     </td>
-                    <td style={{ textAlign: 'right', padding: '3px 4px', color: '#334155' }}>
+                    <td
+                      style={{
+                        textAlign: 'right',
+                        padding: '3px 4px',
+                        color: '#334155',
+                        background: cellHeat(result.weighted_impact[m], 'red'),
+                      }}
+                    >
                       {pct(result.weighted_impact[m])}
                     </td>
-                    <td style={{ textAlign: 'right', padding: '3px 4px', color: '#334155' }}>
+                    <td
+                      style={{
+                        textAlign: 'right',
+                        padding: '3px 4px',
+                        color: '#334155',
+                        background: cellHeat(result.weighted_absorption[m], 'green'),
+                      }}
+                    >
                       {pct(result.weighted_absorption[m])}
                     </td>
                   </tr>
@@ -188,6 +226,7 @@ function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes 
               data={result.impact_matrix || {}}
               rowLabel="Margin → Perf."
               emptyMsg="No performance parameters connected."
+              colorMode="red"
             />
           </>
         )}
@@ -206,6 +245,7 @@ function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes 
               data={result.absorption_matrix || {}}
               rowLabel="Margin → Input"
               emptyMsg="No inputs of interest marked."
+              colorMode="green"
             />
           </>
         )}
@@ -267,6 +307,7 @@ function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes 
                   data={result.utilisation_matrix || {}}
                   rowLabel="Margin → Input"
                   emptyMsg="No utilisation data."
+                  colorMode="green"
                 />
               </>
             )}
@@ -278,3 +319,5 @@ function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes 
 }
 
 export default MarginValuePlot;
+
+
