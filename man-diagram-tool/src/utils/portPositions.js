@@ -184,9 +184,63 @@ export function getDirectionalPort(node, dir, towardNode = null, slotIndex = 0, 
     return list[Math.min(slotIndex, list.length - 1)] || list[0];
   }
 
-  // Input & Decision: vertices only (already cardinal vertices)
-  if (shape === 'smallDiamond' || shape === 'largeDiamond') {
-    return base[d] || base.right;
+  // Input & Decision: expose a few side slots to avoid stacked/overlapping branches.
+  if (shape === 'smallDiamond') {
+    const S = 18;
+    const C = 6;
+    const candidates = {
+      right: [
+        { x: node.x + S - C, y: node.y - C },
+        { x: node.x + S, y: node.y },
+        { x: node.x + S - C, y: node.y + C },
+      ],
+      left: [
+        { x: node.x - S + C, y: node.y - C },
+        { x: node.x - S, y: node.y },
+        { x: node.x - S + C, y: node.y + C },
+      ],
+      top: [
+        { x: node.x - C, y: node.y - S + C },
+        { x: node.x, y: node.y - S },
+        { x: node.x + C, y: node.y - S + C },
+      ],
+      bottom: [
+        { x: node.x - C, y: node.y + S - C },
+        { x: node.x, y: node.y + S },
+        { x: node.x + C, y: node.y + S - C },
+      ],
+    };
+    const ordered = orderByDirection(candidates[d] || [base[d] || base.right], node, towardNode);
+    return ordered[Math.min(slotIndex, ordered.length - 1)] || ordered[0];
+  }
+  if (shape === 'largeDiamond') {
+    const HW = 55;
+    const HH = 35;
+    const C = 12;
+    const candidates = {
+      right: [
+        { x: node.x + HW - C, y: node.y - C },
+        { x: node.x + HW, y: node.y },
+        { x: node.x + HW - C, y: node.y + C },
+      ],
+      left: [
+        { x: node.x - HW + C, y: node.y - C },
+        { x: node.x - HW, y: node.y },
+        { x: node.x - HW + C, y: node.y + C },
+      ],
+      top: [
+        { x: node.x - C, y: node.y - HH + C },
+        { x: node.x, y: node.y - HH },
+        { x: node.x + C, y: node.y - HH + C },
+      ],
+      bottom: [
+        { x: node.x - C, y: node.y + HH - C },
+        { x: node.x, y: node.y + HH },
+        { x: node.x + C, y: node.y + HH - C },
+      ],
+    };
+    const ordered = orderByDirection(candidates[d] || [base[d] || base.right], node, towardNode);
+    return ordered[Math.min(slotIndex, ordered.length - 1)] || ordered[0];
   }
 
   // Margin: choose among hexagon vertices only.

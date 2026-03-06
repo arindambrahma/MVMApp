@@ -169,6 +169,32 @@ function ImageExportDialog({
   const [settingsTab, setSettingsTab] = useState('layout');
   const previewCanvasRef = useRef(null);
   const settingsFileInputRef = useRef(null);
+  const isPlotMode = Boolean(plotData);
+
+  useEffect(() => {
+    if (!open) return;
+    setFilename(defaultName);
+    setTitle(defaultTitle);
+  }, [open, defaultName, defaultTitle]);
+
+  useEffect(() => {
+    if (!open || isPlotMode) return;
+    setShowAxes(false);
+    setShowTopBorder(false);
+    setShowRightBorder(false);
+    setShowAxisLabels(false);
+    setShowPointLabels(false);
+    setShowMidlines(false);
+    setShowColorScale(false);
+    setShowGridlines(false);
+    setShowQuadrants(false);
+    setShowQuadrantText(false);
+    setUseCustomBounds(false);
+    setUseCustomPlotSize(false);
+    if (!['layout', 'display', 'text'].includes(settingsTab)) {
+      setSettingsTab('layout');
+    }
+  }, [open, isPlotMode, settingsTab]);
 
   const fontPx = (ptValue, minPt, maxPt) => {
     const clamped = clamp(ptValue, minPt, maxPt);
@@ -546,6 +572,25 @@ function ImageExportDialog({
 
   const buildSvgString = (w, h) => {
     const layout = computeLayout(w, h);
+    const escape = (v) => String(v ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    if (!plotData) {
+      if (!imageSrc) return null;
+      const titlePx = fontPx(titleSize, 6, 90);
+      const svg = [];
+      svg.push('<?xml version="1.0" encoding="UTF-8"?>');
+      svg.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
+      svg.push(`<rect width="${w}" height="${h}" fill="#ffffff"/>`);
+      if (showTitle) {
+        svg.push(`<text x="${layout.pad}" y="${layout.pad + titlePx}" font-family="${escape(titleFont)}, Arial, sans-serif" font-size="${titlePx}" font-weight="700" fill="${escape(titleColor)}">${escape(title)}</text>`);
+      }
+      svg.push(`<image href="${escape(imageSrc)}" x="${layout.plot.x}" y="${layout.plot.y}" width="${layout.plot.w}" height="${layout.plot.h}" preserveAspectRatio="xMidYMid meet"/>`);
+      svg.push('</svg>');
+      return svg.join('');
+    }
     const scales = buildPlotScales();
     if (!scales) return null;
     const { points, minX, maxX, minY, maxY, midX, midY } = scales;
@@ -574,7 +619,6 @@ function ImageExportDialog({
     const minR = 4 * scaleRef;
     const maxR = 22 * scaleRef;
 
-    const escape = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const svg = [];
     svg.push(`<?xml version="1.0" encoding="UTF-8"?>`);
     svg.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
@@ -1012,14 +1056,21 @@ function ImageExportDialog({
           <div style={{ width: 380, flexShrink: 0, padding: 16, borderRight: '1px solid #e2e8f0', overflowY: 'auto', background: '#f1f5f9' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 12, marginLeft: 4 }}>Settings</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12, borderBottom: '1px solid #cbd5e1', paddingBottom: 0 }}>
-            {[
-              ['layout', 'Layout'],
-              ['display', 'Display'],
-              ['scale', 'Plot'],
-              ['text', 'Text'],
-              ['quadrants', 'Quadrants'],
-              ['axes', 'Axes'],
-            ].map(([id, label]) => (
+            {(isPlotMode
+              ? [
+                ['layout', 'Layout'],
+                ['display', 'Display'],
+                ['scale', 'Plot'],
+                ['text', 'Text'],
+                ['quadrants', 'Quadrants'],
+                ['axes', 'Axes'],
+              ]
+              : [
+                ['layout', 'Layout'],
+                ['display', 'Display'],
+                ['text', 'Text'],
+              ]
+            ).map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -1064,28 +1115,32 @@ function ImageExportDialog({
               <input type="number" value={heightVal} onChange={(e) => onHeightChange(e.target.value)} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4 }} />
             </label>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 8 }}>
-            <input type="checkbox" checked={useCustomPlotSize} onChange={(e) => setUseCustomPlotSize(e.target.checked)} />
-            Set graph area size
-          </label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-            <label>
-              <span style={{ fontSize: 11, color: '#475569' }}>Graph width (px)</span>
-              <input type="number" value={plotWidth} onChange={(e) => setPlotWidth(e.target.value)} disabled={!useCustomPlotSize} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomPlotSize ? '#fff' : '#f8fafc' }} />
-            </label>
-            <label>
-              <span style={{ fontSize: 11, color: '#475569' }}>Graph height (px)</span>
-              <input type="number" value={plotHeight} onChange={(e) => setPlotHeight(e.target.value)} disabled={!useCustomPlotSize} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomPlotSize ? '#fff' : '#f8fafc' }} />
-            </label>
-            <label>
-              <span style={{ fontSize: 11, color: '#475569' }}>Graph offset X (px)</span>
-              <input type="number" value={plotOffsetX} onChange={(e) => setPlotOffsetX(e.target.value)} disabled={!useCustomPlotSize} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomPlotSize ? '#fff' : '#f8fafc' }} />
-            </label>
-            <label>
-              <span style={{ fontSize: 11, color: '#475569' }}>Graph offset Y (px)</span>
-              <input type="number" value={plotOffsetY} onChange={(e) => setPlotOffsetY(e.target.value)} disabled={!useCustomPlotSize} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomPlotSize ? '#fff' : '#f8fafc' }} />
-            </label>
-          </div>
+          {isPlotMode && (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 8 }}>
+                <input type="checkbox" checked={useCustomPlotSize} onChange={(e) => setUseCustomPlotSize(e.target.checked)} />
+                Set graph area size
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                <label>
+                  <span style={{ fontSize: 11, color: '#475569' }}>Graph width (px)</span>
+                  <input type="number" value={plotWidth} onChange={(e) => setPlotWidth(e.target.value)} disabled={!useCustomPlotSize} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomPlotSize ? '#fff' : '#f8fafc' }} />
+                </label>
+                <label>
+                  <span style={{ fontSize: 11, color: '#475569' }}>Graph height (px)</span>
+                  <input type="number" value={plotHeight} onChange={(e) => setPlotHeight(e.target.value)} disabled={!useCustomPlotSize} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomPlotSize ? '#fff' : '#f8fafc' }} />
+                </label>
+                <label>
+                  <span style={{ fontSize: 11, color: '#475569' }}>Graph offset X (px)</span>
+                  <input type="number" value={plotOffsetX} onChange={(e) => setPlotOffsetX(e.target.value)} disabled={!useCustomPlotSize} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomPlotSize ? '#fff' : '#f8fafc' }} />
+                </label>
+                <label>
+                  <span style={{ fontSize: 11, color: '#475569' }}>Graph offset Y (px)</span>
+                  <input type="number" value={plotOffsetY} onChange={(e) => setPlotOffsetY(e.target.value)} disabled={!useCustomPlotSize} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomPlotSize ? '#fff' : '#f8fafc' }} />
+                </label>
+              </div>
+            </>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
             <label>
               <span style={{ fontSize: 11, color: '#475569' }}>Units</span>
@@ -1126,46 +1181,50 @@ function ImageExportDialog({
             <input type="checkbox" checked={showTitle} onChange={(e) => setShowTitle(e.target.checked)} />
             Show title
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
-            <input type="checkbox" checked={showAxes} onChange={(e) => setShowAxes(e.target.checked)} />
-            Show axes & ticks
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
-            <input type="checkbox" checked={showTopBorder} onChange={(e) => setShowTopBorder(e.target.checked)} />
-            Show top border
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
-            <input type="checkbox" checked={showRightBorder} onChange={(e) => setShowRightBorder(e.target.checked)} />
-            Show right border
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
-            <input type="checkbox" checked={showGridlines} onChange={(e) => setShowGridlines(e.target.checked)} />
-            Show gridlines
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
-            <input type="checkbox" checked={showAxisLabels} onChange={(e) => setShowAxisLabels(e.target.checked)} />
-            Show axis labels
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
-            <input type="checkbox" checked={showMidlines} onChange={(e) => setShowMidlines(e.target.checked)} />
-            Show midlines
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
-            <input type="checkbox" checked={showQuadrants} onChange={(e) => setShowQuadrants(e.target.checked)} />
-            Show quadrants
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
-            <input type="checkbox" checked={showQuadrantText} onChange={(e) => setShowQuadrantText(e.target.checked)} />
-            Show quadrant text
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
-            <input type="checkbox" checked={showPointLabels} onChange={(e) => setShowPointLabels(e.target.checked)} />
-            Show point labels
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 10 }}>
-            <input type="checkbox" checked={showColorScale} onChange={(e) => setShowColorScale(e.target.checked)} />
-            Show colour scale
-          </label>
+          {isPlotMode && (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
+                <input type="checkbox" checked={showAxes} onChange={(e) => setShowAxes(e.target.checked)} />
+                Show axes & ticks
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
+                <input type="checkbox" checked={showTopBorder} onChange={(e) => setShowTopBorder(e.target.checked)} />
+                Show top border
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
+                <input type="checkbox" checked={showRightBorder} onChange={(e) => setShowRightBorder(e.target.checked)} />
+                Show right border
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
+                <input type="checkbox" checked={showGridlines} onChange={(e) => setShowGridlines(e.target.checked)} />
+                Show gridlines
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
+                <input type="checkbox" checked={showAxisLabels} onChange={(e) => setShowAxisLabels(e.target.checked)} />
+                Show axis labels
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
+                <input type="checkbox" checked={showMidlines} onChange={(e) => setShowMidlines(e.target.checked)} />
+                Show midlines
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
+                <input type="checkbox" checked={showQuadrants} onChange={(e) => setShowQuadrants(e.target.checked)} />
+                Show quadrants
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
+                <input type="checkbox" checked={showQuadrantText} onChange={(e) => setShowQuadrantText(e.target.checked)} />
+                Show quadrant text
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
+                <input type="checkbox" checked={showPointLabels} onChange={(e) => setShowPointLabels(e.target.checked)} />
+                Show point labels
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 10 }}>
+                <input type="checkbox" checked={showColorScale} onChange={(e) => setShowColorScale(e.target.checked)} />
+                Show colour scale
+              </label>
+            </>
+          )}
             </>
           )}
           {settingsTab === 'scale' && (

@@ -11,6 +11,7 @@ import RedesignAnalysisModule from './components/RedesignAnalysisModule';
 import ReportingModule from './components/ReportingModule';
 import ExportModal from './components/ExportModal';
 import PreAnalysisModal from './components/PreAnalysisModal';
+import ImageExportDialog from './components/ImageExportDialog';
 import { importJSON } from './utils/jsonSerializer';
 import { runAnalysis, fetchHealth } from './utils/api';
 import { validateGraph } from './utils/graphValidation';
@@ -30,6 +31,8 @@ function App() {
   } = useGraphStore();
 
   const [showExport, setShowExport] = useState(false);
+  const [showDiagramExport, setShowDiagramExport] = useState(false);
+  const [diagramExportSrc, setDiagramExportSrc] = useState('');
   const [showPreAnalysis, setShowPreAnalysis] = useState(false);
   const [routePreference, setRoutePreference] = useState('horizontal');
   const [arrowJumpsEnabled, setArrowJumpsEnabled] = useState(true);
@@ -45,7 +48,9 @@ function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
   const [workspaceTabs, setWorkspaceTabs] = useState(['model']);
   const [activeTab, setActiveTab] = useState('model');
+  const [fitViewRequest, setFitViewRequest] = useState(0);
   const analysisProgressTimerRef = useRef(null);
+  const captureDiagramRef = useRef(null);
 
   useEffect(() => {
     fetchHealth().then(v => setBackendVersion(v));
@@ -106,6 +111,7 @@ function App() {
     try {
       const data = importJSON(raw);
       loadGraph(data);
+      setFitViewRequest((v) => v + 1);
       setAnalysisResult(null);
       setAnalysisError(null);
       setWorkspaceTabs(['model']);
@@ -125,6 +131,7 @@ function App() {
       const raw = await res.text();
       const data = importJSON(raw);
       loadGraph(data);
+      setFitViewRequest((v) => v + 1);
       setAnalysisResult(null);
       setAnalysisError(null);
       setWorkspaceTabs(['model']);
@@ -151,6 +158,21 @@ function App() {
     const arranged = autoArrangeNodes(state.nodes, state.edges, routePreference);
     setNodes(arranged);
   }, [state.nodes, state.edges, routePreference, setNodes]);
+
+  const handleOpenDiagramExport = useCallback(() => {
+    const capture = captureDiagramRef.current;
+    if (!capture) {
+      window.alert('Diagram export is not available yet. Please try again.');
+      return;
+    }
+    const src = capture();
+    if (!src) {
+      window.alert('Could not capture the current diagram.');
+      return;
+    }
+    setDiagramExportSrc(src);
+    setShowDiagramExport(true);
+  }, []);
 
   const handleAddCluster = useCallback(() => {
     const cx = (window.innerWidth / 2 - state.panOffset.x) / state.zoom;
@@ -299,6 +321,7 @@ function App() {
         onLoadExample={handleLoadExample}
         onPreAnalysis={() => setShowPreAnalysis(true)}
         onExport={() => setShowExport(true)}
+        onExportDiagram={handleOpenDiagramExport}
         onImport={handleImport}
         onClear={handleClear}
         onRunAnalysis={handleRunAnalysis}
@@ -384,6 +407,8 @@ function App() {
             invalidNodeIds={graphValidation.invalidNodeIds}
             routePreference={routePreference}
             arrowJumpsEnabled={arrowJumpsEnabled}
+            fitViewRequest={fitViewRequest}
+            onRegisterCapture={(fn) => { captureDiagramRef.current = fn; }}
           />
 
           <div className="right-panel">
@@ -450,6 +475,14 @@ function App() {
           onClose={() => setShowExport(false)}
         />
       )}
+
+      <ImageExportDialog
+        open={showDiagramExport}
+        onClose={() => setShowDiagramExport(false)}
+        imageSrc={diagramExportSrc}
+        defaultTitle="Main Diagram"
+        defaultName="main_diagram"
+      />
 
       {showPreAnalysis && (
         <PreAnalysisModal

@@ -1,12 +1,13 @@
 import { getDirectionalPort } from './portPositions';
 import { getNodeSize } from './nodeSize';
 
-const MARGIN = 20;
+const MARGIN = 24;
 const LANE = 14;
-const OBSTACLE_PAD = 10;
-const CROSS_PENALTY = 30;
-const OVERLAP_PENALTY = 60;
+const OBSTACLE_PAD = 14;
+const CROSS_PENALTY = 8;
+const OVERLAP_PENALTY = 120;
 const BEND_PENALTY = 3;
+const LENGTH_PENALTY = 0.08;
 
 function snap(v) {
   return Math.round(v / LANE) * LANE;
@@ -44,11 +45,18 @@ export function selectPorts(srcNode, tgtNode, preferredAxis = 'horizontal') {
   const dx = tgtNode.x - srcNode.x;
   const dy = tgtNode.y - srcNode.y;
   if (preferredAxis === 'vertical') {
-    return dy >= 0
-      ? { srcDir: 'bottom', tgtDir: 'top' }
-      : { srcDir: 'top', tgtDir: 'bottom' };
+    // Keep vertical flow stable unless nodes are overwhelmingly horizontal apart.
+    if (Math.abs(dy) >= Math.abs(dx) * 0.55) {
+      return dy >= 0
+        ? { srcDir: 'bottom', tgtDir: 'top' }
+        : { srcDir: 'top', tgtDir: 'bottom' };
+    }
+    return dx >= 0
+      ? { srcDir: 'right', tgtDir: 'left' }
+      : { srcDir: 'left', tgtDir: 'right' };
   }
-  if (Math.abs(dx) >= Math.abs(dy)) {
+  // Keep horizontal flow stable unless nodes are overwhelmingly vertical apart.
+  if (Math.abs(dx) >= Math.abs(dy) * 0.55) {
     return dx >= 0
       ? { srcDir: 'right', tgtDir: 'left' }
       : { srcDir: 'left', tgtDir: 'right' };
@@ -126,7 +134,9 @@ function orthCross(a1, a2, b1, b2) {
 
 function scoreAgainstRouted(path, routedSegs) {
   let score = 0;
+  let length = 0;
   for (const s of segments(path)) {
+    length += Math.abs(s.a.x - s.b.x) + Math.abs(s.a.y - s.b.y);
     for (const r of routedSegs) {
       if (collinearOverlap(s.a, s.b, r.a, r.b)) score += OVERLAP_PENALTY;
       else if (orthCross(s.a, s.b, r.a, r.b)) score += CROSS_PENALTY;
@@ -134,6 +144,8 @@ function scoreAgainstRouted(path, routedSegs) {
   }
   // Prefer fewer bends.
   score += Math.max(0, path.length - 2) * BEND_PENALTY;
+  // Prefer shorter local routes; allows clean crossings (with jump markers) over huge detours.
+  score += length * LENGTH_PENALTY;
   return score;
 }
 
