@@ -13,15 +13,27 @@ import base64
 import traceback
 from collections import defaultdict, deque
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
-# Add parent dir so we can import mvm_core and mvm_plot
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+def _get_runtime_root():
+    """Resolve the runtime root for source and frozen (PyInstaller) builds."""
+    if getattr(sys, 'frozen', False):
+        return getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+RUNTIME_ROOT = _get_runtime_root()
+FRONTEND_DIST_DIR = os.path.join(RUNTIME_ROOT, 'man-diagram-tool', 'dist')
+EXAMPLES_DIR = os.path.join(RUNTIME_ROOT, 'examples')
+
+# Add project root so we can import mvm_core and mvm_plot
+if RUNTIME_ROOT not in sys.path:
+    sys.path.insert(0, RUNTIME_ROOT)
 from mvm_core import MANEngine, CalculationNode, DecisionNode
 from mvm_plot import plot_margin_value
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=FRONTEND_DIST_DIR, static_url_path='')
 CORS(app)
 
 
@@ -978,11 +990,10 @@ def analyse():
 def health():
     # Expose the server workspace root path so clients can confirm
     # they are talking to the correct repository/folder.
-    root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     return jsonify({
         'status': 'ok',
         'backendVersion': '2026-03-03',
-        'workspacePath': root_path,
+        'workspacePath': RUNTIME_ROOT,
         'supportsInputAliases': True,
         'supportsCalcFunctions': True,
     })
@@ -1005,6 +1016,35 @@ def validate_function():
         return jsonify({'success': True, 'outputs': outputs})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@app.route('/examples/<path:filename>', methods=['GET'])
+def serve_example(filename):
+    if not os.path.exists(os.path.join(EXAMPLES_DIR, filename)):
+        return jsonify({'success': False, 'error': 'Example not found'}), 404
+    return send_from_directory(EXAMPLES_DIR, filename)
+
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    # Keep API paths reserved for backend handlers.
+    if path.startswith('api/'):
+        return jsonify({'success': False, 'error': 'Unknown API route'}), 404
+
+    if path and app.static_folder:
+        asset_path = os.path.join(app.static_folder, path)
+        if os.path.exists(asset_path):
+            return send_from_directory(app.static_folder, path)
+
+    index_path = os.path.join(app.static_folder or '', 'index.html')
+    if os.path.exists(index_path):
+        return send_from_directory(app.static_folder, 'index.html')
+
+    return jsonify({
+        'success': False,
+        'error': 'Frontend build not found. Run `npm run build` in man-diagram-tool.',
+    }), 503
 
 
 if __name__ == '__main__':
