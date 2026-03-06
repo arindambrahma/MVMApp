@@ -114,6 +114,7 @@ function MarginLineChart({
   yDomain = null,
   exportName = 'sensitivity_chart',
   onAddToReport = null,
+  tables = [],
 }) {
   const svgRef = useRef(null);
 
@@ -261,7 +262,7 @@ function MarginLineChart({
               if (!svg) return;
               const svgStr = new XMLSerializer().serializeToString(svg);
               const b64 = btoa(unescape(encodeURIComponent(svgStr)));
-              onAddToReport(exportName, 'data:image/svg+xml;base64,' + b64);
+              onAddToReport(exportName, 'data:image/svg+xml;base64,' + b64, tables);
             }}
             style={{ border: '1px solid #A7C7FA', background: '#EFF6FF', color: '#1E3A8A', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
           >
@@ -1018,6 +1019,11 @@ function SensitivityStudyModule({
         yDomain={lockYAxisScale ? (inputComparisonDomain?.y || null) : null}
         exportName={`input_variation_${String(title || 'run').toLowerCase().replace(/[^a-z0-9]+/g, '_')}`}
         onAddToReport={onAddChartToReport}
+        tables={rows.length ? [{
+          caption: 'Sweep Samples',
+          headers: ['Input value', ...displayedMargins.map(m => `${m.replace('E_', 'E')} local excess`)],
+          rows: rows.map(row => [num(row.x, 4), ...displayedMargins.map(m => pct(row.margins[m], 2))]),
+        }] : []}
       />
         {rows.length ? (
           <div style={{ marginTop: 12, border: '1px solid #E2E8F0', borderRadius: 6, background: '#FFFFFF', overflow: 'hidden' }}>
@@ -1110,6 +1116,14 @@ function SensitivityStudyModule({
         yDomain={lockYAxisScale ? (marginComparisonDomain?.y || null) : null}
         exportName={`margin_effect_${String(title || 'run').toLowerCase().replace(/[^a-z0-9]+/g, '_')}`}
         onAddToReport={onAddChartToReport}
+        tables={rows.length ? [{
+          caption: 'Sweep Samples',
+          headers: ['Local excess (E)', ...activePerformances.map(p => buildPerfLabel(p))],
+          rows: rows.map(row => [
+            pct(row?.margins?.[marginLabel], 2),
+            ...activePerformances.map(p => pct(row?.performances?.[p], 2)),
+          ]),
+        }] : []}
       />
       {rows.length ? (
         <div style={{ marginTop: 12, border: '1px solid #E2E8F0', borderRadius: 6, background: '#FFFFFF', overflow: 'hidden' }}>
