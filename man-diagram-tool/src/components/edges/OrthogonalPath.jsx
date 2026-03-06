@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { pointsToSvgPath, computeArrowhead } from '../../utils/orthogonalRouter';
 import { EDGE_TYPES } from '../../constants/nodeTypes';
 import { sanitize } from '../../utils/helpers';
@@ -49,11 +49,23 @@ function OrthogonalPath({
   edge, srcNode, tgtNode, points, jumps, onDelete, paramValues,
   hovered = false, selected = false, onHoverChange = () => {}, overlayOnly = false,
   onSelectEdge = () => {},
+  onNudgeEdge = () => {},
   attachedProbes = [],
   probeConnectFromId = null,
   onAttachProbeToEdge = () => {},
   onDetachProbe = () => {},
 }) {
+  const dragRef = useRef(null);
+  const dragCleanupRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (typeof dragCleanupRef.current === 'function') {
+        dragCleanupRef.current();
+        dragCleanupRef.current = null;
+      }
+    };
+  }, []);
 
   const route = points || [srcNode, tgtNode];
   const pathD = pointsToSvgPath(route);
@@ -139,7 +151,7 @@ function OrthogonalPath({
           fill="none"
           stroke={isProbeAttachMode ? 'rgba(14,116,144,0.001)' : 'transparent'}
           strokeWidth={16}
-          style={{ cursor: isProbeAttachMode ? 'crosshair' : 'pointer' }}
+          style={{ cursor: isProbeAttachMode ? 'crosshair' : 'pointer', pointerEvents: 'stroke' }}
           onClick={(e) => {
             e.stopPropagation();
             if (isProbeAttachMode) {
@@ -351,16 +363,16 @@ function OrthogonalPath({
             onClick={(e) => { e.stopPropagation(); onDelete(edge.id); onSelectEdge(null); }}
           >
             <circle
-              cx={mid.x}
-              cy={mid.y}
+              cx={mid.x + 14}
+              cy={mid.y - 14}
               r={6}
               fill="#fff"
               stroke={color}
               strokeWidth={1}
             />
             <text
-              x={mid.x}
-              y={mid.y}
+              x={mid.x + 14}
+              y={mid.y - 14}
               textAnchor="middle"
               dominantBaseline="central"
               fontSize={10}
@@ -369,6 +381,74 @@ function OrthogonalPath({
             >
               ×
             </text>
+          </g>
+          <g
+            style={{ cursor: 'move' }}
+            onMouseDown={(e) => {
+              if (e.button !== 0) return;
+              onSelectEdge(edge.id);
+              dragRef.current = { x: e.clientX, y: e.clientY };
+              const onMove = (ev) => {
+                const d = dragRef.current;
+                if (!d) return;
+                const dx = ev.clientX - d.x;
+                const dy = ev.clientY - d.y;
+                if (dx !== 0 || dy !== 0) {
+                  onNudgeEdge(edge.id, dx, dy);
+                  d.x = ev.clientX;
+                  d.y = ev.clientY;
+                }
+              };
+              const onUp = () => {
+                dragRef.current = null;
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+                dragCleanupRef.current = null;
+              };
+              dragCleanupRef.current = onUp;
+              window.addEventListener('mousemove', onMove);
+              window.addEventListener('mouseup', onUp);
+              e.stopPropagation();
+            }}
+          >
+            <circle
+              cx={mid.x}
+              cy={mid.y}
+              r={4.5}
+              fill="#fff"
+              stroke={hovered ? hoverColor : color}
+              strokeWidth={1.6}
+            />
+          </g>
+          <g>
+            <circle
+              cx={mid.x - 10}
+              cy={mid.y}
+              r={4}
+              fill="#fff"
+              stroke="#64748B"
+              strokeWidth={1}
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectEdge(edge.id);
+                onNudgeEdge(edge.id, -24, 0);
+              }}
+            />
+            <circle
+              cx={mid.x + 10}
+              cy={mid.y}
+              r={4}
+              fill="#fff"
+              stroke="#64748B"
+              strokeWidth={1}
+              style={{ cursor: 'pointer' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectEdge(edge.id);
+                onNudgeEdge(edge.id, 24, 0);
+              }}
+            />
           </g>
         </g>
       )}

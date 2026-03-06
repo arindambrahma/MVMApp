@@ -125,6 +125,7 @@ function Canvas({
   onDeleteEdge, onMoveCluster, paramValues, invalidNodeIds, routePreference, arrowJumpsEnabled,
   selectedEdgeId, onSelectEdge,
   onUpdateNode,
+  onUpdateEdge,
   fitViewRequest = 0,
   onRegisterCapture,
 }) {
@@ -496,6 +497,16 @@ function Canvas({
           onHoveredEdgeChange={setHoveredEdgeId}
           selectedEdgeId={selectedEdgeId}
           onSelectEdge={onSelectEdge}
+          onNudgeEdge={(edgeId, dx, dy) => {
+            if (!onUpdateEdge) return;
+            const edge = edges.find((e) => e.id === edgeId);
+            if (!edge) return;
+            const invZoom = 1 / Math.max(zoom, 0.001);
+            const main = dx * invZoom * 2.8;
+            const current = Number(edge.manualOffset) || 0;
+            const next = Math.max(-420, Math.min(420, current + main));
+            onUpdateEdge(edgeId, { manualOffset: next, routeOffset: 0 });
+          }}
           probeConnectFromId={(() => {
             if (!connecting) return null;
             const src = nodeById[connecting.fromId];
@@ -543,6 +554,16 @@ function Canvas({
           arrowJumpsEnabled={arrowJumpsEnabled}
           hoveredEdgeId={hoveredEdgeId}
           selectedEdgeId={selectedEdgeId}
+          onNudgeEdge={(edgeId, dx, dy) => {
+            if (!onUpdateEdge) return;
+            const edge = edges.find((e) => e.id === edgeId);
+            if (!edge) return;
+            const invZoom = 1 / Math.max(zoom, 0.001);
+            const main = dx * invZoom * 2.8;
+            const current = Number(edge.manualOffset) || 0;
+            const next = Math.max(-420, Math.min(420, current + main));
+            onUpdateEdge(edgeId, { manualOffset: next, routeOffset: 0 });
+          }}
           overlayOnly
           probeConnectFromId={null}
           onAttachProbeToEdge={() => {}}
@@ -568,32 +589,109 @@ function Canvas({
           style={{ cursor: 'pointer' }}
           onMouseDown={(e) => e.stopPropagation()}
           data-export-exclude="true"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteEdge(selectedEdgeId);
-            onSelectEdge(null);
-          }}
         >
           <rect
             x={0}
             y={0}
-            width={132}
-            height={20}
+            width={232}
+            height={44}
             rx={5}
+            fill="#F8FAFC"
+            stroke="#CBD5E1"
+            strokeWidth={1}
+          />
+          <rect
+            x={8}
+            y={8}
+            width={78}
+            height={28}
+            rx={4}
             fill="#FEF2F2"
             stroke="#FCA5A5"
             strokeWidth={1}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteEdge(selectedEdgeId);
+              onSelectEdge(null);
+            }}
           />
           <text
-            x={66}
-            y={13}
+            x={47}
+            y={26}
             textAnchor="middle"
             fontSize={10}
             fontWeight={700}
             fill="#B91C1C"
             fontFamily="system-ui, sans-serif"
           >
-            Delete selected edge
+            Delete
+          </text>
+          <rect
+            x={96}
+            y={8}
+            width={28}
+            height={28}
+            rx={4}
+            fill="#EFF6FF"
+            stroke="#93C5FD"
+            strokeWidth={1}
+            onClick={(e) => {
+              e.stopPropagation();
+              const edge = (edges || []).find((ed) => ed.id === selectedEdgeId);
+              if (!edge || !onUpdateEdge) return;
+              const current = Number(edge.manualOffset) || 0;
+              onUpdateEdge(selectedEdgeId, { manualOffset: current - 18, routeOffset: 0 });
+            }}
+          />
+          <text
+            x={110}
+            y={26}
+            textAnchor="middle"
+            fontSize={13}
+            fontWeight={700}
+            fill="#1D4ED8"
+            fontFamily="system-ui, sans-serif"
+          >
+            -
+          </text>
+          <rect
+            x={130}
+            y={8}
+            width={28}
+            height={28}
+            rx={4}
+            fill="#EFF6FF"
+            stroke="#93C5FD"
+            strokeWidth={1}
+            onClick={(e) => {
+              e.stopPropagation();
+              const edge = (edges || []).find((ed) => ed.id === selectedEdgeId);
+              if (!edge || !onUpdateEdge) return;
+              const current = Number(edge.manualOffset) || 0;
+              onUpdateEdge(selectedEdgeId, { manualOffset: current + 18, routeOffset: 0 });
+            }}
+          />
+          <text
+            x={144}
+            y={26}
+            textAnchor="middle"
+            fontSize={13}
+            fontWeight={700}
+            fill="#1D4ED8"
+            fontFamily="system-ui, sans-serif"
+          >
+            +
+          </text>
+          <text
+            x={166}
+            y={26}
+            textAnchor="start"
+            fontSize={10}
+            fontWeight={700}
+            fill="#334155"
+            fontFamily="system-ui, sans-serif"
+          >
+            Nudge edge
           </text>
         </g>
       )}

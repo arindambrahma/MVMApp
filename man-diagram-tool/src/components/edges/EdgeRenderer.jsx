@@ -11,6 +11,40 @@ import { formatProbeValue, getProbeBoxSize } from '../../utils/probeVisual';
 // This ensures colored signal edges are never hidden under gray routing lines.
 const TYPE_Z = { plain: 0, decided: 1, threshold: 2 };
 
+function applyManualOffset(points, offset) {
+  const amt = Number(offset) || 0;
+  if (!Array.isArray(points) || Math.abs(amt) < 0.5) return points;
+  if (points.length <= 2) {
+    const p0 = points[0];
+    const p1 = points[1];
+    if (!p0 || !p1) return points;
+    // Enforce Manhattan left/right manual move only.
+    return [
+      { ...p0 },
+      { x: p0.x + amt, y: p0.y },
+      { x: p0.x + amt, y: p1.y },
+      { ...p1 },
+    ];
+  }
+  const p0 = points[0];
+  const pn = points[points.length - 1];
+  const shiftedMid = points.slice(1, -1).map((p) => ({ x: p.x + amt, y: p.y }));
+  const out = [
+    { ...p0 },
+    { x: p0.x + amt, y: p0.y },
+    ...shiftedMid,
+    { x: pn.x + amt, y: pn.y },
+    { ...pn },
+  ];
+  // Drop consecutive duplicates from bridging.
+  const compact = [];
+  for (const p of out) {
+    const last = compact[compact.length - 1];
+    if (!last || last.x !== p.x || last.y !== p.y) compact.push(p);
+  }
+  return compact;
+}
+
 function segments(points) {
   const out = [];
   for (let i = 1; i < (points || []).length; i++) {
@@ -33,7 +67,8 @@ function crossingPoint(s1, s2) {
   const vx2 = Math.max(v.a.y, v.b.y);
   const hy1 = Math.min(h.a.x, h.b.x);
   const hy2 = Math.max(h.a.x, h.b.x);
-  const onSeg = x >= hy1 && x <= hy2 && y >= vx1 && y <= vx2;
+  const eps = 1.0;
+  const onSeg = x >= hy1 + eps && x <= hy2 - eps && y >= vx1 + eps && y <= vx2 - eps;
   if (!onSeg) return null;
   return {
     x, y,
@@ -47,6 +82,7 @@ function EdgeRenderer({
   hoveredEdgeId = null, onHoveredEdgeChange = () => {}, overlayOnly = false,
   overlayAll = false,
   selectedEdgeId = null, onSelectEdge = () => {},
+  onNudgeEdge = () => {},
   probeConnectFromId = null,
   onAttachProbeToEdge = () => {},
   onDetachProbe = () => {},
@@ -251,9 +287,10 @@ function EdgeRenderer({
       }
     }
 
-    const points = computeOrthogonalPath(srcNode, tgtNode, {
+    const autoPoints = computeOrthogonalPath(srcNode, tgtNode, {
       nodes,
       routedPaths: STABLE_EDGE_ROUTING ? localRouted : routedPaths,
+      overlapPaths: routedPaths,
       routeOffset,
       preferredAxis: routePreference,
       portDirs: dirs,
@@ -280,19 +317,21 @@ function EdgeRenderer({
         return Math.max(0, idx);
       })(),
     });
+    const routedPoints = autoPoints;
+    const effectiveManual = Number(edge.manualOffset) || 0;
+    const points = applyManualOffset(routedPoints, effectiveManual);
     routeByEdgeId.set(edge.id, points);
     if (STABLE_EDGE_ROUTING) {
       if (inKey) {
         if (!routedByInBucket.has(inKey)) routedByInBucket.set(inKey, []);
-        routedByInBucket.get(inKey).push(points);
+        routedByInBucket.get(inKey).push(routedPoints);
       }
       if (outKey) {
         if (!routedByOutBucket.has(outKey)) routedByOutBucket.set(outKey, []);
-        routedByOutBucket.get(outKey).push(points);
+        routedByOutBucket.get(outKey).push(routedPoints);
       }
-    } else {
-      routedPaths.push(points);
     }
+    routedPaths.push(routedPoints);
   }
 
   const probesByEdgeId = new Map();
@@ -335,6 +374,20 @@ function EdgeRenderer({
           for (const b of sj) {
             const c = crossingPoint(a, b);
             if (!c) continue;
+            const aLen = Math.hypot(a.b.x - a.a.x, a.b.y - a.a.y) || 1;
+            const bLen = Math.hypot(b.b.x - b.a.x, b.b.y - b.a.y) || 1;
+            const aStart = Math.hypot(c.x - a.a.x, c.y - a.a.y);
+            const aEnd = Math.hypot(c.x - a.b.x, c.y - a.b.y);
+            const bStart = Math.hypot(c.x - b.a.x, c.y - b.a.y);
+            const bEnd = Math.hypot(c.x - b.b.x, c.y - b.b.y);
+            const endpointPad = 6;
+            if (
+              aStart < endpointPad || aEnd < endpointPad ||
+              bStart < endpointPad || bEnd < endpointPad ||
+              aLen < endpointPad * 2 || bLen < endpointPad * 2
+            ) {
+              continue;
+            }
             // Let later edge "jump" over earlier edge.
             const jumpEdge = ej.id;
             const jumpSeg = b;
@@ -348,6 +401,20 @@ function EdgeRenderer({
           }
         }
       }
+    }
+    // Clean up dense jump clusters per edge/segment so visuals stay readable.
+    for (const edge of sortedEdges) {
+      const raw = jumpsByEdgeId.get(edge.id) || [];
+      const deduped = [];
+      for (const j of raw) {
+        const tooClose = deduped.some((k) =>
+          k.segIdx === j.segIdx &&
+          k.vertical === j.vertical &&
+          Math.hypot(k.x - j.x, k.y - j.y) < 10
+        );
+        if (!tooClose) deduped.push(j);
+      }
+      jumpsByEdgeId.set(edge.id, deduped);
     }
   }
 
@@ -376,6 +443,7 @@ function EdgeRenderer({
             overlayOnly={overlayOnly}
             onSelectEdge={onSelectEdge}
             onDelete={onDeleteEdge}
+            onNudgeEdge={onNudgeEdge}
             paramValues={paramValues}
             attachedProbes={probesByEdgeId.get(edge.id) || []}
             probeConnectFromId={probeConnectFromId}

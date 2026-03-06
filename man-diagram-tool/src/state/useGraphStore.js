@@ -307,6 +307,14 @@ function reducer(state, action) {
         }),
       };
 
+    case 'UPDATE_EDGE':
+      return {
+        ...state,
+        edges: state.edges.map((e) => (
+          e.id === action.id ? { ...e, ...(action.patch || {}) } : e
+        )),
+      };
+
     case 'ADD_CLUSTER':
       return {
         ...state,
@@ -465,6 +473,8 @@ export function useGraphStore() {
     dispatch({ type: 'ADD_EDGE', from, to, edgeType, fromPort, toPort }), []);
   const deleteEdge = useCallback((id) =>
     dispatch({ type: 'DELETE_EDGE', id }), []);
+  const updateEdge = useCallback((id, patch) =>
+    dispatch({ type: 'UPDATE_EDGE', id, patch }), []);
   const addCluster = useCallback((cluster) =>
     dispatch({ type: 'ADD_CLUSTER', cluster }), []);
   const moveCluster = useCallback((id, x, y) =>
@@ -498,6 +508,7 @@ export function useGraphStore() {
     state,
     addNode, updateNode, moveNode, deleteNode,
     addEdge, deleteEdge,
+    updateEdge,
     addCluster, moveCluster, updateCluster, deleteCluster,
     select, setZoom, setPan,
     startConnecting, cancelConnecting, finishConnecting,

@@ -117,6 +117,20 @@ function collinearOverlap(a1, a2, b1, b2) {
   return false;
 }
 
+function collinearOverlapLength(a1, a2, b1, b2) {
+  if (a1.x === a2.x && b1.x === b2.x && a1.x === b1.x) {
+    const aMin = Math.min(a1.y, a2.y), aMax = Math.max(a1.y, a2.y);
+    const bMin = Math.min(b1.y, b2.y), bMax = Math.max(b1.y, b2.y);
+    return Math.max(0, Math.min(aMax, bMax) - Math.max(aMin, bMin));
+  }
+  if (a1.y === a2.y && b1.y === b2.y && a1.y === b1.y) {
+    const aMin = Math.min(a1.x, a2.x), aMax = Math.max(a1.x, a2.x);
+    const bMin = Math.min(b1.x, b2.x), bMax = Math.max(b1.x, b2.x);
+    return Math.max(0, Math.min(aMax, bMax) - Math.max(aMin, bMin));
+  }
+  return 0;
+}
+
 function orthCross(a1, a2, b1, b2) {
   const aVert = a1.x === a2.x;
   const bVert = b1.x === b2.x;
@@ -159,6 +173,17 @@ function pathIsClear(path, obstacles) {
   return true;
 }
 
+function pathHasCollinearOverlap(path, routedSegs, minLen = 2) {
+  for (const s of segments(path)) {
+    for (const r of routedSegs) {
+      if (collinearOverlap(s.a, s.b, r.a, r.b) && collinearOverlapLength(s.a, s.b, r.a, r.b) >= minLen) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function candidateLanes(center, routeOffset, span = 0) {
   const lanes = [];
   const c = snap(center + routeOffset);
@@ -191,6 +216,7 @@ export function computeOrthogonalPath(srcNode, tgtNode, options = {}) {
   const routeOffset = options.routeOffset || 0;
   const allNodes = options.nodes || [];
   const routedPaths = options.routedPaths || [];
+  const overlapPaths = options.overlapPaths || routedPaths;
   const preferredAxis = options.preferredAxis === 'vertical' ? 'vertical' : 'horizontal';
 
   const dirs = options.portDirs || selectPorts(srcNode, tgtNode, preferredAxis);
@@ -209,6 +235,7 @@ export function computeOrthogonalPath(srcNode, tgtNode, options = {}) {
     .filter(n => n.id !== srcNode.id && n.id !== tgtNode.id)
     .map(nodeRect);
   const routedSegs = routedPaths.flatMap(p => segments(p));
+  const overlapSegs = overlapPaths.flatMap(p => segments(p));
 
   let bestPath = null;
   let bestScore = Infinity;
@@ -216,6 +243,7 @@ export function computeOrthogonalPath(srcNode, tgtNode, options = {}) {
   const tryPath = (p) => {
     const pp = simplify(p);
     if (!pathIsClear(pp, obstacles)) return;
+    if (pathHasCollinearOverlap(pp, overlapSegs)) return;
     const s = scoreAgainstRouted(pp, routedSegs);
     if (s < bestScore) {
       bestScore = s;

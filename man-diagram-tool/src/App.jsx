@@ -24,7 +24,7 @@ function App() {
   const {
     state,
     addNode, updateNode, moveNode, deleteNode,
-    deleteEdge, addCluster, moveCluster, updateCluster, deleteCluster,
+    deleteEdge, updateEdge, addCluster, moveCluster, updateCluster, deleteCluster,
     select, setZoom, setPan,
     startConnecting, cancelConnecting, finishConnecting,
     toggleInterest, loadGraph, clear, setNodes,
@@ -399,6 +399,7 @@ function App() {
             onFinishConnect={finishConnecting}
             onCancelConnect={cancelConnecting}
             onDeleteEdge={deleteEdge}
+            onUpdateEdge={updateEdge}
             selectedEdgeId={selectedEdgeId}
             onSelectEdge={setSelectedEdgeId}
             onMoveCluster={moveCluster}
