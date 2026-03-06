@@ -11,6 +11,7 @@ import RedesignAnalysisModule from './components/RedesignAnalysisModule';
 import ReportingModule from './components/ReportingModule';
 import ExportModal from './components/ExportModal';
 import PreAnalysisModal from './components/PreAnalysisModal';
+import ImageExportDialog from './components/ImageExportDialog';
 import { importJSON } from './utils/jsonSerializer';
 import { runAnalysis, fetchHealth } from './utils/api';
 import { validateGraph } from './utils/graphValidation';
@@ -23,13 +24,15 @@ function App() {
   const {
     state,
     addNode, updateNode, moveNode, deleteNode,
-    deleteEdge, addCluster, moveCluster, updateCluster, deleteCluster,
+    deleteEdge, updateEdge, addCluster, moveCluster, updateCluster, deleteCluster,
     select, setZoom, setPan,
     startConnecting, cancelConnecting, finishConnecting,
     toggleInterest, loadGraph, clear, setNodes,
   } = useGraphStore();
 
   const [showExport, setShowExport] = useState(false);
+  const [showDiagramExport, setShowDiagramExport] = useState(false);
+  const [diagramExportSrc, setDiagramExportSrc] = useState('');
   const [showPreAnalysis, setShowPreAnalysis] = useState(false);
   const [routePreference, setRoutePreference] = useState('horizontal');
   const [arrowJumpsEnabled, setArrowJumpsEnabled] = useState(true);
@@ -41,11 +44,14 @@ function App() {
   const [analysisProgress, setAnalysisProgress] = useState(null);
   const [analysisError, setAnalysisError] = useState(null);
   const [analysisWeights, setAnalysisWeights] = useState({ perf: {}, input: {} });
+  const [reportCharts, setReportCharts] = useState([]);
   const [backendVersion, setBackendVersion] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
   const [workspaceTabs, setWorkspaceTabs] = useState(['model']);
   const [activeTab, setActiveTab] = useState('model');
+  const [fitViewRequest, setFitViewRequest] = useState(0);
   const analysisProgressTimerRef = useRef(null);
+  const captureDiagramRef = useRef(null);
 
   useEffect(() => {
     fetchHealth().then(v => setBackendVersion(v));
@@ -106,8 +112,10 @@ function App() {
     try {
       const data = importJSON(raw);
       loadGraph(data);
+      setFitViewRequest((v) => v + 1);
       setAnalysisResult(null);
       setAnalysisError(null);
+      setReportCharts([]);
       setWorkspaceTabs(['model']);
       setActiveTab('model');
       setSelectedClusterId(null);
@@ -125,8 +133,10 @@ function App() {
       const raw = await res.text();
       const data = importJSON(raw);
       loadGraph(data);
+      setFitViewRequest((v) => v + 1);
       setAnalysisResult(null);
       setAnalysisError(null);
+      setReportCharts([]);
       setWorkspaceTabs(['model']);
       setActiveTab('model');
       setSelectedClusterId(null);
@@ -141,16 +151,47 @@ function App() {
     clear();
     setAnalysisResult(null);
     setAnalysisError(null);
+    setReportCharts([]);
     setWorkspaceTabs(['model']);
     setActiveTab('model');
     setSelectedClusterId(null);
     setSelectedEdgeId(null);
   }, [clear]);
 
+  // Capture a chart from an analysis module and queue it for the report.
+  // label = exportName, dataUrl = svg data URL, tables = [{caption, headers, rows}]
+  const handleAddChartToReport = useCallback((label, dataUrl, tables = []) => {
+    setReportCharts(prev => {
+      const existing = prev.findIndex(c => c.label === label);
+      if (existing >= 0) {
+        // Update in-place so the position is preserved
+        const next = [...prev];
+        next[existing] = { ...next[existing], dataUrl, tables };
+        return next;
+      }
+      return [...prev, { id: `chart_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, label, dataUrl, tables }];
+    });
+  }, []);
+
   const handleAutoArrange = useCallback(() => {
     const arranged = autoArrangeNodes(state.nodes, state.edges, routePreference);
     setNodes(arranged);
   }, [state.nodes, state.edges, routePreference, setNodes]);
+
+  const handleOpenDiagramExport = useCallback(() => {
+    const capture = captureDiagramRef.current;
+    if (!capture) {
+      window.alert('Diagram export is not available yet. Please try again.');
+      return;
+    }
+    const src = capture();
+    if (!src) {
+      window.alert('Could not capture the current diagram.');
+      return;
+    }
+    setDiagramExportSrc(src);
+    setShowDiagramExport(true);
+  }, []);
 
   const handleAddCluster = useCallback(() => {
     const cx = (window.innerWidth / 2 - state.panOffset.x) / state.zoom;
@@ -299,6 +340,7 @@ function App() {
         onLoadExample={handleLoadExample}
         onPreAnalysis={() => setShowPreAnalysis(true)}
         onExport={() => setShowExport(true)}
+        onExportDiagram={handleOpenDiagramExport}
         onImport={handleImport}
         onClear={handleClear}
         onRunAnalysis={handleRunAnalysis}
@@ -376,6 +418,7 @@ function App() {
             onFinishConnect={finishConnecting}
             onCancelConnect={cancelConnecting}
             onDeleteEdge={deleteEdge}
+            onUpdateEdge={updateEdge}
             selectedEdgeId={selectedEdgeId}
             onSelectEdge={setSelectedEdgeId}
             onMoveCluster={moveCluster}
@@ -384,6 +427,8 @@ function App() {
             invalidNodeIds={graphValidation.invalidNodeIds}
             routePreference={routePreference}
             arrowJumpsEnabled={arrowJumpsEnabled}
+            fitViewRequest={fitViewRequest}
+            onRegisterCapture={(fn) => { captureDiagramRef.current = fn; }}
           />
 
           <div className="right-panel">
@@ -418,6 +463,7 @@ function App() {
             nodes={state.nodes}
             edges={state.edges}
             appliedWeights={effectiveWeights}
+            onAddChartToReport={handleAddChartToReport}
           />
         </div>
       ) : activeTab === 'redesign' ? (
@@ -428,6 +474,7 @@ function App() {
             nodes={state.nodes}
             edges={state.edges}
             appliedWeights={effectiveWeights}
+            onAddChartToReport={handleAddChartToReport}
           />
         </div>
       ) : (
@@ -438,6 +485,7 @@ function App() {
             nodes={state.nodes}
             edges={state.edges}
             appliedWeights={effectiveWeights}
+            reportCharts={reportCharts}
           />
         </div>
       )}
@@ -450,6 +498,14 @@ function App() {
           onClose={() => setShowExport(false)}
         />
       )}
+
+      <ImageExportDialog
+        open={showDiagramExport}
+        onClose={() => setShowDiagramExport(false)}
+        imageSrc={diagramExportSrc}
+        defaultTitle="Main Diagram"
+        defaultName="main_diagram"
+      />
 
       {showPreAnalysis && (
         <PreAnalysisModal

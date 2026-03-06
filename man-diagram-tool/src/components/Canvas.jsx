@@ -125,6 +125,9 @@ function Canvas({
   onDeleteEdge, onMoveCluster, paramValues, invalidNodeIds, routePreference, arrowJumpsEnabled,
   selectedEdgeId, onSelectEdge,
   onUpdateNode,
+  onUpdateEdge,
+  fitViewRequest = 0,
+  onRegisterCapture,
 }) {
   const svgRef = useRef(null);
   const [dragging, setDragging] = useState(null);
@@ -163,6 +166,88 @@ function Canvas({
     }
     return out;
   }, [visualNodes, edges, paramValues, nodeById]);
+
+  const fitToView = useCallback(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height) || rect.width < 20 || rect.height < 20) return;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const n of visualNodes || []) {
+      const { w, h } = getNodeSize(n);
+      minX = Math.min(minX, n.x - w / 2);
+      minY = Math.min(minY, n.y - h / 2);
+      maxX = Math.max(maxX, n.x + w / 2);
+      maxY = Math.max(maxY, n.y + h / 2);
+    }
+    for (const c of clusters || []) {
+      const cw = Number(c.w) || 0;
+      const ch = Number(c.h) || 0;
+      const cx = Number(c.x) || 0;
+      const cy = Number(c.y) || 0;
+      minX = Math.min(minX, cx);
+      minY = Math.min(minY, cy);
+      maxX = Math.max(maxX, cx + cw);
+      maxY = Math.max(maxY, cy + ch);
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      onSetZoom(1);
+      onSetPan({ x: 0, y: 0 });
+      return;
+    }
+
+    const pad = 36;
+    const boundsW = Math.max(1, maxX - minX);
+    const boundsH = Math.max(1, maxY - minY);
+    const availW = Math.max(40, rect.width - pad * 2);
+    const availH = Math.max(40, rect.height - pad * 2);
+    const fitZoom = Math.min(availW / boundsW, availH / boundsH);
+    const nextZoom = Math.max(0.2, Math.min(3, fitZoom));
+    const cx = minX + boundsW / 2;
+    const cy = minY + boundsH / 2;
+    onSetZoom(nextZoom);
+    onSetPan({
+      x: rect.width / 2 - cx * nextZoom,
+      y: rect.height / 2 - cy * nextZoom,
+    });
+  }, [visualNodes, clusters, onSetZoom, onSetPan]);
+
+  useEffect(() => {
+    if (!fitViewRequest) return;
+    const id = window.requestAnimationFrame(() => {
+      fitToView();
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [fitViewRequest, fitToView]);
+
+  const captureDiagramImage = useCallback(() => {
+    const svg = svgRef.current;
+    if (!svg) return '';
+    const rect = svg.getBoundingClientRect();
+    const width = Math.max(1, Math.round(rect.width || 0));
+    const height = Math.max(1, Math.round(rect.height || 0));
+    if (width < 2 || height < 2) return '';
+    const clone = svg.cloneNode(true);
+    clone.querySelectorAll('[data-export-exclude="true"]').forEach((node) => node.remove());
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('width', String(width));
+    clone.setAttribute('height', String(height));
+    clone.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    const xml = new XMLSerializer().serializeToString(clone);
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
+  }, []);
+
+  useEffect(() => {
+    if (!onRegisterCapture) return undefined;
+    onRegisterCapture(captureDiagramImage);
+    return () => onRegisterCapture(null);
+  }, [onRegisterCapture, captureDiagramImage]);
 
   // Store latest zoom in a ref for the wheel handler
   const zoomRef = useRef(zoom);
@@ -285,11 +370,13 @@ function Canvas({
   const handleClusterMouseDown = useCallback((e, cluster) => {
     e.stopPropagation();
     if (connecting) return;
-    const pos = screenToWorld(e.clientX, e.clientY);
-    setDraggingCluster({ id: cluster.id, ox: pos.x - cluster.x, oy: pos.y - cluster.y });
     onSelect(null);
     onSelectCluster(cluster.id);
     onSelectEdge(null);
+    // Avoid accidental group moves: cluster drag requires Shift+drag.
+    if (!e.shiftKey) return;
+    const pos = screenToWorld(e.clientX, e.clientY);
+    setDraggingCluster({ id: cluster.id, ox: pos.x - cluster.x, oy: pos.y - cluster.y });
   }, [connecting, screenToWorld, onSelect, onSelectCluster, onSelectEdge]);
 
   const gridSize = 30 * zoom;
@@ -353,19 +440,19 @@ function Canvas({
                         strokeDasharray="6 4"
                       />
                     ))}
-                    <text
-                      x={lbl.x}
-                      y={lbl.y}
-                      fontSize={12}
-                      fill="#475569"
-                      fontStyle="italic"
-                      fontFamily="system-ui, sans-serif"
-                      pointerEvents="none"
-                    >
-                      {c.label || 'Subsystem'}
-                    </text>
-                  </g>
-                );
+                  <text
+                    x={lbl.x}
+                    y={lbl.y}
+                    fontSize={12}
+                    fill="#475569"
+                    fontStyle="italic"
+                    fontFamily="system-ui, sans-serif"
+                    pointerEvents="none"
+                  >
+                    {(c.label || 'Subsystem') + ' (Shift+drag to move)'}
+                  </text>
+                </g>
+              );
               }
               return (
                 <g>
@@ -390,7 +477,7 @@ function Canvas({
                     fontFamily="system-ui, sans-serif"
                     pointerEvents="none"
                   >
-                    {c.label || 'Subsystem'}
+                    {(c.label || 'Subsystem') + ' (Shift+drag to move)'}
                   </text>
                 </g>
               );
@@ -410,6 +497,20 @@ function Canvas({
           onHoveredEdgeChange={setHoveredEdgeId}
           selectedEdgeId={selectedEdgeId}
           onSelectEdge={onSelectEdge}
+          onNudgeEdge={(edgeId, dx, dy) => {
+            if (!onUpdateEdge) return;
+            const edge = edges.find((e) => e.id === edgeId);
+            if (!edge) return;
+            const invZoom = 1 / Math.max(zoom, 0.001);
+            const main = dx * invZoom * 2.8;
+            const current = Number(edge.manualOffset) || 0;
+            const next = Math.max(-420, Math.min(420, current + main));
+            onUpdateEdge(edgeId, { manualOffset: next, routeOffset: 0 });
+          }}
+          onSetEdgeWaypoints={(edgeId, wpts) => {
+            if (onUpdateEdge) onUpdateEdge(edgeId, { waypoints: wpts, manualOffset: 0 });
+          }}
+          zoom={zoom}
           probeConnectFromId={(() => {
             if (!connecting) return null;
             const src = nodeById[connecting.fromId];
@@ -457,22 +558,21 @@ function Canvas({
           arrowJumpsEnabled={arrowJumpsEnabled}
           hoveredEdgeId={hoveredEdgeId}
           selectedEdgeId={selectedEdgeId}
+          onNudgeEdge={(edgeId, dx, dy) => {
+            if (!onUpdateEdge) return;
+            const edge = edges.find((e) => e.id === edgeId);
+            if (!edge) return;
+            const invZoom = 1 / Math.max(zoom, 0.001);
+            const main = dx * invZoom * 2.8;
+            const current = Number(edge.manualOffset) || 0;
+            const next = Math.max(-420, Math.min(420, current + main));
+            onUpdateEdge(edgeId, { manualOffset: next, routeOffset: 0 });
+          }}
+          onSetEdgeWaypoints={(edgeId, wpts) => {
+            if (onUpdateEdge) onUpdateEdge(edgeId, { waypoints: wpts, manualOffset: 0 });
+          }}
+          zoom={zoom}
           overlayOnly
-          probeConnectFromId={null}
-          onAttachProbeToEdge={() => {}}
-          onDetachProbe={() => {}}
-        />
-        <EdgeRenderer
-          edges={edges}
-          nodes={visualNodes}
-          onDeleteEdge={() => {}}
-          paramValues={paramValues}
-          routePreference={routePreference}
-          arrowJumpsEnabled={arrowJumpsEnabled}
-          hoveredEdgeId={null}
-          selectedEdgeId={null}
-          overlayOnly
-          overlayAll
           probeConnectFromId={null}
           onAttachProbeToEdge={() => {}}
           onDetachProbe={() => {}}
@@ -480,7 +580,7 @@ function Canvas({
       </g>
 
       {/* HUD */}
-      <text x={12} y={20} fontSize={11} fill="#64748B" fontFamily="system-ui, sans-serif">
+      <text x={12} y={20} fontSize={11} fill="#64748B" fontFamily="system-ui, sans-serif" data-export-exclude="true">
         {`Zoom: ${(zoom * 100).toFixed(0)}%  |  ${nodes.length} nodes  |  ${edges.length} edges`}
         {connecting
           ? (() => {
@@ -496,32 +596,110 @@ function Canvas({
           transform="translate(12, 30)"
           style={{ cursor: 'pointer' }}
           onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteEdge(selectedEdgeId);
-            onSelectEdge(null);
-          }}
+          data-export-exclude="true"
         >
           <rect
             x={0}
             y={0}
-            width={132}
-            height={20}
+            width={232}
+            height={44}
             rx={5}
+            fill="#F8FAFC"
+            stroke="#CBD5E1"
+            strokeWidth={1}
+          />
+          <rect
+            x={8}
+            y={8}
+            width={78}
+            height={28}
+            rx={4}
             fill="#FEF2F2"
             stroke="#FCA5A5"
             strokeWidth={1}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteEdge(selectedEdgeId);
+              onSelectEdge(null);
+            }}
           />
           <text
-            x={66}
-            y={13}
+            x={47}
+            y={26}
             textAnchor="middle"
             fontSize={10}
             fontWeight={700}
             fill="#B91C1C"
             fontFamily="system-ui, sans-serif"
           >
-            Delete selected edge
+            Delete
+          </text>
+          <rect
+            x={96}
+            y={8}
+            width={28}
+            height={28}
+            rx={4}
+            fill="#EFF6FF"
+            stroke="#93C5FD"
+            strokeWidth={1}
+            onClick={(e) => {
+              e.stopPropagation();
+              const edge = (edges || []).find((ed) => ed.id === selectedEdgeId);
+              if (!edge || !onUpdateEdge) return;
+              const current = Number(edge.manualOffset) || 0;
+              onUpdateEdge(selectedEdgeId, { manualOffset: current - 18, routeOffset: 0 });
+            }}
+          />
+          <text
+            x={110}
+            y={26}
+            textAnchor="middle"
+            fontSize={13}
+            fontWeight={700}
+            fill="#1D4ED8"
+            fontFamily="system-ui, sans-serif"
+          >
+            -
+          </text>
+          <rect
+            x={130}
+            y={8}
+            width={28}
+            height={28}
+            rx={4}
+            fill="#EFF6FF"
+            stroke="#93C5FD"
+            strokeWidth={1}
+            onClick={(e) => {
+              e.stopPropagation();
+              const edge = (edges || []).find((ed) => ed.id === selectedEdgeId);
+              if (!edge || !onUpdateEdge) return;
+              const current = Number(edge.manualOffset) || 0;
+              onUpdateEdge(selectedEdgeId, { manualOffset: current + 18, routeOffset: 0 });
+            }}
+          />
+          <text
+            x={144}
+            y={26}
+            textAnchor="middle"
+            fontSize={13}
+            fontWeight={700}
+            fill="#1D4ED8"
+            fontFamily="system-ui, sans-serif"
+          >
+            +
+          </text>
+          <text
+            x={166}
+            y={26}
+            textAnchor="start"
+            fontSize={10}
+            fontWeight={700}
+            fill="#334155"
+            fontFamily="system-ui, sans-serif"
+          >
+            Nudge edge
           </text>
         </g>
       )}

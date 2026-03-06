@@ -59,7 +59,7 @@ function topologicalLayers(nodes, edges) {
     layers.get(l).push(id);
   }
 
-  return { layers, incoming };
+  return { layers, incoming, outgoing, order, layerById };
 }
 
 function nodeSpanAlongAxis(node, axis) {
@@ -90,8 +90,35 @@ function positionsForLayer(ids, nodeById, axis = 'y', gap = 18) {
 export function autoArrangeNodes(nodes, edges, orientation = 'horizontal') {
   if (!nodes || nodes.length === 0) return nodes || [];
 
-  const { layers, incoming } = topologicalLayers(nodes, edges);
+  const { incoming, outgoing, order, layerById: minLayerById } = topologicalLayers(nodes, edges);
   const nodeById = new Map(nodes.map(n => [n.id, n]));
+  const maxMinLayer = Math.max(0, ...Array.from(minLayerById.values()));
+
+  // Right-justify nodes while preserving edge direction:
+  // each node is moved as far right as possible without crossing its successors.
+  const latestLayerById = new Map();
+  for (let i = order.length - 1; i >= 0; i--) {
+    const id = order[i];
+    const minL = minLayerById.get(id) || 0;
+    const succ = outgoing.get(id) || [];
+    if (!succ.length) {
+      latestLayerById.set(id, maxMinLayer);
+      continue;
+    }
+    let latest = Infinity;
+    for (const c of succ) {
+      latest = Math.min(latest, (latestLayerById.get(c) ?? maxMinLayer) - 1);
+    }
+    if (!Number.isFinite(latest)) latest = minL;
+    latestLayerById.set(id, Math.max(minL, latest));
+  }
+
+  const layers = new Map();
+  for (const id of order) {
+    const l = latestLayerById.get(id) ?? (minLayerById.get(id) || 0);
+    if (!layers.has(l)) layers.set(l, []);
+    layers.get(l).push(id);
+  }
   const layerKeys = [...layers.keys()].sort((a, b) => a - b);
   const clusterBand = new Map(); // clusterId -> preferred slot index across layers
 
@@ -145,10 +172,35 @@ export function autoArrangeNodes(nodes, edges, orientation = 'horizontal') {
     });
   }
 
-  const layerGap = 155;
-  const itemGap = 18;
+  const itemGap = 28;
+  const layerPad = 74;
   const originX = 85;
   const originY = 70;
+
+  const mainAxis = orientation === 'vertical' ? 'y' : 'x';
+  const layerSpanByKey = new Map();
+  for (const l of layerKeys) {
+    const ids = layers.get(l) || [];
+    let span = 0;
+    for (const id of ids) {
+      span = Math.max(span, nodeSpanAlongAxis(nodeById.get(id) || {}, mainAxis));
+    }
+    layerSpanByKey.set(l, Math.max(40, span));
+  }
+  const layerCoordByKey = new Map();
+  for (let i = 0; i < layerKeys.length; i++) {
+    const l = layerKeys[i];
+    if (i === 0) {
+      layerCoordByKey.set(l, 0);
+      continue;
+    }
+    const prev = layerKeys[i - 1];
+    const prevCoord = layerCoordByKey.get(prev) || 0;
+    const prevSpan = layerSpanByKey.get(prev) || 40;
+    const curSpan = layerSpanByKey.get(l) || 40;
+    const coord = prevCoord + prevSpan / 2 + layerPad + curSpan / 2;
+    layerCoordByKey.set(l, coord);
+  }
 
   const posById = new Map();
   for (const l of layerKeys) {
@@ -163,10 +215,10 @@ export function autoArrangeNodes(nodes, edges, orientation = 'horizontal') {
       const id = ids[i];
       if (orientation === 'vertical') {
         const x = originX + 240 + (offsets[i] || 0);
-        const y = originY + l * layerGap;
+        const y = originY + (layerCoordByKey.get(l) || 0);
         posById.set(id, { x, y });
       } else {
-        const x = originX + l * layerGap;
+        const x = originX + (layerCoordByKey.get(l) || 0);
         const y = originY + 180 + (offsets[i] || 0);
         posById.set(id, { x, y });
       }

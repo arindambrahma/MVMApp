@@ -99,6 +99,8 @@ function BubbleMVMPlot({
   xDomain = null,
   yDomain = null,
   exportName = 'redesign_plot',
+  onAddToReport = null,
+  tables = [],
 }) {
   const svgRef = useRef(null);
   const all = [...baselinePoints, ...overlayPoints];
@@ -245,8 +247,44 @@ function BubbleMVMPlot({
           Redesigned points
         </div>
       </div>
+      {onAddToReport && (
+        <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={() => {
+              const svg = svgRef.current;
+              if (!svg) return;
+              const svgStr = new XMLSerializer().serializeToString(svg);
+              const b64 = btoa(unescape(encodeURIComponent(svgStr)));
+              onAddToReport(exportName, 'data:image/svg+xml;base64,' + b64, tables);
+            }}
+            style={{ border: '1px solid #A7C7FA', background: '#EFF6FF', color: '#1E3A8A', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+          >
+            📋 Add to report
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+// Build an array of { caption, headers, rows } table objects from redesign matrix data.
+function buildMatrixTableData(titleSuffix, marginKeys, impactData, absorptionData, utilisationData, utilColKeys) {
+  const makeTable = (title, rowKeys, colKeys, data) => {
+    if (!rowKeys?.length || !colKeys?.length) return null;
+    return {
+      caption: title,
+      headers: ['Margin', ...colKeys],
+      rows: rowKeys.map(r => [r.replace('E_', 'E'), ...colKeys.map(c => pct(data?.[r]?.[c] ?? 0, 2))]),
+    };
+  };
+  const impactCols = Object.keys(impactData?.[marginKeys?.[0]] || {});
+  const absorbCols = Object.keys(absorptionData?.[marginKeys?.[0]] || {});
+  return [
+    makeTable(`Impact Matrix (${titleSuffix})`, marginKeys, impactCols, impactData || {}),
+    makeTable(`Absorption Matrix (${titleSuffix})`, marginKeys, absorbCols, absorptionData || {}),
+    makeTable(`Utilisation Matrix (${titleSuffix})`, marginKeys, utilColKeys, utilisationData || {}),
+  ].filter(Boolean);
 }
 
 function RedesignAnalysisModule({
@@ -255,6 +293,7 @@ function RedesignAnalysisModule({
   nodes = [],
   edges = [],
   appliedWeights = {},
+  onAddChartToReport = null,
 }) {
   const containerStyle = { flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' };
   const [selectedMargin, setSelectedMargin] = useState('');
@@ -796,6 +835,8 @@ function RedesignAnalysisModule({
               xDomain={null}
               yDomain={null}
               exportName="redesign_baseline_plot"
+              onAddToReport={onAddChartToReport}
+              tables={buildMatrixTableData('Baseline', marginKeys, result.impact_matrix, result.absorption_matrix, result.utilisation_matrix, baselineInputs)}
             />
             <MatrixTable
               title="Impact Matrix (Baseline)"
@@ -831,6 +872,8 @@ function RedesignAnalysisModule({
                 xDomain={lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
                 yDomain={lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
                 exportName="redesign_baseline_plot"
+                onAddToReport={onAddChartToReport}
+                tables={buildMatrixTableData('Baseline', marginKeys, result.impact_matrix, result.absorption_matrix, result.utilisation_matrix, baselineInputs)}
               />
               <MatrixTable
                 title="Impact Matrix (Baseline)"
@@ -864,6 +907,8 @@ function RedesignAnalysisModule({
                 xDomain={lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
                 yDomain={lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
                 exportName="redesign_recalculated_plot"
+                onAddToReport={onAddChartToReport}
+                tables={buildMatrixTableData('Recalculated', marginKeys, recalculatedResult?.impact_matrix, recalculatedResult?.absorption_matrix, recalculatedResult?.utilisation_matrix, recalculatedInputs)}
               />
               <MatrixTable
                 title="Impact Matrix (Recalculated)"

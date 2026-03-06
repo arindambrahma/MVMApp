@@ -10,50 +10,39 @@ import { formatProbeValue, getProbeBoxSize } from '../../utils/probeVisual';
 // Draw plain (gray) edges first, decided (black) next, threshold (red) on top.
 // This ensures colored signal edges are never hidden under gray routing lines.
 const TYPE_Z = { plain: 0, decided: 1, threshold: 2 };
-const DIRS = ['top', 'right', 'bottom', 'left'];
 
-function chooseBestDir(node, otherNode, forbidden = new Set(), preferredAxis = 'horizontal') {
-  const dx = (otherNode?.x ?? node.x) - node.x;
-  const dy = (otherNode?.y ?? node.y) - node.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len;
-  const uy = dy / len;
-  const vec = {
-    top: { x: 0, y: -1 },
-    right: { x: 1, y: 0 },
-    bottom: { x: 0, y: 1 },
-    left: { x: -1, y: 0 },
-  };
-
-  let bestDir = null;
-  let bestScore = -Infinity;
-  for (const d of DIRS) {
-    if (forbidden.has(d)) continue;
-    const dot = ux * vec[d].x + uy * vec[d].y; // larger is better
-    const axisBonus = preferredAxis === 'vertical'
-      ? (d === 'top' || d === 'bottom' ? 0.05 : 0)
-      : (d === 'left' || d === 'right' ? 0.05 : 0);
-    const score = dot + axisBonus;
-    if (score > bestScore) {
-      bestScore = score;
-      bestDir = d;
-    }
+function applyManualOffset(points, offset) {
+  const amt = Number(offset) || 0;
+  if (!Array.isArray(points) || Math.abs(amt) < 0.5) return points;
+  if (points.length <= 2) {
+    const p0 = points[0];
+    const p1 = points[1];
+    if (!p0 || !p1) return points;
+    // Enforce Manhattan left/right manual move only.
+    return [
+      { ...p0 },
+      { x: p0.x + amt, y: p0.y },
+      { x: p0.x + amt, y: p1.y },
+      { ...p1 },
+    ];
   }
-  return bestDir || 'right';
-}
-
-function buildFlowSets(edges, dirsById) {
-  const incomingByNode = new Map();
-  const outgoingByNode = new Map();
-  for (const e of edges) {
-    const d = dirsById.get(e.id);
-    if (!d) continue;
-    if (!incomingByNode.has(e.to)) incomingByNode.set(e.to, new Set());
-    if (!outgoingByNode.has(e.from)) outgoingByNode.set(e.from, new Set());
-    incomingByNode.get(e.to).add(d.tgtDir);
-    outgoingByNode.get(e.from).add(d.srcDir);
+  const p0 = points[0];
+  const pn = points[points.length - 1];
+  // Shift only the inner (trunk) points, keeping the first and last stubs fixed.
+  // This prevents the end-bridge from creating a backward segment when amt != 0.
+  const shiftedMid = points.slice(1, -1).map((p) => ({ x: p.x + amt, y: p.y }));
+  const out = [
+    { ...p0 },
+    ...shiftedMid,
+    { ...pn },
+  ];
+  // Drop consecutive duplicates.
+  const compact = [];
+  for (const p of out) {
+    const last = compact[compact.length - 1];
+    if (!last || last.x !== p.x || last.y !== p.y) compact.push(p);
   }
-  return { incomingByNode, outgoingByNode };
+  return compact;
 }
 
 function segments(points) {
@@ -78,7 +67,8 @@ function crossingPoint(s1, s2) {
   const vx2 = Math.max(v.a.y, v.b.y);
   const hy1 = Math.min(h.a.x, h.b.x);
   const hy2 = Math.max(h.a.x, h.b.x);
-  const onSeg = x >= hy1 && x <= hy2 && y >= vx1 && y <= vx2;
+  const eps = 1.0;
+  const onSeg = x >= hy1 + eps && x <= hy2 - eps && y >= vx1 + eps && y <= vx2 - eps;
   if (!onSeg) return null;
   return {
     x, y,
@@ -92,10 +82,16 @@ function EdgeRenderer({
   hoveredEdgeId = null, onHoveredEdgeChange = () => {}, overlayOnly = false,
   overlayAll = false,
   selectedEdgeId = null, onSelectEdge = () => {},
+  onNudgeEdge = () => {},
+  onSetEdgeWaypoints = () => {},
+  zoom = 1,
   probeConnectFromId = null,
   onAttachProbeToEdge = () => {},
   onDetachProbe = () => {},
 }) {
+  // Stable routing mode keeps each edge local to its endpoints.
+  // This avoids global "move together" reroutes when unrelated edges change.
+  const STABLE_EDGE_ROUTING = true;
   const nodeMap = {};
   for (const n of nodes) {
     nodeMap[n.id] = n;
@@ -120,38 +116,42 @@ function EdgeRenderer({
     portDirsByEdgeId.set(edge.id, selectPorts(srcNode, tgtNode, routePreference));
   }
 
-  // Enforce 90-degree separation rule at each node:
-  // incoming and outgoing edges may not use the same side.
-  for (let iter = 0; iter < 4; iter++) {
-    const { incomingByNode, outgoingByNode } = buildFlowSets(sortedEdges, portDirsByEdgeId);
-    let changed = false;
-
-    for (const edge of sortedEdges) {
-      const srcNode = nodeMap[edge.from];
-      const tgtNode = nodeMap[edge.to];
-      const dirs = portDirsByEdgeId.get(edge.id);
-      if (!srcNode || !tgtNode || !dirs) continue;
-
-      const srcForbidden = incomingByNode.get(edge.from) || new Set();
-      if (srcForbidden.has(dirs.srcDir) && srcForbidden.size < 4) {
-        const nextSrcDir = chooseBestDir(srcNode, tgtNode, srcForbidden, routePreference);
-        if (nextSrcDir !== dirs.srcDir) {
-          dirs.srcDir = nextSrcDir;
-          changed = true;
-        }
-      }
-
-      const tgtForbidden = outgoingByNode.get(edge.to) || new Set();
-      if (tgtForbidden.has(dirs.tgtDir) && tgtForbidden.size < 4) {
-        const nextTgtDir = chooseBestDir(tgtNode, srcNode, tgtForbidden, routePreference);
-        if (nextTgtDir !== dirs.tgtDir) {
-          dirs.tgtDir = nextTgtDir;
-          changed = true;
-        }
+  // Local per-node conflict resolution:
+  // avoid using the same side for both incoming and outgoing flow on a node,
+  // while keeping routing stable (no global re-optimization).
+  const incomingByNode = new Map();
+  const outgoingByNode = new Map();
+  for (const edge of sortedEdges) {
+    const dirs = portDirsByEdgeId.get(edge.id);
+    if (!dirs) continue;
+    if (!incomingByNode.has(edge.to)) incomingByNode.set(edge.to, new Set());
+    if (!outgoingByNode.has(edge.from)) outgoingByNode.set(edge.from, new Set());
+    incomingByNode.get(edge.to).add(dirs.tgtDir);
+    outgoingByNode.get(edge.from).add(dirs.srcDir);
+  }
+  const axisAlt = (node, other, conflictedDir) => {
+    if (conflictedDir === 'left' || conflictedDir === 'right') {
+      return (other?.y ?? node.y) < node.y ? 'top' : 'bottom';
+    }
+    return (other?.x ?? node.x) < node.x ? 'left' : 'right';
+  };
+  for (const edge of sortedEdges) {
+    const srcNode = nodeMap[edge.from];
+    const tgtNode = nodeMap[edge.to];
+    const dirs = portDirsByEdgeId.get(edge.id);
+    if (!srcNode || !tgtNode || !dirs) continue;
+    if (tgtNode.type !== 'calcFunction') {
+      const outAtTarget = outgoingByNode.get(edge.to) || new Set();
+      if (outAtTarget.has(dirs.tgtDir)) {
+        dirs.tgtDir = axisAlt(tgtNode, srcNode, dirs.tgtDir);
       }
     }
-
-    if (!changed) break;
+    if (srcNode.type !== 'calcFunction') {
+      const inAtSource = incomingByNode.get(edge.from) || new Set();
+      if (inAtSource.has(dirs.srcDir)) {
+        dirs.srcDir = axisAlt(srcNode, tgtNode, dirs.srcDir);
+      }
+    }
   }
 
   const outBuckets = new Map(); // nodeId:dir -> [edgeId]
@@ -169,6 +169,46 @@ function EdgeRenderer({
 
   const calcInDir = routePreference === 'vertical' ? 'top' : 'left';
   const calcOutDir = routePreference === 'vertical' ? 'bottom' : 'right';
+
+  // General geometry-based ordering per shared side to reduce avoidable crossings.
+  for (const [bucketKey, bucketEdgeIds] of inBuckets.entries()) {
+    const [targetId, tgtDir] = bucketKey.split(':');
+    const targetNode = nodeMap[targetId];
+    if (!targetNode || bucketEdgeIds.length <= 1) continue;
+    bucketEdgeIds.sort((ea, eb) => {
+      const a = edges.find(e => e.id === ea);
+      const b = edges.find(e => e.id === eb);
+      const aSrc = a ? nodeMap[a.from] : null;
+      const bSrc = b ? nodeMap[b.from] : null;
+      const av = (tgtDir === 'left' || tgtDir === 'right')
+        ? (aSrc?.y ?? 0)
+        : (aSrc?.x ?? 0);
+      const bv = (tgtDir === 'left' || tgtDir === 'right')
+        ? (bSrc?.y ?? 0)
+        : (bSrc?.x ?? 0);
+      if (av !== bv) return av - bv;
+      return String(ea).localeCompare(String(eb));
+    });
+  }
+  for (const [bucketKey, bucketEdgeIds] of outBuckets.entries()) {
+    const [sourceId, srcDir] = bucketKey.split(':');
+    const sourceNode = nodeMap[sourceId];
+    if (!sourceNode || bucketEdgeIds.length <= 1) continue;
+    bucketEdgeIds.sort((ea, eb) => {
+      const a = edges.find(e => e.id === ea);
+      const b = edges.find(e => e.id === eb);
+      const aTgt = a ? nodeMap[a.to] : null;
+      const bTgt = b ? nodeMap[b.to] : null;
+      const av = (srcDir === 'left' || srcDir === 'right')
+        ? (aTgt?.y ?? 0)
+        : (aTgt?.x ?? 0);
+      const bv = (srcDir === 'left' || srcDir === 'right')
+        ? (bTgt?.y ?? 0)
+        : (bTgt?.x ?? 0);
+      if (av !== bv) return av - bv;
+      return String(ea).localeCompare(String(eb));
+    });
+  }
 
   // For calculation function nodes, incoming edges on the active input side should
   // map deterministically to function parameter order.
@@ -223,6 +263,8 @@ function EdgeRenderer({
   }
 
   const routedPaths = [];
+  const routedByInBucket = new Map();
+  const routedByOutBucket = new Map();
   const routeByEdgeId = new Map();
   for (const edge of sortedEdges) {
     const srcNode = nodeMap[edge.from];
@@ -234,40 +276,74 @@ function EdgeRenderer({
     const idx = siblings.indexOf(edge.id);
     const centered = idx - (siblings.length - 1) / 2;
     const routeOffset = centered * 12;
+    const dirs = portDirsByEdgeId.get(edge.id);
+    const inKey = dirs ? `${edge.to}:${dirs.tgtDir}` : null;
+    const outKey = dirs ? `${edge.from}:${dirs.srcDir}` : null;
+    const localRouted = [];
+    if (STABLE_EDGE_ROUTING) {
+      if (inKey && routedByInBucket.has(inKey)) {
+        localRouted.push(...routedByInBucket.get(inKey));
+      }
+      if (outKey && routedByOutBucket.has(outKey)) {
+        localRouted.push(...routedByOutBucket.get(outKey));
+      }
+    }
 
-    const points = computeOrthogonalPath(srcNode, tgtNode, {
-      nodes,
-      routedPaths,
-      routeOffset,
-      preferredAxis: routePreference,
-      portDirs: portDirsByEdgeId.get(edge.id),
-      srcSlot: (() => {
-        if (srcNode.type === 'calcFunction' && edge.fromPort) {
-          const spec = getCalcFunctionVisualSpec(srcNode);
-          const idx = spec.outputSlots.findIndex(s => s.name === edge.fromPort);
-          if (idx >= 0) return idx;
-        }
-        const dirs = portDirsByEdgeId.get(edge.id);
-        if (!dirs) return 0;
-        const list = outBuckets.get(`${edge.from}:${dirs.srcDir}`) || [edge.id];
-        const idx = list.indexOf(edge.id);
-        return Math.max(0, idx);
-      })(),
-      tgtSlot: (() => {
-        if (tgtNode.type === 'calcFunction' && edge.toPort) {
-          const spec = getCalcFunctionVisualSpec(tgtNode);
-          const idx = spec.inputSlots.findIndex(s => s.name === edge.toPort);
-          if (idx >= 0) return idx;
-        }
-        const dirs = portDirsByEdgeId.get(edge.id);
-        if (!dirs) return 0;
-        const list = inBuckets.get(`${edge.to}:${dirs.tgtDir}`) || [edge.id];
-        const idx = list.indexOf(edge.id);
-        return Math.max(0, idx);
-      })(),
-    });
+    // Use stored waypoints if available (manually adjusted route).
+    const storedWaypoints = Array.isArray(edge.waypoints) && edge.waypoints.length >= 2
+      ? edge.waypoints : null;
+
+    let routedPoints, points;
+    if (storedWaypoints) {
+      routedPoints = storedWaypoints;
+      points = storedWaypoints;
+    } else {
+      const autoPoints = computeOrthogonalPath(srcNode, tgtNode, {
+        nodes,
+        routedPaths: STABLE_EDGE_ROUTING ? localRouted : routedPaths,
+        overlapPaths: routedPaths,
+        routeOffset,
+        preferredAxis: routePreference,
+        portDirs: dirs,
+        srcSlot: (() => {
+          if (srcNode.type === 'calcFunction' && edge.fromPort) {
+            const spec = getCalcFunctionVisualSpec(srcNode);
+            const idx = spec.outputSlots.findIndex(s => s.name === edge.fromPort);
+            if (idx >= 0) return idx;
+          }
+          if (!dirs) return 0;
+          const list = outBuckets.get(`${edge.from}:${dirs.srcDir}`) || [edge.id];
+          const idx = list.indexOf(edge.id);
+          return Math.max(0, idx);
+        })(),
+        tgtSlot: (() => {
+          if (tgtNode.type === 'calcFunction' && edge.toPort) {
+            const spec = getCalcFunctionVisualSpec(tgtNode);
+            const idx = spec.inputSlots.findIndex(s => s.name === edge.toPort);
+            if (idx >= 0) return idx;
+          }
+          if (!dirs) return 0;
+          const list = inBuckets.get(`${edge.to}:${dirs.tgtDir}`) || [edge.id];
+          const idx = list.indexOf(edge.id);
+          return Math.max(0, idx);
+        })(),
+      });
+      routedPoints = autoPoints;
+      const effectiveManual = Number(edge.manualOffset) || 0;
+      points = applyManualOffset(routedPoints, effectiveManual);
+    }
     routeByEdgeId.set(edge.id, points);
-    routedPaths.push(points);
+    if (STABLE_EDGE_ROUTING) {
+      if (inKey) {
+        if (!routedByInBucket.has(inKey)) routedByInBucket.set(inKey, []);
+        routedByInBucket.get(inKey).push(routedPoints);
+      }
+      if (outKey) {
+        if (!routedByOutBucket.has(outKey)) routedByOutBucket.set(outKey, []);
+        routedByOutBucket.get(outKey).push(routedPoints);
+      }
+    }
+    routedPaths.push(routedPoints);
   }
 
   const probesByEdgeId = new Map();
@@ -310,6 +386,22 @@ function EdgeRenderer({
           for (const b of sj) {
             const c = crossingPoint(a, b);
             if (!c) continue;
+            const aLen = Math.hypot(a.b.x - a.a.x, a.b.y - a.a.y) || 1;
+            const bLen = Math.hypot(b.b.x - b.a.x, b.b.y - b.a.y) || 1;
+            const aStart = Math.hypot(c.x - a.a.x, c.y - a.a.y);
+            const aEnd = Math.hypot(c.x - a.b.x, c.y - a.b.y);
+            const bStart = Math.hypot(c.x - b.a.x, c.y - b.a.y);
+            const bEnd = Math.hypot(c.x - b.b.x, c.y - b.b.y);
+            // Keep jumps away from corners (visual rounded-corner radius is 5px,
+            // so 12px gives comfortable clearance from the bend).
+            const endpointPad = 12;
+            if (
+              aStart < endpointPad || aEnd < endpointPad ||
+              bStart < endpointPad || bEnd < endpointPad ||
+              aLen < endpointPad * 2 || bLen < endpointPad * 2
+            ) {
+              continue;
+            }
             // Let later edge "jump" over earlier edge.
             const jumpEdge = ej.id;
             const jumpSeg = b;
@@ -323,6 +415,20 @@ function EdgeRenderer({
           }
         }
       }
+    }
+    // Clean up dense jump clusters per edge so visuals stay readable.
+    // Deduplication is global (not per-segment) so nearby crossings on adjacent
+    // segments (near a corner) don't produce stacked arcs.
+    for (const edge of sortedEdges) {
+      const raw = jumpsByEdgeId.get(edge.id) || [];
+      const deduped = [];
+      for (const j of raw) {
+        const tooClose = deduped.some((k) =>
+          Math.hypot(k.x - j.x, k.y - j.y) < 14
+        );
+        if (!tooClose) deduped.push(j);
+      }
+      jumpsByEdgeId.set(edge.id, deduped);
     }
   }
 
@@ -351,6 +457,9 @@ function EdgeRenderer({
             overlayOnly={overlayOnly}
             onSelectEdge={onSelectEdge}
             onDelete={onDeleteEdge}
+            onNudgeEdge={onNudgeEdge}
+            onSetEdgeWaypoints={onSetEdgeWaypoints}
+            zoom={zoom}
             paramValues={paramValues}
             attachedProbes={probesByEdgeId.get(edge.id) || []}
             probeConnectFromId={probeConnectFromId}

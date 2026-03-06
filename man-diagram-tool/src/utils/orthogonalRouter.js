@@ -1,16 +1,20 @@
 import { getDirectionalPort } from './portPositions';
 import { getNodeSize } from './nodeSize';
 
-const MARGIN = 20;
+const MARGIN = 24;
 const LANE = 14;
-const OBSTACLE_PAD = 10;
-const CROSS_PENALTY = 30;
-const OVERLAP_PENALTY = 60;
+const OBSTACLE_PAD = 14;
+const CROSS_PENALTY = 8;
+const OVERLAP_PENALTY = 120;
 const BEND_PENALTY = 3;
+const LENGTH_PENALTY = 0.08;
 
 function snap(v) {
   return Math.round(v / LANE) * LANE;
 }
+
+export function simplifyPath(points) { return simplify(points); }
+export function makeStubPoint(p, dir) { return makeStub(p, dir); }
 
 export function selectPorts(srcNode, tgtNode, preferredAxis = 'horizontal') {
   // Make calculation function nodes explicit:
@@ -44,11 +48,18 @@ export function selectPorts(srcNode, tgtNode, preferredAxis = 'horizontal') {
   const dx = tgtNode.x - srcNode.x;
   const dy = tgtNode.y - srcNode.y;
   if (preferredAxis === 'vertical') {
-    return dy >= 0
-      ? { srcDir: 'bottom', tgtDir: 'top' }
-      : { srcDir: 'top', tgtDir: 'bottom' };
+    // Keep vertical flow stable unless nodes are overwhelmingly horizontal apart.
+    if (Math.abs(dy) >= Math.abs(dx) * 0.55) {
+      return dy >= 0
+        ? { srcDir: 'bottom', tgtDir: 'top' }
+        : { srcDir: 'top', tgtDir: 'bottom' };
+    }
+    return dx >= 0
+      ? { srcDir: 'right', tgtDir: 'left' }
+      : { srcDir: 'left', tgtDir: 'right' };
   }
-  if (Math.abs(dx) >= Math.abs(dy)) {
+  // Keep horizontal flow stable unless nodes are overwhelmingly vertical apart.
+  if (Math.abs(dx) >= Math.abs(dy) * 0.55) {
     return dx >= 0
       ? { srcDir: 'right', tgtDir: 'left' }
       : { srcDir: 'left', tgtDir: 'right' };
@@ -109,6 +120,20 @@ function collinearOverlap(a1, a2, b1, b2) {
   return false;
 }
 
+function collinearOverlapLength(a1, a2, b1, b2) {
+  if (a1.x === a2.x && b1.x === b2.x && a1.x === b1.x) {
+    const aMin = Math.min(a1.y, a2.y), aMax = Math.max(a1.y, a2.y);
+    const bMin = Math.min(b1.y, b2.y), bMax = Math.max(b1.y, b2.y);
+    return Math.max(0, Math.min(aMax, bMax) - Math.max(aMin, bMin));
+  }
+  if (a1.y === a2.y && b1.y === b2.y && a1.y === b1.y) {
+    const aMin = Math.min(a1.x, a2.x), aMax = Math.max(a1.x, a2.x);
+    const bMin = Math.min(b1.x, b2.x), bMax = Math.max(b1.x, b2.x);
+    return Math.max(0, Math.min(aMax, bMax) - Math.max(aMin, bMin));
+  }
+  return 0;
+}
+
 function orthCross(a1, a2, b1, b2) {
   const aVert = a1.x === a2.x;
   const bVert = b1.x === b2.x;
@@ -126,7 +151,9 @@ function orthCross(a1, a2, b1, b2) {
 
 function scoreAgainstRouted(path, routedSegs) {
   let score = 0;
+  let length = 0;
   for (const s of segments(path)) {
+    length += Math.abs(s.a.x - s.b.x) + Math.abs(s.a.y - s.b.y);
     for (const r of routedSegs) {
       if (collinearOverlap(s.a, s.b, r.a, r.b)) score += OVERLAP_PENALTY;
       else if (orthCross(s.a, s.b, r.a, r.b)) score += CROSS_PENALTY;
@@ -134,6 +161,8 @@ function scoreAgainstRouted(path, routedSegs) {
   }
   // Prefer fewer bends.
   score += Math.max(0, path.length - 2) * BEND_PENALTY;
+  // Prefer shorter local routes; allows clean crossings (with jump markers) over huge detours.
+  score += length * LENGTH_PENALTY;
   return score;
 }
 
@@ -145,6 +174,17 @@ function pathIsClear(path, obstacles) {
     }
   }
   return true;
+}
+
+function pathHasCollinearOverlap(path, routedSegs, minLen = 2) {
+  for (const s of segments(path)) {
+    for (const r of routedSegs) {
+      if (collinearOverlap(s.a, s.b, r.a, r.b) && collinearOverlapLength(s.a, s.b, r.a, r.b) >= minLen) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function candidateLanes(center, routeOffset, span = 0) {
@@ -179,6 +219,7 @@ export function computeOrthogonalPath(srcNode, tgtNode, options = {}) {
   const routeOffset = options.routeOffset || 0;
   const allNodes = options.nodes || [];
   const routedPaths = options.routedPaths || [];
+  const overlapPaths = options.overlapPaths || routedPaths;
   const preferredAxis = options.preferredAxis === 'vertical' ? 'vertical' : 'horizontal';
 
   const dirs = options.portDirs || selectPorts(srcNode, tgtNode, preferredAxis);
@@ -197,11 +238,25 @@ export function computeOrthogonalPath(srcNode, tgtNode, options = {}) {
     .filter(n => n.id !== srcNode.id && n.id !== tgtNode.id)
     .map(nodeRect);
   const routedSegs = routedPaths.flatMap(p => segments(p));
+  const overlapSegs = overlapPaths.flatMap(p => segments(p));
 
   let bestPath = null;
   let bestScore = Infinity;
 
   const tryPath = (p) => {
+    const pp = simplify(p);
+    if (!pathIsClear(pp, obstacles)) return;
+    if (pathHasCollinearOverlap(pp, overlapSegs)) return;
+    const s = scoreAgainstRouted(pp, routedSegs);
+    if (s < bestScore) {
+      bestScore = s;
+      bestPath = pp;
+    }
+  };
+
+  // Relaxed variant: ignores collinear overlap to prevent edges getting stuck
+  // on top of one another when no clean route exists.
+  const tryPathRelaxed = (p) => {
     const pp = simplify(p);
     if (!pathIsClear(pp, obstacles)) return;
     const s = scoreAgainstRouted(pp, routedSegs);
@@ -272,6 +327,27 @@ export function computeOrthogonalPath(srcNode, tgtNode, options = {}) {
     ];
     for (const p of boundaryCandidates) tryPath(p);
   }
+
+  // Relaxed pass: if strict routing still found nothing, retry the main candidates
+  // without the collinear-overlap rejection so edges don't silently pile on top of each other.
+  if (!bestPath) {
+    bestScore = Infinity;
+    if (srcH && tgtH) {
+      const lanes = candidateLanes((out.x + inn.x) / 2, routeOffset, out.x - inn.x);
+      for (const laneX of lanes) {
+        tryPathRelaxed([src, out, { x: laneX, y: out.y }, { x: laneX, y: inn.y }, inn, tgt]);
+      }
+    } else if (srcV && tgtV) {
+      const lanes = candidateLanes((out.y + inn.y) / 2, routeOffset, out.y - inn.y);
+      for (const laneY of lanes) {
+        tryPathRelaxed([src, out, { x: out.x, y: laneY }, { x: inn.x, y: laneY }, inn, tgt]);
+      }
+    } else {
+      tryPathRelaxed([src, out, { x: out.x, y: inn.y }, inn, tgt]);
+      tryPathRelaxed([src, out, { x: inn.x, y: out.y }, inn, tgt]);
+    }
+  }
+
   if (!bestPath) {
     bestPath = simplify([src, out, { x: out.x, y: inn.y }, inn, tgt]);
   }

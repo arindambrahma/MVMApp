@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 function MenuBar({
-  onLoadExample, onPreAnalysis, onExport, onImport, onClear, onRunAnalysis,
+  onLoadExample, onPreAnalysis, onExport, onExportDiagram, onImport, onClear, onRunAnalysis,
   onOpenModel, onOpenSensitivity, onOpenReporting,
   analysisReady, analysisLoading, analysisProgress, analysisBlocked,
 }) {
@@ -51,6 +51,7 @@ function MenuBar({
             { label: 'Load Example', onClick: onLoadExample },
             { label: 'Import JSON...', onClick: () => fileRef.current?.click() },
             { label: 'Export JSON...', onClick: onExport },
+            { label: 'Export Diagram Image...', onClick: onExportDiagram },
           ],
         },
         {
@@ -117,6 +118,7 @@ function MenuBar({
   ]), [
     onLoadExample,
     onExport,
+    onExportDiagram,
     onPreAnalysis,
     onOpenModel,
     onOpenSensitivity,
