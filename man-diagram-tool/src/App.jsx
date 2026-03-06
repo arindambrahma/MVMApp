@@ -159,17 +159,17 @@ function App() {
   }, [clear]);
 
   // Capture a chart from an analysis module and queue it for the report.
-  // label = exportName from the chart component, dataUrl = svg data URL
-  const handleAddChartToReport = useCallback((label, dataUrl) => {
+  // label = exportName, dataUrl = svg data URL, tables = [{caption, headers, rows}]
+  const handleAddChartToReport = useCallback((label, dataUrl, tables = []) => {
     setReportCharts(prev => {
       const existing = prev.findIndex(c => c.label === label);
       if (existing >= 0) {
         // Update in-place so the position is preserved
         const next = [...prev];
-        next[existing] = { ...next[existing], dataUrl };
+        next[existing] = { ...next[existing], dataUrl, tables };
         return next;
       }
-      return [...prev, { id: `chart_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, label, dataUrl }];
+      return [...prev, { id: `chart_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, label, dataUrl, tables }];
     });
   }, []);
 

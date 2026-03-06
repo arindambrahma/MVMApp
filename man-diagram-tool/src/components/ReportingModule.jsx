@@ -172,7 +172,11 @@ function ReportingModule({
     if (includePlot && analysisResult?.plot) payload.plot_base64_png = analysisResult.plot;
     const includedCharts = reportCharts.filter(c => chartToggles[c.id] ?? true);
     if (includedCharts.length) {
-      payload.analysis_charts = includedCharts.map(c => ({ label: c.label, data_url: c.dataUrl }));
+      payload.analysis_charts = includedCharts.map(c => ({
+        label: c.label,
+        data_url: c.dataUrl,
+        tables: c.tables || [],
+      }));
     }
     return payload;
   }, [
@@ -265,7 +269,11 @@ function ReportingModule({
       : '';
     const chartsHtml = reportCharts
       .filter(c => chartToggles[c.id] ?? true)
-      .map(c => `<h3>${esc(c.label)}</h3><img alt="${esc(c.label)}" src="${c.dataUrl}" style="max-width:100%;border:1px solid #ddd;border-radius:8px;" />`)
+      .map(c => [
+        `<h3>${esc(c.label)}</h3>`,
+        `<img alt="${esc(c.label)}" src="${c.dataUrl}" style="max-width:100%;border:1px solid #ddd;border-radius:8px;" />`,
+        ...(c.tables || []).map(t => tableHtml(t.caption, t.headers, t.rows)),
+      ].join(''))
       .join('');
     return `
 <!doctype html>
@@ -478,6 +486,14 @@ function ReportingModule({
           <div key={c.id} style={{ marginTop: 10, border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', padding: 10 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 6 }}>{c.label}</div>
             <img alt={c.label} src={c.dataUrl} style={{ maxWidth: '100%', border: '1px solid #E2E8F0', borderRadius: 6 }} />
+            {(c.tables || []).map((t, ti) => (
+              <ReportTable
+                key={ti}
+                title={t.caption}
+                columns={t.headers.map((h, i) => ({ key: String(i), label: h, align: i === 0 ? 'left' : 'right' }))}
+                rows={t.rows.map(r => Object.fromEntries(r.map((v, i) => [String(i), v])))}
+              />
+            ))}
           </div>
         ))}
       </div>
