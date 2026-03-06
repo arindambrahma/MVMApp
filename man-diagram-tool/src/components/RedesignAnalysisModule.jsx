@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { runAnalysis } from '../utils/api';
 import { sanitize } from '../utils/helpers';
 
@@ -98,7 +98,9 @@ function BubbleMVMPlot({
   axisFontSize = 10,
   xDomain = null,
   yDomain = null,
+  exportName = 'redesign_plot',
 }) {
+  const svgRef = useRef(null);
   const all = [...baselinePoints, ...overlayPoints];
   if (!all.length) {
     return <div style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>No plot data.</div>;
@@ -154,7 +156,7 @@ function BubbleMVMPlot({
 
   return (
     <div style={{ marginTop: 8, border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', padding: 8, width: `${width}px`, maxWidth: '100%', boxSizing: 'border-box' }}>
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
+      <svg ref={svgRef} width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
         <defs>
           <marker id="redesign-arrowhead" markerWidth="6" markerHeight="6" refX="5.2" refY="3" orient="auto">
             <path d="M0,0 L6,3 L0,6 z" fill="#94A3B8" />
@@ -793,6 +795,7 @@ function RedesignAnalysisModule({
               axisFontSize={fontSize}
               xDomain={null}
               yDomain={null}
+              exportName="redesign_baseline_plot"
             />
             <MatrixTable
               title="Impact Matrix (Baseline)"
@@ -827,6 +830,7 @@ function RedesignAnalysisModule({
                 axisFontSize={fontSize}
                 xDomain={lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
                 yDomain={lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
+                exportName="redesign_baseline_plot"
               />
               <MatrixTable
                 title="Impact Matrix (Baseline)"
@@ -859,6 +863,7 @@ function RedesignAnalysisModule({
                 axisFontSize={fontSize}
                 xDomain={lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
                 yDomain={lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
+                exportName="redesign_recalculated_plot"
               />
               <MatrixTable
                 title="Impact Matrix (Recalculated)"

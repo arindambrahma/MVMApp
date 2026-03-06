@@ -8,6 +8,7 @@ import PropertyPanel from './components/PropertyPanel';
 import MarginValuePlot from './components/MarginValuePlot';
 import SensitivityStudyModule from './components/SensitivityStudyModule';
 import RedesignAnalysisModule from './components/RedesignAnalysisModule';
+import ReportingModule from './components/ReportingModule';
 import ExportModal from './components/ExportModal';
 import PreAnalysisModal from './components/PreAnalysisModal';
 import { importJSON } from './utils/jsonSerializer';
@@ -204,6 +205,7 @@ function App() {
         const next = [...prev];
         if (!next.includes('sensitivity')) next.push('sensitivity');
         if (!next.includes('redesign')) next.push('redesign');
+        if (!next.includes('reporting')) next.push('reporting');
         return next;
       });
     } catch (e) {
@@ -230,9 +232,9 @@ function App() {
   }, []);
 
   const openWorkspaceTab = useCallback((tabId) => {
-    if (tabId !== 'sensitivity' && tabId !== 'redesign') return;
+    if (tabId !== 'sensitivity' && tabId !== 'redesign' && tabId !== 'reporting') return;
     if (!analysisResult) {
-      setAnalysisError('Run analysis first to open Sensitivity Study.');
+      setAnalysisError('Run analysis first to open analysis modules.');
       return;
     }
     setWorkspaceTabs((prev) => (prev.includes(tabId) ? prev : [...prev, tabId]));
@@ -253,6 +255,7 @@ function App() {
   const tabLabel = useCallback((tabId) => {
     if (tabId === 'model') return 'Model';
     if (tabId === 'redesign') return 'Redesign';
+    if (tabId === 'reporting') return 'Reporting';
     return 'Sensitivity';
   }, []);
 
@@ -301,6 +304,7 @@ function App() {
         onRunAnalysis={handleRunAnalysis}
         onOpenModel={() => setActiveTab('model')}
         onOpenSensitivity={() => openWorkspaceTab('sensitivity')}
+        onOpenReporting={() => openWorkspaceTab('reporting')}
         analysisReady={Boolean(analysisResult)}
         analysisLoading={analysisLoading}
         analysisProgress={analysisProgress}
@@ -416,9 +420,19 @@ function App() {
             appliedWeights={effectiveWeights}
           />
         </div>
-      ) : (
+      ) : activeTab === 'redesign' ? (
         <div className="analysis-workspace">
           <RedesignAnalysisModule
+            analysisResult={analysisResult}
+            analysisError={analysisError}
+            nodes={state.nodes}
+            edges={state.edges}
+            appliedWeights={effectiveWeights}
+          />
+        </div>
+      ) : (
+        <div className="analysis-workspace">
+          <ReportingModule
             analysisResult={analysisResult}
             analysisError={analysisError}
             nodes={state.nodes}

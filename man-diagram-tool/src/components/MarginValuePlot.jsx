@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { sanitize } from '../utils/helpers';
+import ImageExportDialog from './ImageExportDialog';
 
 const TABS = [
   { id: 'plot',          label: 'Plot' },
@@ -69,6 +70,7 @@ function MatrixTable({ rowKeys, colKeys, data, rowLabel, emptyMsg, colorMode = '
 
 function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes = [] }) {
   const [activeTab, setActiveTab] = useState('plot');
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   const containerStyle = {
     borderTop: '1px solid #E2E8F0',
@@ -101,6 +103,7 @@ function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes 
   }
 
   const { result, plot } = analysisResult;
+  const plotSrc = plot ? `data:image/png;base64,${plot}` : '';
   const marginKeys = Object.keys(result.excess || {});
   const perfKeys   = Object.keys(result.impact_matrix?.[marginKeys[0]] || {});
   const inputKeys  = Object.keys(result.absorption_matrix?.[marginKeys[0]] || {});
@@ -151,11 +154,38 @@ function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes 
               {' '}| Li: {Object.keys(appliedWeights?.inputWeights || {}).length}
             </div>
             {plot && (
-              <img
-                src={`data:image/png;base64,${plot}`}
-                alt="Margin Value Plot"
-                style={{ width: '100%', borderRadius: 6, border: '1px solid #E2E8F0', marginBottom: 10 }}
-              />
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowExportDialog(true)}
+                    style={{
+                      border: '1px solid #93C5FD',
+                      borderRadius: 6,
+                      background: '#EFF6FF',
+                      color: '#1E3A8A',
+                      padding: '5px 10px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Export Graph
+                  </button>
+                </div>
+                <img
+                  src={plotSrc}
+                  alt="Margin Value Plot"
+                  style={{ width: '100%', borderRadius: 6, border: '1px solid #E2E8F0', marginBottom: 10 }}
+                />
+                <ImageExportDialog
+                  open={showExportDialog}
+                  onClose={() => setShowExportDialog(false)}
+                  imageSrc={plotSrc}
+                  plotData={result}
+                  defaultTitle="Margin Value Plot"
+                  defaultName="margin_value_plot"
+                />
+              </>
             )}
             <div style={{ fontSize: 10, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>
               Results Summary

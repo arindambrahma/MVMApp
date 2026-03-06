@@ -605,7 +605,7 @@ To recap, the objective of Margin Value Analysis is to map local excess margins 
 The procedure outlined in Section \ref{localmargin} was followed for the connecting rod network represented in the app model (\texttt{man\_diagram\_conrod.json}). The five margin nodes correspond to: $E_1$ I-section thickness, $E_2$ big-end diameter, $E_3$ small-end diameter, $E_4$ bolt size and $E_5$ cap thickness. The resulting local excess values are:
 
 \begin{equation}\label{eq:excesscalc} Excess = \begin{bmatrix}
-30.399$ at $E_1$ \\
+20.454$ at $E_1$ \\
 2.604$ at $E_2$\\
 3.751$ at $E_3$ \\
 16.490$ at $E_4$ \\ 
@@ -625,11 +625,11 @@ The second metric assesses adverse impact of each margin on the selected perform
 Using the procedure outlined in Section \ref{forwardpass}, the impact matrix for the five margins was:
 
 \begin{equation}\label{impactcalc} Impact= \begin{bmatrix}
-13.877 & 13.877 \\
-2.265 & 2.265 \\
-0.337 & 0.337 \\
-2.963 & 2.963 \\
-0.022 & 0.022 \\
+8.743 & 8.743 \\
+2.365 & 2.365 \\
+0.348 & 0.348 \\
+3.119 & 3.119 \\
+0.562 & 0.562 \\
 \end{bmatrix} \times 10^{-2} \end{equation}
 
 Rows of Equation \ref{impactcalc} correspond to $E_1$--$E_5$ and columns correspond to $P_1$ and $P_2$. In this case, $E_1$ has the strongest adverse performance effect, while $E_5$ has a very small adverse effect.
@@ -653,7 +653,7 @@ D_{P_{max}} = 0.0528\\
 The corresponding absorption matrix was:
 
 \begin{equation} \label{eq:absorptionout} Absorption_{im} = \begin{bmatrix}
-0.000 & 0.4358 \\
+0.000 & 0.4386 \\
 0.000 & 0.4936 \\
 0.000 & 0.4936 \\
 0.6824 & 0.000 \\
@@ -666,11 +666,11 @@ Rows in Equation \ref{eq:absorptionout} correspond to margins $E_1$--$E_5$ and c
 
 With equal weighting of both performance parameters ($W_1=W_2=1$), the weighted impact values were:
 \begin{equation} \label{eq:impactmout} Impact_{m}= \begin{bmatrix}
-13.877\\
-2.265\\
-0.337\\
-2.963\\
-0.022\\
+8.743\\
+2.365\\
+0.348\\
+3.119\\
+0.562\\
 \end{bmatrix} \times 10^{-2} \end{equation}
 
 With equal weighting of both input parameters ($L_N=L_{P_{max}}=1$), weighted absorption values were:
@@ -697,7 +697,7 @@ Utilisation_{im}= 1 - \frac{decided_{m} - thresholdnew_{im}}{decided_{m} - thres
 For this case, the utilisation matrix was:
 \begin{equation} \label{eq:utimatrixout} 
 \begin{aligned} Utilisation_{im} &=  \begin{bmatrix}
-0.000 & 0.0756 \\
+0.000 & 0.1131 \\
 0.000 & 1.0000 \\
 0.000 & 0.6942 \\
 1.0000 & 0.000 \\

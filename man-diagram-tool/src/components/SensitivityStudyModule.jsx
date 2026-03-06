@@ -112,7 +112,10 @@ function MarginLineChart({
   axisFontSize = 10,
   xDomain = null,
   yDomain = null,
+  exportName = 'sensitivity_chart',
 }) {
+  const svgRef = useRef(null);
+
   if (!series?.length) {
     return (
       <div style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic', marginTop: 6 }}>
@@ -163,7 +166,7 @@ function MarginLineChart({
 
   return (
     <div style={{ marginTop: 8, border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', padding: 8, width: `${viewWidth}px`, maxWidth: '100%', boxSizing: 'border-box' }}>
-      <svg width={viewWidth} height={height} viewBox={`0 0 ${viewWidth} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
+      <svg ref={svgRef} width={viewWidth} height={height} viewBox={`0 0 ${viewWidth} ${height}`} preserveAspectRatio="none" style={{ display: 'block' }}>
         {tickVals.map((tv, i) => {
           const yy = yScale(tv);
           return (
@@ -994,6 +997,7 @@ function SensitivityStudyModule({
         width={chartWidthForRender}
         xDomain={lockXAxisScale ? (inputComparisonDomain?.x || null) : null}
         yDomain={lockYAxisScale ? (inputComparisonDomain?.y || null) : null}
+        exportName={`input_variation_${String(title || 'run').toLowerCase().replace(/[^a-z0-9]+/g, '_')}`}
       />
         {rows.length ? (
           <div style={{ marginTop: 12, border: '1px solid #E2E8F0', borderRadius: 6, background: '#FFFFFF', overflow: 'hidden' }}>
@@ -1084,6 +1088,7 @@ function SensitivityStudyModule({
         width={chartWidthForRender}
         xDomain={lockXAxisScale ? (marginComparisonDomain?.x || null) : null}
         yDomain={lockYAxisScale ? (marginComparisonDomain?.y || null) : null}
+        exportName={`margin_effect_${String(title || 'run').toLowerCase().replace(/[^a-z0-9]+/g, '_')}`}
       />
       {rows.length ? (
         <div style={{ marginTop: 12, border: '1px solid #E2E8F0', borderRadius: 6, background: '#FFFFFF', overflow: 'hidden' }}>

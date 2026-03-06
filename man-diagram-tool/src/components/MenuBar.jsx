@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 function MenuBar({
   onLoadExample, onPreAnalysis, onExport, onImport, onClear, onRunAnalysis,
-  onOpenModel, onOpenSensitivity,
+  onOpenModel, onOpenSensitivity, onOpenReporting,
   analysisReady, analysisLoading, analysisProgress, analysisBlocked,
 }) {
   const [openMenu, setOpenMenu] = useState(null);
@@ -80,6 +80,12 @@ function MenuBar({
               disabled: !analysisReady,
               title: analysisReady ? '' : 'Run analysis first',
             },
+            {
+              label: 'Open Reporting Tab',
+              onClick: onOpenReporting,
+              disabled: !analysisReady,
+              title: analysisReady ? '' : 'Run analysis first',
+            },
           ],
         },
       ],
@@ -98,6 +104,12 @@ function MenuBar({
               disabled: !analysisReady,
               title: analysisReady ? '' : 'Run analysis first',
             },
+            {
+              label: 'Reporting Tab',
+              onClick: onOpenReporting,
+              disabled: !analysisReady,
+              title: analysisReady ? '' : 'Run analysis first',
+            },
           ],
         },
       ],
@@ -108,6 +120,7 @@ function MenuBar({
     onPreAnalysis,
     onOpenModel,
     onOpenSensitivity,
+    onOpenReporting,
     onClear,
     analysisReady,
   ]);
