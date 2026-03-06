@@ -99,6 +99,7 @@ function BubbleMVMPlot({
   xDomain = null,
   yDomain = null,
   exportName = 'redesign_plot',
+  onAddToReport = null,
 }) {
   const svgRef = useRef(null);
   const all = [...baselinePoints, ...overlayPoints];
@@ -245,6 +246,23 @@ function BubbleMVMPlot({
           Redesigned points
         </div>
       </div>
+      {onAddToReport && (
+        <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={() => {
+              const svg = svgRef.current;
+              if (!svg) return;
+              const svgStr = new XMLSerializer().serializeToString(svg);
+              const b64 = btoa(unescape(encodeURIComponent(svgStr)));
+              onAddToReport(exportName, 'data:image/svg+xml;base64,' + b64);
+            }}
+            style={{ border: '1px solid #A7C7FA', background: '#EFF6FF', color: '#1E3A8A', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+          >
+            📋 Add to report
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -255,6 +273,7 @@ function RedesignAnalysisModule({
   nodes = [],
   edges = [],
   appliedWeights = {},
+  onAddChartToReport = null,
 }) {
   const containerStyle = { flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' };
   const [selectedMargin, setSelectedMargin] = useState('');
@@ -796,6 +815,7 @@ function RedesignAnalysisModule({
               xDomain={null}
               yDomain={null}
               exportName="redesign_baseline_plot"
+              onAddToReport={onAddChartToReport}
             />
             <MatrixTable
               title="Impact Matrix (Baseline)"
@@ -831,6 +851,7 @@ function RedesignAnalysisModule({
                 xDomain={lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
                 yDomain={lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
                 exportName="redesign_baseline_plot"
+                onAddToReport={onAddChartToReport}
               />
               <MatrixTable
                 title="Impact Matrix (Baseline)"
@@ -864,6 +885,7 @@ function RedesignAnalysisModule({
                 xDomain={lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
                 yDomain={lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
                 exportName="redesign_recalculated_plot"
+                onAddToReport={onAddChartToReport}
               />
               <MatrixTable
                 title="Impact Matrix (Recalculated)"

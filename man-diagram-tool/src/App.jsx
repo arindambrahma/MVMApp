@@ -44,6 +44,7 @@ function App() {
   const [analysisProgress, setAnalysisProgress] = useState(null);
   const [analysisError, setAnalysisError] = useState(null);
   const [analysisWeights, setAnalysisWeights] = useState({ perf: {}, input: {} });
+  const [reportCharts, setReportCharts] = useState([]);
   const [backendVersion, setBackendVersion] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
   const [workspaceTabs, setWorkspaceTabs] = useState(['model']);
@@ -114,6 +115,7 @@ function App() {
       setFitViewRequest((v) => v + 1);
       setAnalysisResult(null);
       setAnalysisError(null);
+      setReportCharts([]);
       setWorkspaceTabs(['model']);
       setActiveTab('model');
       setSelectedClusterId(null);
@@ -134,6 +136,7 @@ function App() {
       setFitViewRequest((v) => v + 1);
       setAnalysisResult(null);
       setAnalysisError(null);
+      setReportCharts([]);
       setWorkspaceTabs(['model']);
       setActiveTab('model');
       setSelectedClusterId(null);
@@ -148,11 +151,27 @@ function App() {
     clear();
     setAnalysisResult(null);
     setAnalysisError(null);
+    setReportCharts([]);
     setWorkspaceTabs(['model']);
     setActiveTab('model');
     setSelectedClusterId(null);
     setSelectedEdgeId(null);
   }, [clear]);
+
+  // Capture a chart from an analysis module and queue it for the report.
+  // label = exportName from the chart component, dataUrl = svg data URL
+  const handleAddChartToReport = useCallback((label, dataUrl) => {
+    setReportCharts(prev => {
+      const existing = prev.findIndex(c => c.label === label);
+      if (existing >= 0) {
+        // Update in-place so the position is preserved
+        const next = [...prev];
+        next[existing] = { ...next[existing], dataUrl };
+        return next;
+      }
+      return [...prev, { id: `chart_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, label, dataUrl }];
+    });
+  }, []);
 
   const handleAutoArrange = useCallback(() => {
     const arranged = autoArrangeNodes(state.nodes, state.edges, routePreference);
@@ -444,6 +463,7 @@ function App() {
             nodes={state.nodes}
             edges={state.edges}
             appliedWeights={effectiveWeights}
+            onAddChartToReport={handleAddChartToReport}
           />
         </div>
       ) : activeTab === 'redesign' ? (
@@ -454,6 +474,7 @@ function App() {
             nodes={state.nodes}
             edges={state.edges}
             appliedWeights={effectiveWeights}
+            onAddChartToReport={handleAddChartToReport}
           />
         </div>
       ) : (
@@ -464,6 +485,7 @@ function App() {
             nodes={state.nodes}
             edges={state.edges}
             appliedWeights={effectiveWeights}
+            reportCharts={reportCharts}
           />
         </div>
       )}

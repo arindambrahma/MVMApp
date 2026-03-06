@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 function downloadBlob(filename, mimeType, text) {
   const blob = new Blob([text], { type: mimeType });
@@ -82,6 +82,7 @@ function ReportingModule({
   appliedWeights = {},
   nodes = [],
   edges = [],
+  reportCharts = [],
 }) {
   const [title, setTitle] = useState('Margin Value Analysis Report');
   const [author, setAuthor] = useState('');
@@ -95,6 +96,18 @@ function ReportingModule({
   const [includeAbsorptionMatrix, setIncludeAbsorptionMatrix] = useState(true);
   const [includeUtilisationMatrix, setIncludeUtilisationMatrix] = useState(false);
   const [includePlot, setIncludePlot] = useState(true);
+  // Per-chart inclusion toggles: { [id]: boolean }. New charts default to true (included).
+  const [chartToggles, setChartToggles] = useState({});
+  useEffect(() => {
+    setChartToggles(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const c of reportCharts) {
+        if (!(c.id in next)) { next[c.id] = true; changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [reportCharts]);
 
   const nowIso = useMemo(() => new Date().toISOString(), []);
   const result = analysisResult?.result || {};
@@ -157,11 +170,16 @@ function ReportingModule({
     if (includeAbsorptionMatrix) payload.absorption_matrix = result.absorption_matrix || {};
     if (includeUtilisationMatrix) payload.utilisation_matrix = result.utilisation_matrix || {};
     if (includePlot && analysisResult?.plot) payload.plot_base64_png = analysisResult.plot;
+    const includedCharts = reportCharts.filter(c => chartToggles[c.id] ?? true);
+    if (includedCharts.length) {
+      payload.analysis_charts = includedCharts.map(c => ({ label: c.label, data_url: c.dataUrl }));
+    }
     return payload;
   }, [
     analysisResult,
     appliedWeights,
     author,
+    chartToggles,
     edges.length,
     includeAbsorptionMatrix,
     includeDeterioration,
@@ -173,6 +191,7 @@ function ReportingModule({
     includeWeighted,
     includeWeights,
     nodes.length,
+    reportCharts,
     result,
     title,
   ]);
@@ -244,6 +263,10 @@ function ReportingModule({
     const img = includePlot && analysisResult?.plot
       ? `<h3>Margin Value Plot</h3><img alt="MVM plot" src="data:image/png;base64,${analysisResult.plot}" style="max-width:100%;border:1px solid #ddd;border-radius:8px;" />`
       : '';
+    const chartsHtml = reportCharts
+      .filter(c => chartToggles[c.id] ?? true)
+      .map(c => `<h3>${esc(c.label)}</h3><img alt="${esc(c.label)}" src="${c.dataUrl}" style="max-width:100%;border:1px solid #ddd;border-radius:8px;" />`)
+      .join('');
     return `
 <!doctype html>
 <html><head><meta charset="utf-8" />
@@ -267,6 +290,7 @@ function ReportingModule({
   ${includeAbsorptionMatrix ? tableHtml('Absorption Matrix', ['Margin', 'Performance/Input', 'Value'], absorptionMatrixRows.map((r) => [r.margin, r.key, r.value])) : ''}
   ${includeUtilisationMatrix ? tableHtml('Utilisation Matrix', ['Margin', 'Performance/Input', 'Value'], utilisationMatrixRows.map((r) => [r.margin, r.key, r.value])) : ''}
   ${img}
+  ${chartsHtml}
 </body></html>`;
   };
 
@@ -344,6 +368,21 @@ function ReportingModule({
               <span>{label}</span>
             </label>
           ))}
+          {reportCharts.length > 0 && (
+            <>
+              <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 6, marginBottom: 3, fontStyle: 'italic' }}>Analysis charts</div>
+              {reportCharts.map(c => (
+                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', marginBottom: 5 }}>
+                  <input
+                    type="checkbox"
+                    checked={chartToggles[c.id] ?? true}
+                    onChange={(e) => setChartToggles(prev => ({ ...prev, [c.id]: e.target.checked }))}
+                  />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }} title={c.label}>{c.label}</span>
+                </label>
+              ))}
+            </>
+          )}
         </div>
 
         <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
@@ -435,6 +474,12 @@ function ReportingModule({
             <img alt="MVM Plot" src={`data:image/png;base64,${analysisResult.plot}`} style={{ maxWidth: '100%', border: '1px solid #E2E8F0', borderRadius: 6 }} />
           </div>
         )}
+        {reportCharts.filter(c => chartToggles[c.id] ?? true).map(c => (
+          <div key={c.id} style={{ marginTop: 10, border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', padding: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#475569', marginBottom: 6 }}>{c.label}</div>
+            <img alt={c.label} src={c.dataUrl} style={{ maxWidth: '100%', border: '1px solid #E2E8F0', borderRadius: 6 }} />
+          </div>
+        ))}
       </div>
     </div>
   );
