@@ -1,0 +1,1 @@
+export const FRONTEND_VERSION = '2026-03-03';

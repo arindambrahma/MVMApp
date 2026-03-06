@@ -1,0 +1,291 @@
+{
+  "nodes": [
+    {
+      "id": "node_1772488597634_2",
+      "type": "input",
+      "x": 308,
+      "y": 76,
+      "label": "A",
+      "description": "",
+      "unit": "",
+      "value": "12",
+      "equation": "",
+      "decidedValue": "",
+      "thresholdFormula": "",
+      "isOfInterest": true,
+      "stepNumber": null,
+      "autoLabel": null
+    },
+    {
+      "id": "node_1772488601246_4",
+      "type": "decision",
+      "x": 232,
+      "y": 373,
+      "label": "D2",
+      "description": "",
+      "unit": "",
+      "value": "",
+      "equation": "",
+      "decidedValue": "70",
+      "thresholdFormula": "",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "D2"
+    },
+    {
+      "id": "node_1772488604481_6",
+      "type": "input",
+      "x": 237,
+      "y": 65,
+      "label": "B",
+      "description": "",
+      "unit": "",
+      "value": "5",
+      "equation": "",
+      "decidedValue": "",
+      "thresholdFormula": "",
+      "isOfInterest": true,
+      "stepNumber": null,
+      "autoLabel": null
+    },
+    {
+      "id": "node_1772488627207_8",
+      "type": "calc",
+      "x": 281,
+      "y": 244,
+      "label": "F1",
+      "description": "",
+      "unit": "",
+      "value": "",
+      "equation": "A*B",
+      "decidedValue": "",
+      "thresholdFormula": "",
+      "isOfInterest": false,
+      "stepNumber": 1,
+      "autoLabel": "F1"
+    },
+    {
+      "id": "node_1772488638498_10",
+      "type": "margin",
+      "x": 328,
+      "y": 439.5,
+      "label": "E1",
+      "description": "",
+      "unit": "",
+      "value": "",
+      "equation": "",
+      "decidedValue": "",
+      "thresholdFormula": "",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "E1"
+    },
+    {
+      "id": "node_1772488666675_12",
+      "type": "performance",
+      "x": 379,
+      "y": 1024,
+      "label": "Performance Parameter",
+      "description": "",
+      "unit": "",
+      "value": "",
+      "equation": "F3+F4",
+      "decidedValue": "",
+      "thresholdFormula": "",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": null
+    },
+    {
+      "id": "node_1772495221797_2",
+      "type": "calc",
+      "x": 328,
+      "y": 661.5,
+      "label": "F4",
+      "description": "",
+      "unit": "",
+      "value": "",
+      "equation": "E1",
+      "decidedValue": "",
+      "isOfInterest": false,
+      "stepNumber": 4,
+      "autoLabel": "F4"
+    },
+    {
+      "id": "node_1772495273714_4",
+      "type": "input",
+      "x": 151,
+      "y": 70.5,
+      "label": "C",
+      "description": "",
+      "unit": "",
+      "value": "2",
+      "equation": "",
+      "decidedValue": "",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": null
+    },
+    {
+      "id": "node_1772495276844_6",
+      "type": "input",
+      "x": 86,
+      "y": 74.5,
+      "label": "D",
+      "description": "",
+      "unit": "",
+      "value": "7",
+      "equation": "",
+      "decidedValue": "",
+      "isOfInterest": true,
+      "stepNumber": null,
+      "autoLabel": null
+    },
+    {
+      "id": "node_1772495304224_8",
+      "type": "calc",
+      "x": 117,
+      "y": 501.5,
+      "label": "F2",
+      "description": "",
+      "unit": "",
+      "value": "",
+      "equation": "D*C",
+      "decidedValue": "",
+      "isOfInterest": false,
+      "stepNumber": 2,
+      "autoLabel": "F2"
+    },
+    {
+      "id": "node_1772495336145_10",
+      "type": "decision",
+      "x": 58,
+      "y": 666,
+      "label": "D1",
+      "description": "",
+      "unit": "",
+      "value": "",
+      "equation": "",
+      "decidedValue": "14",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "D1"
+    },
+    {
+      "id": "node_1772495354455_14",
+      "type": "calc",
+      "x": 266,
+      "y": 909.5,
+      "label": "F3",
+      "description": "",
+      "unit": "",
+      "value": "",
+      "equation": "E2",
+      "decidedValue": "",
+      "isOfInterest": false,
+      "stepNumber": 3,
+      "autoLabel": "F3"
+    },
+    {
+      "id": "node_1772495432432_16",
+      "type": "margin",
+      "x": 174,
+      "y": 743.5,
+      "label": "E2",
+      "description": "",
+      "unit": "",
+      "value": "",
+      "equation": "",
+      "decidedValue": "",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "E2"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_1772488632917_ssrl",
+      "from": "node_1772488597634_2",
+      "to": "node_1772488627207_8",
+      "edgeType": "plain"
+    },
+    {
+      "id": "edge_1772488634247_6oap",
+      "from": "node_1772488604481_6",
+      "to": "node_1772488627207_8",
+      "edgeType": "plain"
+    },
+    {
+      "id": "edge_1772488642365_1dzv",
+      "from": "node_1772488601246_4",
+      "to": "node_1772488638498_10",
+      "edgeType": "decided"
+    },
+    {
+      "id": "edge_1772488644054_5tjr",
+      "from": "node_1772488627207_8",
+      "to": "node_1772488638498_10",
+      "edgeType": "threshold"
+    },
+    {
+      "id": "edge_1772488646135_g0ka",
+      "from": "node_1772488627207_8",
+      "to": "node_1772488601246_4",
+      "edgeType": "plain"
+    },
+    {
+      "id": "edge_1772495224117_uj92",
+      "from": "node_1772488638498_10",
+      "to": "node_1772495221797_2",
+      "edgeType": "plain"
+    },
+    {
+      "id": "edge_1772495225474_qqh1",
+      "from": "node_1772495221797_2",
+      "to": "node_1772488666675_12",
+      "edgeType": "plain"
+    },
+    {
+      "id": "edge_1772495323581_bubs",
+      "from": "node_1772495276844_6",
+      "to": "node_1772495304224_8",
+      "edgeType": "plain"
+    },
+    {
+      "id": "edge_1772495324885_fgvd",
+      "from": "node_1772495273714_4",
+      "to": "node_1772495304224_8",
+      "edgeType": "plain"
+    },
+    {
+      "id": "edge_1772495341933_h49v",
+      "from": "node_1772495304224_8",
+      "to": "node_1772495336145_10",
+      "edgeType": "plain"
+    },
+    {
+      "id": "edge_1772495375580_fioc",
+      "from": "node_1772495354455_14",
+      "to": "node_1772488666675_12",
+      "edgeType": "plain"
+    },
+    {
+      "id": "edge_1772495438240_0ggt",
+      "from": "node_1772495304224_8",
+      "to": "node_1772495432432_16",
+      "edgeType": "threshold"
+    },
+    {
+      "id": "edge_1772495441770_epci",
+      "from": "node_1772495336145_10",
+      "to": "node_1772495432432_16",
+      "edgeType": "decided"
+    },
+    {
+      "id": "edge_1772495445038_r0zo",
+      "from": "node_1772495432432_16",
+      "to": "node_1772495354455_14",
+      "edgeType": "plain"
+    }
+  ]
+}

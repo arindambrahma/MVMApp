@@ -1,0 +1,239 @@
+.app-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.menu-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #1E293B;
+  border-bottom: 1px solid #334155;
+  color: #e2e8f0;
+  z-index: 20;
+}
+
+.menu-brand {
+  font-family: 'Georgia', serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-right: 8px;
+}
+
+.menu-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.menu-root {
+  position: relative;
+  padding-bottom: 6px;
+  margin-bottom: -6px;
+}
+
+.menu-button {
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #e2e8f0;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.menu-button:hover,
+.menu-button.active {
+  background: #334155;
+}
+
+.menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 220px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
+}
+
+.menu-section + .menu-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #E2E8F0;
+}
+
+.menu-section-label {
+  margin-bottom: 4px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.menu-item {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #F8FAFC;
+  color: #1e293b;
+  text-align: left;
+  padding: 7px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.menu-item:not(:disabled):hover,
+.menu-item:not(:disabled):focus-visible {
+  background: #E0E7FF;
+  border-color: #93C5FD;
+  color: #1e293b;
+  outline: none;
+}
+
+.menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.run-analysis-btn {
+  border: none;
+  border-radius: 6px;
+  background: #059669;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.run-analysis-btn:disabled {
+  background: #475569;
+  cursor: not-allowed;
+}
+
+.workspace-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 0 14px 4px;
+  background: #F8FAFC;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.workspace-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #CBD5E1;
+  border-bottom: 2px solid transparent;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background: #EFF2FF;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 9px 18px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.workspace-tab-btn:hover {
+  background: #E0E7FF;
+  border-color: #93C5FD;
+}
+
+.workspace-tab-btn.active {
+  background: #E0E7FF;
+  border-color: #93C5FD;
+  border-bottom-color: #E0E7FF;
+  color: #0F172A;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.12);
+  position: relative;
+  top: 1px;
+  z-index: 3;
+}
+
+.workspace-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 12px;
+  color: #64748B;
+}
+
+.workspace-tab-close:hover {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.study-type-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  margin-bottom: 10px;
+}
+
+.study-type-tab {
+  flex: 1;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  text-align: center;
+}
+
+.study-type-tab:not(.active):hover {
+  border-color: #93C5FD;
+  background: #EFF6FF;
+}
+
+.study-type-tab.active {
+  border-color: #93C5FD;
+  background: #E0E7FF;
+  color: #0F172A;
+  box-shadow: none;
+}
+
+.app-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.right-panel {
+  width: 320px;
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #E2E8F0;
+  overflow: hidden;
+}
+
+.analysis-workspace {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}

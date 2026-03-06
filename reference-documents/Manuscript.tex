@@ -1,0 +1,1046 @@
+%%%%%%%%%%%%%%%%%%%%%%% file template.tex %%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% This is a general template file for the LaTeX package SVJour3
+% for Springer journals.          Springer Heidelberg 2010/09/16
+%\subsection{Cybernetics}
+% Copy it to a new file with a new name and use it as the basis
+% for your article. Delete % signs as needed.
+%
+% This template includes a few options for different layouts and
+% content for various journals. Please consult a previous issue of
+% your journal as needed.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% First comes an example EPS file -- just ignore it and
+% proceed on the \documentclass line
+% your LaTeX will extract the file if required
+\begin{filecontents*}{example.eps}
+%!PS-Adobe-3.0 EPSF-3.0
+%%BoundingBox: 19 19 221 221
+%%CreationDate: Mon Sep 29 1997
+%%Creator: programmed by hand (JK)
+%%EndComments
+gsave
+newpath
+  20 20 moveto
+  20 220 lineto
+  220 220 lineto
+  220 20 lineto
+closepath
+2 setlinewidth
+
+gsave
+  .4 setgray fill
+grestore
+stroke
+grestore
+\end{filecontents*}
+%
+\RequirePackage{fix-cm}
+%
+%\documentclass{svjour3}                     % onecolumn (standard format)
+%\documentclass[smallcondensed]{svjour3}     % onecolumn (ditto)
+%\documentclass[smallextended]{svjour3}       % onecolumn (second format)
+\documentclass[twocolumn]{svjour3}          % twocolumn
+%
+\smartqed  % flush right qed marks, e.g. at end of proof
+%
+\usepackage{graphicx}
+\usepackage{natbib}
+\usepackage{multirow}
+\usepackage{rotating}
+\usepackage{lscape}
+\usepackage{pdflscape}
+\usepackage[table]{xcolor} 
+\usepackage{pifont}
+\usepackage{longtable}
+\usepackage{endnotes}
+\usepackage{ctable}
+\usepackage{pifont}
+\usepackage{supertabular}
+\usepackage{multirow}
+
+
+
+
+\usepackage{soul}
+\usepackage{amsmath,amssymb}
+\usepackage{upgreek}
+\usepackage{mathtools}
+\usepackage[export]{adjustbox}
+
+\definecolor{lightgray}{gray}{0.9}
+
+%
+% \usepackage{mathptmx}      % use Times fonts if available on your TeX system
+%
+% insert here the call for the packages your document requires
+%\usepackage{latexsym}
+% etc.
+%
+% please place your own definitions here and don't use \def but
+% \newcommand{}{}
+
+\newcommand*\rot{\multicolumn{1}{R{90}{1em}}}% no optional argument here, please!
+\newcommand{\tick}{\ding{51}}
+\newcommand{\specialcell}[2][c]{%
+  \begin{tabular}[#1]{@{}c@{}}#2\end{tabular}}
+
+% Insert the name of "your journal" with
+\journalname{Research in Engineering Design}
+%
+\begin{document}
+
+\title{Margin value method for engineering design improvement}
+
+\author{Arindam Brahma         \and
+        David C. Wynn %etc.
+}
+
+\institute{Arindam Brahma \at
+              University of Auckland, Department of Mechanical Engineering, 20 Symonds Street, Auckland 1010, New Zealand\\
+              Tel.: +64-9-373-7999\\
+              %Fax: +123-45-678910\\
+              \email{abra248@aucklanduni.ac.nz}           %  \\
+%             \emph{Present address:} of F. Author  %  if needed
+           \and
+           David C. Wynn \at
+              University of Auckland, Department of Mechanical Engineering, 20 Symonds Street, Auckland 1010, New Zealand\\
+              %Tel.: +64-9-373-7999\\
+              %Fax: +123-45-678910\\
+              %\email{abra248@aucklanduni.ac.nz}           %  \\
+%             
+}
+
+\date{Received: date  / Accepted: date}
+
+
+\maketitle
+ 
+\begin{abstract}
+
+Margin occurs where a design is overspecified with respect to the minimum required. Margin may be desirable to mitigate risk and absorb future changes, but at the same time, may be undesirable if the overspecification deteriorates the design's performance. In this article, the Margin Value Method is introduced to analyse an engineering design, localise the excess margin, and quantify it considering change absorption potential in relation to design performance deterioration. The method provides guidance for improving a design by prioritising excess margin that provides relatively little advantage at high cost, and could therefore be eliminated to improve design performance. It shows how the value of excess margin depends on its localisation in the design parameter network, the importance of design performance parameters, and the importance of absorbing potential future changes. The method is applied to a belt conveyor design. This case indicates that the method is practicable, reveals implications, and suggests opportunities for further work.\\
+
+\keywords{Margin \and Excess \and Design change absorption \and Margin Value Method (MVM)}
+
+\end{abstract}
+\newpage
+
+
+\section{Introduction}
+\label{intro}
+
+Margin, which occurs where elements of an engineering design are overspecified with respect to minimum requirements, can help to mitigate the risks and uncertainties inherent to product development \citep{Tackett2014}. Such risks and uncertainties occur throughout the lifecycle of a product \citep{Eckert2013}, being associated with, for example, requirements \citep{Watson2016}, analysis models used during design \citep{Guenov2018}, manufacturing variability \citep{Zhu2000,Morse2018} and product operation \citep{gimenez2002}.  Margin can reduce the likelihood of a design change being necessary if a risk manifests, and can reduce the likelihood of a necessary change propagating and requiring extensive design rework.  But while margin could make a design more robust to changes and uncertainties, the overspecification also often entails design performance loss. In practice it can be difficult to discern where margin is located in a design and difficult to size it appropriately considering both desirable and undesirable impacts.  
+
+The present article contributes towards addressing this issue. The focus is set on excess margin created when a design incorporates off-the-shelf parts, platform parts or parts reused from a previous product generation. A systematic method is developed to localise and quantify the excess margin in such situations, yielding insight for improvement. The method can be applied to analyse existing designs or emerging designs in which the relationships among important design decisions and important design parameters can be modelled, and where the design is to be incrementally improved. It shows how excess margin generated when using off-the-shelf, platform or inherited parts might deteriorate performance, but might also help to absorb uncertainty and mitigate risk associated with potential future changes.
+
+
+\subsection{Research method}
+
+To develop and test the new approach, a combination of literature study and analysis of desk-based case examples was used. Literature review was undertaken and used to formulate research questions. Deliberately simple examples of a hydraulic circuit design and an electric winch design were used to develop a new method that addresses the identified gap. The new method was assessed by application to a conveyor design case. This led to further refinements and insights, and demonstrated that the method can yield insight in a realistic design context.
+
+\subsection{Overview of this article}
+The article proceeds as follows. In Section \ref{existingmodels}, a literature review summarises research insights into margin. The review shows that although margin has been investigated by numerous researchers, very few have considered the role of margin in design change absorption. The review also reveals that only certain kinds of margin, here termed excess margin, can help to prevent or absorb changes in practice. Building on these insights, Section \ref{mam} introduces the Margin Value Method to identify and localise the excess margin within an engineering design, and to differentiate margins that might be desirable to absorb potential changes from those that mainly deteriorate performance. The method thereby identifies and prioritises opportunities for engineering design improvement. It also shows that change absorption capability of margin depends not only on its specific characteristics, but also on its localisation in the design parameter network, on the relative importance of each design performance parameter, and on the relative importance of being able to absorb different changes. Section \ref{casestudy} assesses the method by application to a realistic example, leading to reflections and recommendations for further work in Section \ref{Discussion}, and to concluding remarks in Section \ref{conclusion}.
+
+
+\section{Literature Review} \label{existingmodels}
+
+We searched for research publications on margins in engineering design using Scopus and Google Scholar, using keywords including margin, excess, overdesign and contingency. The review sections of \cite{Eckert2017} and \cite{lebjioui2018} were also used as starting points for the search. Because this article focuses on the role of margin to prevent or absorb changes, research work on change propagation was also investigated to look for consideration of margin. Here, \cite{Ahmad2013}'s review of 23 models and the review paper by \cite{hamraz2013} were used as a starting points along with internet search for more recent publications. Bibliographies were also investigated to search for relevant work.
+
+In the next subsections, relevant research is discussed under the following themes: definitions of margin in engineering design; methods and models for sizing margin in design; margin in models of design change propagation; and practical challenges in managing margin. The gap addressed by this article is then pinpointed.
+
+\subsection{Definitions of margin in engineering design}\label{margindefinitions}
+
+Authors define margin in various ways and using various related terms such as contingency, excess and overdesign. Definitions indicate each researcher's perspective on the reason for margin and/or the type of design entity that margin is associated with. For example, \citet{Thunnissen2004b} relate margin to uncertainty when defining it as ``the surplus placed to mitigate uncertainty in the design process''. \cite{Eckert2012} define margin as ``the extent to which a parameter value exceeds what it needs to meet its functional requirements regardless of the motivation for which the margin was included.'' \cite{Cansler2016} associate margin (excess) with components or systems when describing it as ``the surplus in a component or system once necessities have been met.'' 
+  
+Elaborating on such definitions, some researchers have discussed different types of margin. In the context of ship design, for example, \cite{Gale1975} differentiates Design and Construction Margin, intended to be consumed as a design converges, from Future Growth Margin, intended to remain in the ship to allow for future additions once in service. \cite{Gale1975} further categorises Design and Construction Margin into Performance Margin (e.g. stability, efficiency) vs. Physical Characteristics Margin (e.g. weight, space), either of which can be allocated on a system, subsystem or component level. \cite{Hockberger1982} extends this classification to include Assurance Margin, which is intended to increase the probability that a system would perform to its specified requirements under uncertainties, considering environmental and use uncertainties alongside degradation of the system over time. \citet{Thunnissen2004b} discuss three types of margin in the context of thermal design in aerospace: Uncertainty Margin, introduced to account for uncertainties in parameters; Qualification Margin, which is added to the anticipated maximum and minimum temperatures for the purpose of qualification tests on prototypes; and Protoqualification Margin, which is added to demonstrate the reliability of actual flight hardware when a prototype is not possible.  \cite{Cansler2016} define four types of margin: Deterministic Excess represents margin to be consumed during operation, e.g. sacrificial coatings; Epistemic Excess represents margin deliberately placed to account for known risk; Aleatory Excess is placed to account for unknown future events; and Consequent Excess is caused by the capacity of off-the-shelf parts usually being slightly higher than the requirements placed on them.  \cite{Eckert2017} indicate three types of margin. The first type is margin added to requirements, the second type is margin added to a design to handle uncertainties related to design, manufacturing and assembly. The third type is margin which changes over time mainly because of different teams working on different parts of a design. In more recent work, \cite{Eckert2019} categorised margin into three types. Their first category places margin at the difference between system/component capability vs. the requirement. The second category concerns the difference between the capability vs. the constraint, where the capability oversatisfies the constraint. The third category concerns the difference between the constraint and the requirement.   
+  
+Other definitions of margin in design relate to safety. Research into safety margin mainly deals with proper use of margin to make a design safer or to increase its reliability by failure prevention \citep{Iorga2012}. \cite{Hammer1980} distinguish Safety Factor which is the amount of overdesign in a product or structure, e.g. the ratio between minimum strength required by the application and the failure strength, from Safety Margin, defined by the difference between the two. Because of these definitions, Safety Factor accumulates multiplicatively while Safety Margin accumulates additively \citep{Moller2008}. In fact, incorporating margin is only one approach to achieve safe design. \cite{Moller2008} reviewed principles and taxonomies related to safety and consolidated them into four main categories: 1) Safety reserve (i.e. margin), 2) Inherently safe design, 3) Design for safe fail, 4) Procedural safeguards. 
+
+\begin{table*}[]
+\caption{Selected definitions of margin and related concepts in the research literature, organised chronologically}
+\label{margindefinitions}
+	\centering
+ \renewcommand{\arraystretch}{1.3}
+	\begin{tabular}{p{0.2\linewidth}p{0.25\linewidth}p{0.47\linewidth}}
+
+	\specialrule{.05em}{.3em}{.3em} 
+	Publication & Term/Concept & Description \\ 
+	
+\specialrule{.1em}{.3em}{.3em} 
+
+\cite{Lusser1958} & Contingency Margin & Kept in reserve in case identified contingencies, or a combination of them, occur in service. \\ 
+& Scatter Margin & To account for inherent variation of strength. \\ 
+
+\cite{Levine1970} & Service Margin & Margin of performance added to compensate for environmental and deteriorative factors reducing a ship's ability to maintain speed, considering a specified period of time. \\ 
+
+	\cite{Takamatsu1974} & Design Margin & To compensate for undesirable effects of uncertainties. \\ 
+
+\cite{Gale1975} & Design \& Construction Margin & Allowance for uncertainties in estimating techniques, for unknowns when estimations are made, and potential \emph{minor} changes in specifications. Intended to be eliminated prior to design completion. \\ 
+	& Future Growth Margin & Allowance for additions to a system (ship) once in service. \\ 
+	\cite{Hockberger1982} & Assurance Margin & To sustain specified level of performance under environmental uncertainties, and to offset degradation. \\ 
+
+	\cite{Hammer1980,Moller2008} & Safety Reserve, or Safety Factor & Strength to resist loads and disturbances exceeding intention.  Ratio of min. strength to max. stress. Multiplicative. \\ 
+	& Safety Margin & Difference between min. strength and max. stress. Additive. \\ 
+
+
+	\cite{Martin2002} & Headroom & To accommodate future changes in specification values. \\
+\cite{Thunnisen2004} & Design Factor, or Margin & Added to account for uncertainties when rigorous uncertainty mitigation/propagation is unavailable. \\
+	%\cite{Dawson2012} & Design Factor/Reserve Factor & Ratio of allowable stress to actual or calculated stress. \\ 
+%\cite{Iorga2012} & Safety Margin & Added to increase reliability. \\ 
+	\cite{Eckert2012} & Margin & The extent to which a parameter's value exceeds what is needed to meet its functional requirements. \\ 
+
+	\cite{Tilstra2015} & Excess storage or importation & To enable design evolvability. \\
+	\cite{Watson2016} & Excess system capability & To accommodate future change in a product. \\ 
+	
+	
+
+		\cite{Eckert2017} & Margin added to requirements & To accommodate future growth and safety requirements. \\ 
+	& Margin added to design & To handle uncertainty related to design, manuf. and assy. \\
+	& Margin that changes over time & Occurs because of different teams working on different parts of a design leading to duplication or reduction of margins. \\ 
+	\cite{Guenov2018} & Margin, or Reserve & Placed on variables to account for uncertainties expected to affect their accurate prediction. Can provide flexibility for evolving requirements, or can account for model uncertainty. \\
+	
+		
+	\cite{lebjioui2018} and \cite{Eckert2019} & Buffer & Account for uncertainties in a component and its use.\\ 
+	& Excess, or Contingency & Range that can be used to redesign or make a change.\\
+	
+		\specialrule{.05em}{.3em}{.3em}
+	\end{tabular}
+\end{table*}
+%\renewcommand{arraystretch}{1}
+
+
+\cite{Eckert2019} consider margin to comprise a combination of Buffer and Excess. They define Buffer as the portion of margin that is intended to account for uncertainties associated with a component and its use, whereas Excess (for which they also use the term Contingency) is said to ``represent the range that engineers can make use of to redesign or make a change.'' Drawing on this classification and incorporating other concepts revealed by the literature review, in this article Deliberate Margin is considered to include:
+
+\begin{itemize} 
+
+\item Margin that is deliberately included to ensure reliability and/or to address regulatory, safety or life requirements. 
+
+\item  Margin that is deliberately included to mitigate the potential risk of rework during design, for instance, by deliberately overspecifying parts or interfaces \citep{Gale1975}. 
+
+\item   Margin that is deliberately included so that large changes to specification values can be absorbed \citep{Martin2002,Tilstra2015}. 
+
+\item   Margin that is deliberately included to mitigate the potential impact of other specification changes, e.g. by making the design more able to absorb or be adapted to changes \citep{Watson2016, Cansler2016, Allen2018}.
+
+\item   Margin that is deliberately included to ensure upgradeability \citep{Guenov2018} or growth \citep{Gale1975} of a physically realised design, once in service.
+
+\item  Margin that is deliberately included to allow a part or subsystem to be common across product variants, e.g. by overspecifying a part or interface with respect to one variant in order to allow its use across a product family \citep{Baldwin2000}.
+
+\end{itemize}
+
+Whereas Excess Margin is considered to include:
+
+\begin{itemize} 
+\item  Margin that is included without deliberate analysis while accounting for uncertainty during the design process, e.g. when making overconservative decisions to account for preliminary information provided by colleagues.
+
+\item  Margin that is included as an undesirable by-product of suboptimisation due to design complexity, e.g. when iterations have to stop before margin is eliminated or, equivalently, before a design fully converges \citep{Eckert2004, Eckert2019}.
+
+\item Margin that is necessarily included when some off-the-shelf parts are used, because the capability of the part is greater than the minimum required by the design. For example, a machine may require a motor of 3.72kW, but if the part supplier only provides 3.5kW or 4.0kW models, the larger model must be selected.
+
+\item Margin that is necessarily included when platform parts are used, or when part designs from a previous product generation are reused, because the reused designs are overspecified with respect to the new application.
+
+\end{itemize}
+
+A summary of selected terms and definitions of margin found in literature is provided in Table \ref{margindefinitions}. Regardless of the reason for including margin in a design, in all cases the effect is to introduce a difference between the ``ideal'' parameters, being the minimum needed for the design to work, and the parameters of the actual design, which in some sense are greater.
+
+\subsection{Methods and models for sizing margin}\label{marginmodels}
+
+A number of authors have considered how margin can be appropriately sized in engineering design. 
+
+Firstly, many publications focus on methods to determine suitable safety factors, also known as  Factors of Safety (FoS). For example, \cite{Ghosn1986} and \cite{Fenton2015} focused on this problem in bridge engineering, and \cite{mohammed2016} in ship hull design. Such models are field- and condition-specific. To illustrate, \cite{Stephenson1974} discuss how FoS for a mechanical part under load can be decomposed into the product of a shock factor and a material properties uncertainty factor. The shock factor assigns greater FoS to account for the increased stresses that occur when a load is applied suddenly, and the material properties factor accounts for the uncertainties in significant properties such as yield strength that are greater for some manufacturing processes than others. More recently, a list of situation-specific issues to be considered in determining a suitable FoS was compiled by \cite{Collins2010}. These issues were adopted by \cite{Iorga2012} to create a formula for estimation of safety factors. For instance, their formula indicates that increased safety factor is appropriate in cases where there is possibility of accident causing loss of life, or where the design is new and untested. Another way of determining FoS is to use a stochastic, reliability-focused approach. For example, a suitable FoS may obtained by calculating how the probability distribution of applied stress (considering use uncertainties) intersects with the probability distribution of yield stress (considering manufacturing uncertainties). The greater the intersection, the greater the safety factor needs to be to ensure the probability of failure remains within acceptable bounds \cite[e.g.][]{Stephenson1974, Juvinall1991}. One limitation is that these methods are well-developed in the context of individual machine parts, but require experience and judgement to apply correctly in the context of an overall system design.  Another is that to apply the methods in this paragraph effectively, the engineer must be able to predict the primary failure mode for the specific case and select the appropriate failure model before applying a FoS. Codes and standards often stipulate specific models and FoS to be used, which reduces the need for decision-making. For example, in the context of process piping design, ASME B31.3 stipulates the testing pressure of pipes to be 1.5 times the design pressure \citep{asme2002, Becht2009}. Other codes are more specific, e.g. API RP 14E \citep{API1991}  specifies a corrosion allowance to be added to the thickness of pipes, considering the type of fluid and pressure the pipe shall be used for. Typically the FoS recommended in standards are based on a combination of theory and experiment. \cite{Levine1970} and \cite{Snape2005} have pointed out that FoS specified in standards need to be conservative because they do not fully take actual conditions into account, resulting in overdesign for most situations.  \cite{Dittmar1976} further argue that as designs become more complex, applying such empirically-estimated margin becomes more difficult to justify. 
+
+Some researchers have developed uncertainty propagation approaches that relate overall margin in a design to reliability, where the latter is interpreted as ability of the design to absorb uncertainty in certain parameters. For instance, processes for Quantification of Margins and Uncertainty (QMU) are intended to identify and quantify uncertainty sources and propagate uncertainty through system models to performance parameters, with a view to determining whether a system has enough combined margin to absorb the uncertainties and prevent failure \citep[e.g.][]{Pilch2011}. QMU approaches provide a rigorous process for uncertainty discovery and propagation but generally do not localise the margin within a design. 
+
+Other authors apply optimisation approaches to determine the appropriate allocation of margin to different parameters in a design. In one early contribution, \cite{Takamatsu1974} consider how to optimally allocate margin among multiple design parameters in a chemical process system, in order to absorb uncertainty in certain parameters while also minimising a system performance objective. The approach is intended for situations in which the upper and lower bounds of uncertain parameters, but not their distributions, are known. The system equations relating parameters to performance must be modelled as first-order linear approximations about the design point, so that the situation can be formulated as a linear program. \cite{Dittmar1976} expanded this approach to allow for slightly non-linear system models. More recently, \cite{Thunnisen2004} developed a probabilistic method for determining whether appropriate margin is held in an emerging design. In the method, the parameters that must be traded against each other to meet the requirements (e.g. masses of different subsystems) must first be identified. Then, analytical expressions must be developed to calculate each of those parameters from design variables and requirements. To complete the modelling, the possible distribution of values for every variable must be estimated, e.g. as a Gaussian distribution. Finally, Monte-Carlo simulation is run to generate probability distributions for the tradeable parameters. Margin is mathematically related to the probability of reaching the desired value of a given tradeable parameter, where the acceptable margin depends on risk tolerance. Using this approach, the impact of different design variables on margin (hence risk of not meeting design requirements) can be trialled. \cite{Thunnisen2004} apply the approach to design of a composite pressure vessel, while \cite{Thunnissen2004b} apply it to conceptual thermal design of a space system. This method assumes good a-priori knowledge of the tradeable parameters, variables and mathematical relations among them; a method to guide a designer through developing the required mathematical model is not elaborated. \cite{Tan2016} considered the role of safety margins in Multi-disciplinary Optimisation (MDO), noting that such analyses often seek the highest performance while using all components to the greatest extent possible. Based on an example of aircraft engine concept design, they show that including margins in the optimisation objectives may in some cases allow designers to build significant additional margin into a design with only a minor deterioration of performance, thereby increasing design robustness. Although the insights may be generally applicable, the work is presented mainly as a case study. Also working in the context of aircraft design, \cite{Guenov2018} introduce the concept of margin space, analogous to design space, to help trade margins among different design parameters. To apply their approach, a network of numerical models that generate output parameters from requirements must first be created. Parameters on which margins are allocated must also be known. Mathematical constraints describe what regions of the margin space are feasible in that they allow acceptable design performance. Similarly to \cite{Thunnisen2004}, probability density functions are estimated to describe sources of uncertainty against which the margins can protect. Once this mathematical model is complete, multiple combinations of design parameters and margin values are generated using DoE methods, allowing tradeoffs to be visually explored considering design performance alongside robustness to modelled uncertainties. This method integrates several concepts from the aforementioned papers. Although powerful, in common with other mathematical approaches it requires detailed a-priori understanding of the design problem structure and could arguably be complex to apply in situations where the design is not already formulated for optimisation. Another limitation with respect to this article is that these methods generally assume the designer has relative freedom to choose the design parameters and margin levels thought to be optimal, and is not constrained by the requirement to use off-the-shelf or platform parts.
+ 
+Finally in this section, a margin analysis method based on block diagramming rather than mathematical modelling was proposed by \cite{Cansler2016}, who apply functional decomposition to model margins and quantify them early in product design. The authors use component-flow diagrams to identify component interactions and flows within them. The flows quantify the current operating values and the maxima that can be tolerated. This information is used to identify excesses in the system which can be considered when future modifications are explored. This approach does not require mathematical formulation and hence is suitable to apply in very early design stages. However, it requires a model based on the abstract concepts of functions, and flows of material, sign and energy. For instance, to analyse the excess associated with a bolted joint, the flows of mechanical energy through that joint must be explicitly modelled and the ability of the joint to absorb increases in that energy must be calculated. This formulation may not be aligned to the parameters that are worked with by engineers during many design situations. Additionally, it does not automatically propagate the effects of margins from the interfaces where they are defined onto the performance parameters and requirements of the overall design.
+
+\subsection{Margin in models of change propagation}\label{changemodelsmargins}
+
+The importance of margin in change propagation is recognised by researchers and strategies to use margin to prevent potential change propagation have been articulated \citep{Eckert2004}. In particular, if a part is overdesigned, the margin may act as a shock absorber that prevents change from propagating further \citep{Chua2012}. One approach to analysing the benefit of margins for preventing and absorbing change is therefore to incorporate them into a model of change propagation.
+
+Many researchers have addressed change propagation by considering the risk of changes propagating between components or subsystems in a design. For example, the Change Prediction Method (CPM) aims to predict the susceptibility of each component or subsystem to changes, considering multiple routes through which change can propagate and the likelihood of each propagation step occurring \citep{Clarkson2004}. The method has been extensively developed by other authors (for a review see \cite{hamraz2013}). Of particular relevance to this article, \cite{Hamraz2013b} developed an approach that relates the probability of change propagation between two subsystems to the margin at the interface between those subsystems. For example, if a subsystem can accept a wide range of input voltages, a change in input voltage is less likely to propagate to the subsystem than if the acceptable range is narrow. This rationale is used as the basis of a method to generate change propagation probabilities from interface specifications and hence, to populate the data required for a CPM analysis. However, \cite{Hamraz2013b} view this mainly as an approach to generate the input data required by the CPM, and do not elaborate the implications for managing the margins themselves.
+
+\cite{lebjioui2018} developed another CPM-based method that relates margins to design change propagation, based on the observation that low likelihood of change propagation between two subsystems indicates high design margin at their interface. In the method, CPM is applied to a design to identify which components have significant margins, based on the change propagation probability. Then, a decision tree is considered for each significant margin to categorise it. For example, a margin identified as a buffer could be further classified as either endogenous or exogenous, depending on which actions to potentially improve the design are suggested.
+
+The models discussed above consider change propagation from a probabilistic perspective. Other approaches require the modeller to more precisely represent the nature of relationships causing change propagation between components or subsystems, e.g. in terms of specific parameters as in the work of \cite{Ma2016} or interface definitions as in the work of \cite{Albers2011}. The additional and more specific information about how changes might propagate makes these types of approaches potentially better suited to include margin information and analyse its role in design change absorption. However, most articles do not apply the models in this way. One exception was found in the work of \cite{Oloufa2004}, who propose a Trigger Value Matrix---a DSM in which each entry indicates the maximum value of interface parameters from an upstream subsystem that can be supported by the downstream subsystem. In the model, change only propagates through an interface if the aggregate value of changed parameters exceeds the defined trigger value. In other words, the difference between the current value and the trigger value indicates the quantity of margin at each interface. A limitation of this approach is that all parameters at each interface, potentially with different units and different physical quantities, must be aggregated into a single trigger value.
+
+
+\subsection{Practical challenges in managing margin}
+
+Because of the importance of margin to many design issues including performance, cost, safety, and changeability, it should arguably be carefully managed during design. However, this is often not the case in engineering practice. \cite{Thunnissen2004b} write that, in practice, margins are handled heuristically or ``in a crude quantitative manner'' that varies depending on the individual and organisation, with ``little or no rigorous method''. In consequence, insufficient margin or excessive amounts of margin may be created in a design. Insufficient margin can lead to substantial design rework, delayed and overbudget projects, and even potential design failures \citep{Thunnisen2004}. On the other hand, overconservative use of margin can lead to a design appearing overdesigned and less competitive. Excessive margin is also likely to obscure the need to understand the underlying uncertainties, and hence may inhibit learning and development of more optimal designs in future \citep{Thunnissen2004b}.
+
+To prevent such problems, the allocation of margin as it evolves throughout the stages of the development process should be carefully managed \citep{Thunnissen2004b, Eckert2019}. Although a designer or design team may intend to eliminate unnecessary margin as the design converges, this may not be fully achieved in practice and some overdesign may remain in the final product. \cite{Gale1975} argues that one of the most important challenges in practice is avoiding the unnecessary compounding of margins. This may occur if collaborating teams add margins independently \citep{Gale1975, Eckert2017}. For instance, \cite{Jones2018} researched boiler installations in hospitals and found highly overdesigned solutions, which they attributed to lack of communication between the design, installation and commissioning teams, among other reasons.
+
+\cite{lebjioui2018}, reflecting on interactions with engineers of a collaborating company, concludes that knowledge about margins in engineering practice is tacit rather than formalised. Other authors including \cite{Gale1975} and \cite{Eckert2017} argue that there is also a lack of clarity and consistency among design engineers when it comes to the definitions of different types of margins. In engineering practice, \textit{``... the overall complexity is often too great to guarantee that all potential problems will be revealed''}, so margins may be used without explicit knowledge of the specificities \citep{Eckert2004}. In most cases, margins are treated as fixed limits rather than trade-offs between system performance requirements \citep{Tan2016}. An example is the practice of ``holding margin'' in space systems design with the view to insulate subsystem teams from external changes \citep{Thunnissen2004b}. In this approach, key numbers are communicated along with upper and lower limits. System architects would ideally be able to resolve  design conflicts by trading margin among different areas as the design process moves forward \citep{Guenov2018}, but in practice the difficulty of understanding margin means this is strongly influenced by organisational policies rather than the ideal situation of optimised tradeoffs \citep{Thunnisen2004}.
+
+   \subsection{Critique and research gap}\label{researchquestions}
+The literature review reveals a consensus on the importance of margin in design, both for absorbing the adverse effect of uncertainty and future changes and for deteriorating the design performance if too much margin is included. Although the importance of margin is established, the review also indicates a profusion of terminology and multiple reasons for incorporating margin, which may hinder systematic consideration of margin in research and practice. One important observation is that not all margin can be considered to provide contingency for design change absorption. For example, if safety margin were depleted to absorb a change, the design might no longer be considered safe. For this reason the present article focuses on margin that is not intentionally incorporated for a defined purpose, but appears in the design for other reasons---i.e. on excess margin as defined in Section 2.1. Excess margin is desirable in the sense that it may help to absorb or prevent design changes, but at the same time is undesirable because the overspecification may deteriorate design performance. Reducing excess margin may be possible by redesigning a product, although may also make that product more expensive or more complex, e.g. if off-the-shelf parts must be replaced with custom parts or if additional design iterations are needed. What is needed is an approach that can help designers to trade the costs of excess margin against the benefit provided, in terms of change absorption potential.
+
+Although  a number of researchers have considered how to allocate margin in design, the developed methods (as discussed in previous subsections) all have limitations with respect to the objectives of this article. Methods to determine Factors of Safety do not consider the issue of change prevention and absorption. Optimisation-based methods for margin allocation assume that a designer has freedom to adjust all margins in a design, and do not address the typical situation in which a design already exists and improvements must be prioritised due to limited development time and resource or for other reasons, such as commitments to a platform or supplier. Such approaches also generally assume that a mathematical model of the design relationships is available a-priori. The block diagramming approach of \cite{Cansler2016} requires a relatively abstract formulation and does not propagate the impact of margins to performance parameters, while the CPM-based approach of \cite{lebjioui2018} is experience-based and does not exploit known mathematical relationships among the design parameters. Overall, the review did not reveal any approach that helps designers to localise excess margins in an existing design, quantify their desirable and undesirable impacts, and develop prioritised insights for design improvement.  These observations led to the following research questions:
+  
+  \begin{itemize}
+
+\item RQ1 : How can the excess margin in an existing or emerging design be identified and localised?
+
+\item RQ2 : How can the value of excess margin be quantified, considering change absorption potential vs. design performance loss?
+
+\item RQ3 : How can this appreciation of margin value help to identify and prioritise potential design improvements?
+
+  \end{itemize}
+
+
+
+
+
+\section{Margin Value Method}\label{mam}
+
+
+An approach was developed to address the research questions. The Margin Value Method (MVM) is based on the observation that excess margins are created as a result of decisions made during the design process, and therefore, identifying those decisions and mapping the information flow among them allows margins to be identified and their ultimate knock-on impacts to be quantified. The method is intended for use in contexts where an existing design is to be incrementally improved. It identifies opportunities to reduce margin by redesigning parts, prioritising those opportunities by balancing the desirable impact of margin on change absorption capability against its adverse impact on design performance. The approach requires knowledge of the important design parameters and their relationships, which is typically the case in routine design situations, when iterating a design to improve it before it is finalised, or when developing a new variant of an existing design. 
+
+\begin{figure}
+	\begin{center}  
+		\includegraphics[width=1\linewidth]{hydrauliccircuit.pdf}
+		\caption{The hydraulic circuit referred to in the worked example.}
+		\label{fig:hydrauliccircuit}
+	\end{center}
+\end{figure}
+
+In overview, the method comprises the construction of a Margin Analysis Network to localise margin in an existing design,  followed by analysis of the network to characterise each margin and explore opportunities for design improvement. These steps are described in detail in the following subsections with the aid of a deliberately simplified worked example: localising and analysing margin in a hydraulic power circuit comprising a pump, valve and a hydraulic cylinder to lift a mass $m$ through a height $h$ (Figure \ref{fig:hydrauliccircuit}). In Section \ref{casestudy}, the method is applied to a realistic machine design case. \\
+
+\subsection{Terminology}\label{terminology}
+
+The following terminology is used throughout discussion of the method:
+
+\begin{itemize}
+ \item \textbf{Task:} A group of one or more steps undertaken to meet an objective during the design process. In the method, each step must be described as either a calculation or a decision:
+\begin{itemize}
+	\item \textbf{Calculation Steps} are each a deterministic transformation of input parameter(s) into an output parameter. One set of input values yields one output value.
+	\item \textbf{Decision Steps} are each a transformation of input parameter(s) into an output parameter, involving a decision by the designer. The outcome of a decision step may be influenced by designers' preferences and experience as well as factors not captured in the margin analysis. Such factors could, for example, include cost, manufacturing capabilities, space considerations, codes and standards, and so on. Unlike a calculation step, a decision step could yield one of multiple valid values for a given set of inputs.
+\end{itemize}
+
+	\item \textbf{Parameter:} Numeric information that is used and/or generated during the design process. In the method, parameters are further distinguished by their role in the design process:
+	\begin{itemize}
+		\item \textbf{Input parameters} indicate targets or constraints to be met by the design process, against which the desirable impacts of margins (in terms of change absorption potential) are to be assessed.
+		\item \textbf{Performance parameters} indicate aspects of design performance, against which the adverse impacts of margins (in terms of performance deterioration) are to be assessed.
+\item \textbf{Intermediary parameters} are all other parameters used or generated during the design process. An intermediary parameter can take different values at different points in the design process. These values are described as either:
+
+	\begin{itemize}
+
+	\item \textbf{Decided value} if the value results from a decision step or is calculated from the result of a decision step, and is not a
+	\item \textbf{Target threshold} if the value represents a minimum or maximum that is required for a decided value to be acceptable.
+		
+	\end{itemize}
+	\end{itemize}
+	\end{itemize}
+
+\subsection{Development of Margin Analysis Network}\label{marginschematicdetail}
+
+The method is based on propagating the effect of excess margin from the specific parameters where it is located onto the input parameters (determining margin impact on change absorption potential) and the performance parameters (determining margin impact on performance deterioration). This is achieved by tracing the margin impact through a dependency network that relates important parameters, calculation steps, and decision steps.
+
+The stepwise procedure depicted in Figure \ref{fig:mansteps} was developed to guide systematic construction of the necessary dependency network for a specific design. At each step of the procedure, detail is progressively added until a fully-detailed network is reached. If some of the necessary information is already available, for instance because a company has already modelled parametric relationships within their product, these steps need not be followed exactly. The steps are described in the next subsections.
+
+\begin{figure}
+	\begin{center}  
+		\includegraphics[width=1\linewidth]{mansteps.pdf}
+		\caption{Recommended procedure to create a margin analysis network.}
+		\label{fig:mansteps}
+	\end{center}
+\end{figure}
+
+\subsubsection{STEP A: Model the Design Process}
+
+The first step is to develop a design process model that shows a possible arrangement of tasks to complete the design of the system to be analysed.  The process model indicates how input parameters are processed through a network of interconnected tasks and intermediary parameters to generate the performance parameter(s). The model should include only those performance parameters to be assessed in the margin analysis, and only those tasks and input parameters that are required to determine them. Methods such as House of Quality and Value Analysis may help to focus on important performance parameters \citep{Otto2001}.
+
+To illustrate, for the worked example of the hydraulic circuit the process model shown in Figure \ref{fig:hydraulicprocess} (A) was created. In this case, for simplicity of exposition a single performance parameter is to be addressed, namely the maximum pressure (i.e. design pressure) that the hydraulic circuit can sustain ($P_D$). More generally multiple performance parameters can be included. The input parameters under consideration for the example are the specifications for the design: maximum mass to be lifted ($m$), the maximum vertical height through which it must be lifted ($h$), and the maximum external diameter of the cylinder that can be accommodated ($d_{ext}$).
+
+By identifying the tasks and the information dependencies between them, this step generates a starting point to identify the intermediary parameters whose values are determined during design.
+
+\subsubsection{STEP B: Identify steps and parameters}
+
+The next step in the procedure is to systematically consider each task in the process model to identify its input and output parameters. Each task is also detailed to identify the decision steps and calculation steps it is composed from. 
+
+This is done for the example in Figure \ref{fig:hydraulicprocess} (B). To illustrate, consider the task \emph{Select Pump}, which is decomposed into one calculation step and one decision step. The calculation step involves determining the required pressure ($P_{R}$) from the bore diameter of the previously-selected cylinder ($d_{bore}$) and mass to be lifted ($m$). The decision step involves selecting an appropriate pump considering the calculated pressure. The outputs of the task include the manufacturer's model number for the pump ($M_{M}$), the actual pressure ($P_{M}$) sustained by the pump when lifting the design mass, and so on. 
+
+Having identified the parameters and decomposed the tasks into their constituent steps, for each task involving a decision step the target threshold associated with that decision must be identified from the list of the task's input parameters. To recap, a target threshold indicates the minimum or maximum value against which the output of a decision step is evaluated. The model is based on the observation that, during a design process, if the decided value resulting from a decision does not satisfy the corresponding target threshold, iteration will be required to revisit the decision step and/or to revisit other decisions with the objective to make the target threshold more accommodating. On the other hand, if the decided value oversatisfies the target threshold, excess margin is created. Because the method focuses on analysing the margin in an existing design and not on the creation of a new design, the focus is set on the latter case and the possibility of iteration does not require explicit consideration.
+
+\subsubsection{STEP C: Connect key parameters into a network}
+The third step is to connect the parameters into a network of information dependencies among the tasks, thereby detailing the information flows in the original process model. At this point parameters that do not contribute towards achieving the performance parameter(s) in focus, i.e. parameters which do not feed forward through a sequence of steps into a performance parameter, can be directly identified and should be discarded from future consideration. For the worked example, discarded parameters are shown in grey in Figure \ref{fig:hydraulicprocess} (C). For clarity, only a selection of discarded parameters are shown.
+
+To complete this step, the information flows involving decided values must be distinguished from those involving target thresholds. In the worked example, the only target threshold is the required pressure to lift the mass ($P_R$) which is generated during the task \emph{Select pump}. This is indicated in red in Figure \ref{fig:hydraulicprocess} (C). All other flows in  Figure \ref{fig:hydraulicprocess} (C) involve decided values and are indicated using blue arrows.\\
+
+
+\subsubsection{STEP D: Construct margin analysis network}\label{networkdiagram}
+
+The fourth and final step is to transform the task-parameter network resulting from Step C into the Margin Analysis Network. The detailed information flows between all calculation and decision steps, within and across tasks, must be modelled. This is shown for the worked example in Figure \ref{fig:hydraulicprocess} (D). Recalling that the decided value emerging from each decision step is compared against a corresponding target threshold, each such comparison is now explicitly indicated by introducing a \emph{margin node}. Each margin node is depicted as a hexagon as shown in Figure \ref{fig:hydraulicprocess} (D). It is important to note that margin nodes only denote excess margin that can potentially absorb changes---if margin is necessary for a defined purpose, e.g. to satisfy a code and/or relating to safety or reliability, this should be represented using an appropriate calculation step to increase the corresponding parameter's value, and not by a margin node. Finally, to complete the margin analysis network, each calculation step must be detailed to express the relationship between the input and output parameters. This can be done as an algebraic expression or as a lookup table.
+
+\begin{figure*}
+	\begin{center}  
+		\includegraphics[width=1\linewidth]{Doc1_new.pdf}
+		\caption{The recommended stepwise procedure for developing a Margin Analysis Network, illustrated using the hydraulic circuit example. STEP A: Model the design process. STEP B: Identify steps and parameters. STEP C: Connect key parameters into a network. STEP D: Construct Margin Analysis Network. Definitions of parameters for the hydraulic circuit are provided in Appendix A. }
+		\label{fig:hydraulicprocess}
+	\end{center}
+\end{figure*}
+
+
+
+
+For the worked example, two calculation steps are modelled algebraically. First, calculation step $f_1$ determines the required pressure at the cylinder ($P_R$). In this case a governing equation can be written from physical principles. Pressure ($P_R$) is the ratio of force ($F$) and cylinder cross-sectional area ($A$), which can be further written in terms of mass of the load to be lifted ($m$) and bore diameter of the cylinder ($d_{bore}$):
+
+	\begin{align}
+	\begin{split}
+	\label{Pressure}
+	P_R=\frac{F}{A} = \frac{4mg}{\pi d_{bore}^2}
+	\end{split}
+	\end{align}
+
+
+Second, calculation step $f_2$ determines the maximum pressure which the system can sustain ($P_D$) by consideration of the rated pressures of the selected cylinder $(P_{C})$, pump $(P_{M})$, and valve $(P_{V})$. In this case the governing equation can be written:
+
+	\begin{align}
+	\begin{split}
+	\label{eq:f2}
+	P_{D}= min (P_{C}, P_{M}, P_{V})  
+	\end{split}
+	\end{align}
+
+
+The analysis approach described in forthcoming subsections requires that every node in the finalised network has one or more inputs and exactly one output. However, a common situation is that one decision produces multiple parameters whose relationships are known, for example, the decision involves selection of a single part that has multiple important parameters. In such cases the decision can be modelled to produce the model number of the part, and calculation steps can be used to generate the other necessary parameters using lookup tables. This is illustrated in the worked example where the calculation steps $f_3$ and $f_4$ respectively look up the rated pressure and bore diameter of the selected cylinder from its model number $M_C$, which is produced by the decision $D_1$.
+
+
+Having generated a Margin Analysis Network, it may be verified by setting the value of every parameter shown on the network to be the actual value for the design being analysed, then checking that all calculation and decision steps are consistent. Once the network is completed, it is then analysed to assess the value of each margin and to identify design improvement recommendations, as explained in the next subsection.
+
+\subsection{Margin Value Analysis}\label{mvanalysis}
+
+The objective of the Margin Value Analysis is to distil the complex relationships between excess margin, change absorption capability and performance losses that are captured in the Margin Analysis Network into metrics and a visualisation that provide insight for design improvement. The following Metric Requirements (MRs) were identified by considering the literature review and research gap:
+
+\begin{itemize}
+
+\item MR1: Predict the effect of eliminating each excess margin (represented as a margin node) individually and in isolation. This arises from the objective to provide insight for design improvements in an incremental design context where parts need to be prioritised for redesign one-at-a-time, because it is not practicable or economical to develop an optimal design from a clean sheet.
+
+\item MR2: Quantify the proportion by which the decided value exceeds the target threshold at each identified margin. This indication of design excess is useful because more significant excesses may generally be easier to reduce by redesign.
+
+\item MR3: Express the ultimate effect of each margin on (a) input parameters and (b) performance parameters of the overall design. This arises from the need for the metrics to compare all margins on the same scale and in terms that express their ultimate value for the design.
+
+\item MR4: Account for the dependence of each margin's effect on the structure of the decision network and on other margins in that network. This ensures that the effect of any accumulation of margin in the design is accounted for.
+
+\end{itemize}
+
+Three metrics were developed that, together, address these requirements. The metrics are introduced in the next subsections prior to a detailed worked example in Section 4.
+
+\subsubsection{Metric 1: Local excess margins}\label{localmargin}
+
+The first metric quantifies the local excess at each margin node:
+
+\begin{align}
+\begin{split}
+\label{eq:excess}
+Excess_{m}=\frac{decided_m - threshold_m}{threshold_m}
+\end{split}
+\end{align}
+
+where:
+
+\begin{itemize}
+\item $decided_m$ is the decided value at the input to margin node $E_m$.
+\item $threshold_m$ is the target threshold at the input to margin node $E_m$.
+\end{itemize}
+
+This metric indicates the degree to which the decided value oversatisfies the target threshold at each margin node, and thereby satisfies MR1 and MR2.
+
+\subsubsection{Metric 2. Adverse impact of excess margin on design performance}\label{forwardpass}
+
+The second metric indicates the undesirable contribution of the excess at each margin node to deteriorating each performance parameter of the overall design. In other words, this metric indicates the benefit that could be gained if the margin could be eliminated by redesign, assuming the rest of the design remained unchanged.
+
+To calculate the metric for a margin node $E_m$, the decided value that is output from $E_m$ is first replaced with the corresponding target threshold. This represents a proposed redesign to eliminate the design excess represented by the margin. Then, the impact of this proposed design change is propagated downstream, recalculating each node of the Margin Analysis Network in turn until all performance parameters have been recalculated. When performing this recalculation it is assumed that the output of every other decision remains unchanged. For example, if the output of a margin node $E_1$ feeds only into the input of a decision that yields another margin $E_2$, the change due to eliminating $E_1$ would not propagate beyond that downstream decision. The metric thus accounts for accumulated margins in a design, in this case showing that making design changes to eliminate $E_1$ in isolation would yield no improvement in the design performance parameters, because any improvement would be absorbed by the downstream excess represented by margin node $E_2$ before those parameters were reached.
+
+After propagating the change in output of margin node $E_m$ to the performance parameters, a measure of the adverse impact of the margin on deteriorating each performance parameter $j$ is calculated:
+
+
+\begin{align}
+\begin{split}
+\label{eq:dreverse}
+Impact_{mj}=\frac{ P_{j(decided_m)} - P_{j(threshold_m) }}{ P_{j(threshold_m) }}
+\end{split}
+\end{align}
+
+where,
+
+\begin{itemize}
+\item $P_{j(decided_m)}$ is the value of performance parameter $j$ when the output of margin node $E_m$ is set to the decided value that is input to that node, and all dependent downstream values are recalculated as explained above.
+\item $P_{j(threshold_m) }$ is the value of performance parameter $j$ when the output of margin node $E_m$ is set to the target threshold that is input to that node, and all dependent downstream values are recalculated.
+\end{itemize}
+
+To illustrate, in the hydraulic circuit example the metric indicates the performance increase that would be gained if the pump were redesigned so that the pressure $P_M$ was reduced to exactly meet the required pressure, i.e. so that $P_M = P_R$ and consequently the margin at node $E_2$ reduces to $0$, while assuming that all other parts in the hydraulic circuit are not changed. This metric satisfies MR1, MR3b and MR4.
+
+\subsubsection{Metric 3: Benefit of excess margin for absorbing change}\label{metric3}
+
+The third metric indicates the desirable contribution of each margin node to preventing changes to input parameters from propagating, either to require redesign or to degrade performance parameters of the design. 
+
+This is achieved in two steps. In the first step, the maximum change that can be absorbed in each input parameter $P_i$ without requiring any decision to be revisited or impacting any performance parameter(s) is determined. This is achieved by gradually increasing the value of $P_i$ while propagating the change forward through the calculation steps, to find the lowest value where any performance parameter changes or any target threshold reaches the corresponding decided value, indicating that a decision would have to be modified for the design to remain valid. The value of $P_i$ at this point is called $Pmax_{i}$. The maximum deterioration in input parameter $P_i$ that can be absorbed due to all margins in the design may then be written as a proportion:
+
+\begin{equation} \label{eq:deteriorationeq}
+Deterioration_i = \frac{Pmax_{i} - P_i}{P_i} 
+\end{equation}
+
+The second step in the metric calculation determines which of the margin nodes are exploited to what extent when absorbing this maximum deterioration. For each input parameter, the maximum supported value $Pmax_{i}$ is first substituted in place of the original value. The target threshold for every margin node is then recalculated by solving all calculation nodes again in appropriate sequence, yielding $thresholdnew_{im}$. A summary metric that indicates the proportion of each margin that needs to be used up per percentage point of deterioration in each input parameter that is absorbed is calculated:
+
+\begin{align}
+\begin{split}
+\label{eq:absorptioneq}
+Absorption_{im} = \frac{thresholdnew_{im} - threshold_m}  {threshold_m \times Deterioration_i}
+\end{split}
+\end{align}
+
+
+
+This metric satisfies MR1 and MR3a. It also satisfies MR4, as illustrated during discussion of the case example in Section \ref{casestudy}.
+
+\subsection{Margin Value Plot}\label{marginplot}
+
+The Margin Value Plot was developed to summarise the three metrics in a way that yields suggestions for prioritising improvements to the analysed design. The approach taken is to average Metrics 2 and 3 over the performance parameters and input parameters respectively, thereby reducing each of these metrics to a single dimension for easier visualisation. While some information is lost in the averaging process, this aggregation approach has the advantage of being easy to understand.
+
+Considering Metric 2, if the $J$ performance parameters are each weighted by relative importance $W_j$, an overall indication of the performance loss attributable to margin node $E_m$ is:
+
+\begin{align}
+\begin{split}
+\label{eq:weightedimpact}
+Impact_{m}=\frac { \sum_j{(Impact_{mj} \times W_j)}} { \sum_j{W_j} }
+\end{split}
+\end{align}
+
+
+Considering Metric 3, if the relative importance of the design being able to absorb change in input parameter $i$ is assessed to be $L_i$, an overall indication of the change absorption potential of margin node $E_m$ is:
+
+\begin{align}
+\begin{split}
+\label{eq:weightedabsorption}
+Absorption_{m}=\frac { \sum_i{(Absorption_{im} \times L_i)}} { \sum_i{L_i} }
+\end{split}
+\end{align}
+
+
+\begin{figure}
+	\begin{center}  
+		\includegraphics[width=1\linewidth]{marginplot_rubric.pdf}
+		\caption{Margin Value Plot and its interpretation. Regions are indicative and are not separated by precise boundaries.}
+		\label{fig:marginplotrubric}
+	\end{center}
+\end{figure} 
+
+
+These summarised versions of Metrics 2 and 3 provide the X and Y values to position each margin on a scatter plot indicating its deterioration and absorption capacity. Metric 1 can then be indicated as the radius of a circle representing each margin. Noting that the maximum values on both axes depend on the design being analysed, and therefore that the plot offers an analysis of margins relative to that design only, consideration of the four regions of this plot yields insight for potential design improvements. As depicted in Figure \ref{fig:marginplotrubric}:
+
+\begin{enumerate}
+
+\item The \emph{bottom-left region} contains margins which can absorb only relatively small changes but also entail relatively little performance loss. Their low significance may not justify the effort to further analyse them.
+
+\item Margins in the \emph{top-left region} entail low performance loss, but provide high change absorption capability. Of all the identified margins, these provide highest value to the design. They also suggest potential opportunities to make the design more robust to potential future changes by introducing design changes that increase the excess.
+ 	
+\item Margins in the \emph{top-right region} have relatively high change absorption potential but also contribute relatively significantly to design performance loss. Such margins may require further trade-off analysis to determine whether the benefits justify the performance losses, or whether redesign to reduce or eliminate the excess should be considered.
+
+\item Margins in the \emph{bottom-right region} decrease design performance relatively significantly but do not significantly increase change absorption potential. These margins represent unusable overcapacity, and the possibility of redesign to reduce or eliminate them should be investigated.
+\end{enumerate}
+
+It should be noted that the Margin Value Plot is based on proportional values and does not visualise the absolute impact of each margin. This proportional formulation is convenient for aggregating margin impact on multiple performance parameters into a single value, and is also convenient for directly comparing margins that are attached to different parameters and therefore specified in different units.
+
+\section{Case study}\label{casestudy}
+
+A desk-based case study was undertaken to illustrate the method and assess its applicability to a real design situation. 
+
+The analysed case is a real design for a coal handling troughed conveyor belt system, developed based on IS11592 and related standards. On this machine, the belt was inclined with a gradient of 6$^\circ$ and a pulley-to-pulley length of 24 m. The coal carrying capacity was required to be 1200 tonnes per hour. The main design tasks for this machine included machine elements selection and shaft calculations. Although allowing for different solutions, the problem is essentially routine. A design solution was developed that integrates some custom made components, such as shafts, with off-the-shelf machine parts such as motors, gearboxes, brakes, couplings, idlers etc. that were selected from available catalogues. A general overview of the belt conveyor is shown in Figure \ref{fig:conveyorga}.\\
+
+\begin{figure*}
+	\begin{center}  
+		\includegraphics[width=1\linewidth]{conveyorga.pdf}
+		\caption{General details and layout of the belt conveyor.}
+		\label{fig:conveyorga}
+	\end{center}
+\end{figure*}
+
+
+
+
+\subsection{Margin Analysis Network for the conveyor}
+
+The design process model shown in Figure \ref{fig:processmargin} was developed from the procedures and calculations recommended in the standard IS11592. This was transformed to yield the Margin Analysis Network shown in Figure \ref{fig:networkmargin}. In Figure \ref{fig:networkmargin}, each of the numbered background areas indicates the calculation and decision steps developed from the task having the same number in Figure \ref{fig:processmargin}. All symbols in Figure \ref{fig:networkmargin} and the following text are defined in Appendix B.\\
+
+Calculation steps in Figure \ref{fig:networkmargin} represent the application of general engineering principles as well as domain-specific equations provided in the aforementioned standard. For example, main resistance R indicates the friction forces related to the idlers and the belt advancement, and is given by Equation \ref{resistances} (IS 11592, Section 8.5):
+
+\begin{align}
+\label{resistances}
+R = f \times L \times g [ m_{C} + m_{R}+2(m_{B} + m_{G})\cos{\delta}]
+\end{align}
+
+This particular equation appears as the circular node labelled 11 in Figure \ref{fig:networkmargin} (bottom-right of the background area labelled 1).  Inputs $L$, $m_{c}$, $\delta$, $m_{B}$, $f$, $m_{G}$, $m_{R}$ to that node represent the parameters appearing on the right-hand side of Equation \ref{resistances}. Definitions and values for these parameters are provided in Table \ref{beltinputs} in Appendix B. The output of Node 11 is the intermediary parameter $R$, which serves as input to another calculation step in the diagram.\\
+
+
+
+\begin{figure*}[]
+	\centering
+%	\begin{center} 
+		\includegraphics[width=\linewidth]{conveyor-process.pdf}
+		\caption{Process Model (Step A) for the conveyor case}
+		\label{fig:processmargin}
+%	\end{center}
+\end{figure*}
+
+\begin{figure*}[]
+	\centering
+%	\begin{center} 
+		\includegraphics[scale=0.52 , angle=270]{marginconveyor_new.pdf}
+		\caption{Margin Analysis Network (Step D) for the conveyor case. Key: Small diamonds represent input parameters. Circles represent calculation steps. Large diamonds represent decision steps. Hexagons represent margin nodes. Open circles represent performance parameters. Definitions of all parameters, calculations, decisions and margin nodes are provided in Appendix B.}
+		\label{fig:networkmargin}
+%	\end{center}
+\end{figure*}
+
+As well as calculation steps, the Margin Analysis Network of Figure \ref{fig:networkmargin} contains 9 decision steps, each yielding (in this case) a single margin node. The definitions for these nodes are provided in Table \ref{tab:listofmarginnodes}.  As explained previously, each margin node represents a difference between a decided parameter value and a corresponding target threshold that was calculated elsewhere. For example, margin node $E_{1}$ (just above the top-right of area 6 in Figure \ref{fig:networkmargin}) has as one input the target threshold $P_{M2}$ (marked in red), which is an intermediary parameter describing the minimum power required to advance the belt. The other input of this node is the decided value $P_{M}$, which is the rated power of the selected motor. The difference between these is the local margin associated with the motor power. The example thereby demonstrates how constructing a Margin Analysis Network allows excess margin in a design to be localised.
+
+\subsection{Margin Value Analysis of the connecting rod}
+
+To recap, the objective of Margin Value Analysis is to map local excess margins onto their overall impact on design performance and their benefit for absorbing potential changes.
+ 
+\subsubsection{Metric 1: Local excess margin}
+The procedure outlined in Section \ref{localmargin} was followed for the connecting rod network represented in the app model (\texttt{man\_diagram\_conrod.json}). The five margin nodes correspond to: $E_1$ I-section thickness, $E_2$ big-end diameter, $E_3$ small-end diameter, $E_4$ bolt size and $E_5$ cap thickness. The resulting local excess values are:
+
+\begin{equation}\label{eq:excesscalc} Excess = \begin{bmatrix}
+20.454$ at $E_1$ \\
+2.604$ at $E_2$\\
+3.751$ at $E_3$ \\
+16.490$ at $E_4$ \\ 
+27.140$ at $E_5$ \\
+\end{bmatrix} \times 10^{-2} \end{equation}
+
+This indicates that the largest local overspecification in this case appears at the I-section thickness margin $E_1$, followed by cap thickness $E_5$ and bolt size $E_4$.
+
+\subsubsection{Metric 2: Adverse impact of excess margin}
+
+The second metric assesses adverse impact of each margin on the selected performance parameters. In the connecting-rod model, two performance parameters were used:
+\begin{itemize}
+\item $P_1$: total component volume.
+\item $P_2$: total component mass.
+\end{itemize}
+
+Using the procedure outlined in Section \ref{forwardpass}, the impact matrix for the five margins was:
+
+\begin{equation}\label{impactcalc} Impact= \begin{bmatrix}
+8.743 & 8.743 \\
+2.365 & 2.365 \\
+0.348 & 0.348 \\
+3.119 & 3.119 \\
+0.562 & 0.562 \\
+\end{bmatrix} \times 10^{-2} \end{equation}
+
+Rows of Equation \ref{impactcalc} correspond to $E_1$--$E_5$ and columns correspond to $P_1$ and $P_2$. In this case, $E_1$ has the strongest adverse performance effect, while $E_5$ has a very small adverse effect.
+ 
+\subsubsection{Metric 3: Benefit of margins for absorbing change}        
+
+Two input parameters were marked as inputs of interest for this case:
+\begin{itemize}
+\item $N$: engine speed.
+\item $P_{max}$: peak cylinder pressure.
+\end{itemize}
+
+Applying the procedure of Section \ref{metric3}, the absorbed deterioration values were:
+
+\begin{equation} \label{eq:deterioration} 
+Deterioration_i = \begin{bmatrix}
+D_{N} = 0.2416\\
+D_{P_{max}} = 0.0528\\
+\end{bmatrix} \end{equation}
+
+The corresponding absorption matrix was:
+
+\begin{equation} \label{eq:absorptionout} Absorption_{im} = \begin{bmatrix}
+0.000 & 0.4386 \\
+0.000 & 0.4936 \\
+0.000 & 0.4936 \\
+0.6824 & 0.000 \\
+1.0000 & 0.000 \\
+\end{bmatrix} \end{equation}
+
+Rows in Equation \ref{eq:absorptionout} correspond to margins $E_1$--$E_5$ and columns correspond to inputs $N$ and $P_{max}$. The result indicates that $E_1$--$E_3$ predominantly contribute to absorbing increases in $P_{max}$, while $E_4$ and $E_5$ contribute to absorbing increases in $N$.
+
+\subsection{Margin Value Plot}
+
+With equal weighting of both performance parameters ($W_1=W_2=1$), the weighted impact values were:
+\begin{equation} \label{eq:impactmout} Impact_{m}= \begin{bmatrix}
+8.743\\
+2.365\\
+0.348\\
+3.119\\
+0.562\\
+\end{bmatrix} \times 10^{-2} \end{equation}
+
+With equal weighting of both input parameters ($L_N=L_{P_{max}}=1$), weighted absorption values were:
+\begin{equation} \label{eq:likelihoodmout} Absorption_{m}= \begin{bmatrix}
+21.789\\
+24.679\\
+24.679\\
+34.120\\
+50.000\\
+\end{bmatrix} \times 10^{-2} \end{equation}
+ 
+The result suggests that $E_1$ is a strong candidate for redesign attention because it combines the highest local excess and highest adverse impact. By contrast, $E_5$ has high absorption potential with very low adverse impact and may therefore provide relatively high value to retain, depending on strategic priorities for change absorption.
+
+\subsubsection{Identifying nonlimiting margins}
+
+With reference to Section 3.3.3, utilisation was computed as:
+\begin{align}
+\begin{split}
+\label{eq:utilisationeq}
+Utilisation_{im}= 1 - \frac{decided_{m} - thresholdnew_{im}}{decided_{m} - threshold_m}
+\end{split}
+\end{align}
+
+For this case, the utilisation matrix was:
+\begin{equation} \label{eq:utimatrixout} 
+\begin{aligned} Utilisation_{im} &=  \begin{bmatrix}
+0.000 & 0.1131 \\
+0.000 & 1.0000 \\
+0.000 & 0.6942 \\
+1.0000 & 0.000 \\
+0.8904 & 0.000 \\
+\end{bmatrix} \end{aligned} \end{equation}
+
+This indicates that $E_2$ is fully utilised for absorbing the studied increase in $P_{max}$, whereas $E_1$ has low utilisation for that same input. For the studied increase in $N$, $E_4$ is fully utilised and $E_5$ is highly utilised.
+
+\subsection{Comments regarding verification}\label{verification}
+
+To verify the implementation, the metrics above were obtained directly from the app backend analysis of the connecting-rod network (\texttt{man\_diagram\_conrod.json}) and checked for consistency against the governing equations used in the connected calculation and decision nodes.
+
+Overall, the resulting values are coherent with the network structure: margins linked to pressure-sensitive sizing relations dominate absorption for $P_{max}$, while margins linked to speed/inertial paths dominate absorption for $N$.
+
+\section{Discussion}\label{Discussion}
+
+\subsection{Recap of contributions}
+
+The method introduced in this article addresses the research questions raised in Section \ref{researchquestions}, as follows:
+
+\begin{itemize}
+\item \emph{RQ1 : How can the excess margin in an existing or emerging design be identified and localised?}
+
+The stepwise procedure discussed in Section 3.2 is introduced to localise the excess margin in a design using the Margin Analysis Network notation. It thereby provides the basis for the Margin Value Analysis.
+
+\item \emph{RQ2 : How can the value of excess margin be quantified, considering change absorption potential vs. design performance loss?}
+
+The metrics discussed in Section 3.3 operate on a Margin Analysis Network to summarise the desirable and undesirable impacts of  excess margin that is represented in that network. The metrics work on the principle of propagating the impact of each margin forward through the Margin Analysis Network to identify their undesirable impact on performance parameters, and backward to identify their desirable impact on absorbing potential future changes. The metrics identify the impact of each margin in isolation, i.e. they indicate the potential impact of eliminating each margin individually without addressing the others. This reflects the focus on an incremental design context.
+
+\item \emph{RQ3 : How can this appreciation of margin value help to identify and prioritise potential design improvements?}
+
+The Margin Value Plot summarises the method output in an easy-to-interpret visual form. Reviewing the plot may be useful where the objective is to identify and prioritise potential improvements, in an incremental design context where it may not be possible to fully redevelop the design due, for example, to commitments to off-the-shelf or platform parts.
+
+\end{itemize}
+
+ Although evaluation of the Margin Value Method in an industry context has not yet been possible, the detailed analysis of the conveyor design provides a measure of confidence in the approach and suggests opportunities for further research. Additional to the new method, this article also contributes a structured literature review into design margins, from which the addressed research gap and the questions stated above were developed.
+
+
+\subsection{Opportunities for future work}
+
+A number of limitations and opportunities for further work may be suggested. Firstly, application of the Margin Value Method requires an in-depth understanding of the design being analysed, and construction of a detailed network that connects important parameters, calculations and decisions. The case study presented in the previous section, which is of realistic but limited complexity, indicates that such a network is possible and reasonable to construct. In many routine design situations, the necessary information may be well known or, as in the case of the conveyor, already documented. Although demonstrating viability of the method, the conveyor case also reveals that the margin analysis network is visually complex even for this relatively simple design. In this case, the network could be verified by checking each node one-by-one to ensure that the inputs and outputs of each node are correctly connected, but this is time consuming and requires careful systematic attention. In principle, a dedicated diagramming tool with interactive features (such as highlighting inputs and outputs to a selected node, checking the dimensions/units of a calculation step's input and output arrows are appropriate to the calculation itself, and allowing hierarchical construction of the network) could help to ease this problem and perhaps make the method more accessible to practitioners. Another way to manage complexity of the network and the method is to include only the most important input parameters and performance parameters, which could be identified using a prioritisation method such as the Analytic Hierarchy Process \citep{Saaty1988}.
+
+The conveyor case is realistic but, as already mentioned, relatively simple. In future we intend to investigate how the method can be adapted for application to design that involves computational analyses such as finite element methods instead of simple, deterministic calculations and lookups. This might be approached by, for instance, replacing calculation nodes in the Margin Analysis Network with, e.g. local linear approximations calibrated by appropriate analyses performed around the design point. Further work could also investigate how the approach might be adapted for application to more complex products, i.e. those that involve more parts and more design issues. One avenue to address this context using the Margin Value Method could be to investigate its application on a higher level of abstraction, e.g. considering excess margin associated with functions or interfaces rather than decisions and parameters. Application of the approach to more complex design situations might also be addressed by a multilevel model, where problems could be be decomposed hierarchically and, perhaps, routine and nonroutine subproblems modelled differently. 
+
+The conveyor example also focuses on the specific use case of improving an existing design.  The method might be extended for other use cases. It could, for example, potentially support decisions relating to supplier selection and component replacement, by indicating how these decisions affect margin and its impact on a design. Another potential application is in the design and optimisation of product families---in this context excess margin arises from the reuse of parts or subsystems across several designs, such that the reused parts may not be optimal for some of those designs. The method may also offer insights for design process improvement, since it suggests that the sequence of deciding design parameters may impact the excess associated with those parameters.
+
+Finally, it should be noted again that the metrics presented in this article are developed for a context in which excess margins are individually prioritised for potential design improvement. The method as presented here does not consider the situation in which several margins could be eliminated simultaneously. It also assumes that important decisions can be modelled as occurring sequentially and does not allow for the situation where several parameters representing multiple degrees of freedom are fixed at the same decision step. Although reasonable for cases like the conveyor design, future work could seek to relax these assumptions and hence broaden applicability of the method. Another limitation is that the method focuses primarily on excess margin, i.e. margin that is additional to that required for a product to function and to that deliberately included for other reasons such as safety and reliability. As discussed in Section 2.2, approaches already exist to optimise the placement of these other types of margin in a design, and some of these concepts could potentially be integrated into the Margin Value Method in future.
+
+\section{Concluding remarks}\label{conclusion}
+
+Excess margin exists in many engineering designs, and represents an opportunity to improve performance if that excess can be pinpointed and reduced or eliminated by design changes. At the same time, excess margin may be desirable as it allows the design to absorb potential future changes and other uncertainties. The Margin Value Method introduced in this article may assist in localising the excess margin which is distributed throughout a design. It can provide insight for incrementally improving existing designs, by guiding the prioritisation of improvement opportunities considering the overall desirable and undesirable impact of each margin. Further work is planned to fully validate the model, including in an industrial context, and to explore its application to more complex design situations.
+
+
+%\textbf{Acknowledgements}
+
+\footnotesize
+\bibliographystyle{spbasic}      % basic style, author-year citations
+\bibliography{BibliographyB}   % name your BibTeX data base
+
+\normalsize
+
+\section*{Appendix A: Definitions for the hydraulic circuit}
+
+\textbf{Input Parameters:}\\
+$h$ =  Maximum height the mass is to be lifted;\\
+$d_{ext}$ = Maximum external diameter of the cylinder that can be accomodated;\\
+$m$ = Mass to be lifted by the hydraulic system;\\ \\
+
+\textbf{Performance parameter:}\\
+$P_{D}$ = Design/Operating pressure of the system;\\ \\
+
+\textbf{Intermediary parameters:}\\
+$P_{R}$ = Required pressure to lift mass m (target threshold);\\
+$P_{M}$ = Maximum pressure the pump can generate (decided value);\\
+$P_{V}$ = Max pressure the valve can handle  (decided value);\\
+$P_{C}$ = Max pressure the cylinder can handle  (decided value);\\ \\
+$C_{M}$ = Cylinder model number  (decided value);\\
+$C_{W}$ = Mass of the selected cylinder  (decided value);\\
+$d_{bore}$ =  Bore diameter of the selected cylinder (decided value);\\
+$M_{M}$ = Pump model number  (decided value);\\
+$M_{GD}$ =Pump mount dimensions  (decided value);\\
+$M_{CP}$ = Pump electrical power consumption (decided value);\\
+$M_{W}$ = Pump Mass  (decided value);\\
+$V_{TS}$ = Valve thread size  (decided value);\\
+$V_{M}$ = Valve Model number  (decided value);\\
+$V_{W}$ = Valve mass  (decided value);\\
+
+\section*{Appendix B: Definitions for the belt conveyor case}\label{appendixb}
+
+
+\begin{table*}
+\caption{Definitions of input parameters and their nominal values for the belt conveyor case, organised alphabetically. Input parameters considered in the Margin Value Analysis are indicated in bold.}
+	\label{beltinputs}
+	\renewcommand{\arraystretch}{1.3}
+\footnotesize
+\begin{tabular}{ p{1.5cm} p{9cm} p{1.5cm} p{2cm} }
+\specialrule{.05em}{.3em}{.3em} 
+Parameter & Description & Value & Unit \\
+\specialrule{.1em}{.3em}{.3em} 
+
+ $\eta_{i}$ & Required drive efficiency  & 0.93 & -\\
+$\beta$ & Factor for extra power to account for tripper  & 0.07 & -\\
+$\delta$ & Conveyor slope & 6 & degrees ($^o$)\\
+$\mu$ &  \textbf{Coefficient of friction between pulley and belt}  & \textbf{0.275} & -\\
+$\phi_{D}$ & Wrap angle for drive pulley & 210 & degrees ($^o$)\\
+$\phi_{S}$ & Wrap angle for snub pulley & 30 & degrees ($^o$)\\
+$\phi_{T}$ & Wrap angle for tail pulley & 3 & degrees ($^o$)\\
+$\rho$ & \textbf{Bulk density of conveyed material} & \textbf{Coal, 0.8} & \textbf{$T/m^3$}\\
+$\zeta$ & Drive coefficient & 1.35 & -\\
+$A_{1}$ & Area of contact between belt and external cleaner & 0.112 & -\\
+$A_{2}$ & Area of contact between belt and internal cleaner & 0.0168 & -\\
+$b_{1}$ & Inter skirt plate width  (2/3 x B) & 0.089 & $m$\\
+$B_{CT}$ &  \textbf{Nominal belt carcass weight} &  \textbf{6.4} & $kg/m^2 $\\
+$B_{W}$ & Belt width & 1400 & $mm $\\
+$C$ &  \textbf{Required conveyor capacity} &  \textbf{1200} & $T/h$\\
+$C_{H}$ & Distance of plummer block centre from hub centre & 32 & $cm$\\
+$DF$ & Derating factor & 0.88 & -\\
+$E$ & Young's modulus of shaft material & 2150000 & $kgf/cm^2$\\
+$f$ & Idler friction factor  & 0.03 & -\\
+$H$ & Lift of conveyor & 2.5 & $m $\\
+$K_{b}$ & Service factor for bending & 1.5 & -\\
+$K_{t}$ & Service factor for torsion  & 1 & -\\
+$L$ & Pulley centre to centre distance & 24 & $m$\\
+$L_{a}$ & Acceleration length in loading area & 0.4 & $m$\\
+$L_{H}$ & Distance of two hub centres & 141 & $cm$\\
+$L_{SK}$ & Length of installation equipped with skirt plates  & 4.6 & $m$\\
+$m_{2}$ & Coefficient of friction between material and skirt plate & 0.6 & -\\
+$m_{3}$ & Coefficient of friction between belt cleaner and belt & 0.65 & -\\
+$m_{B}$ & Mass of belt per metre & 23 & $kg/m   $\\
+$m_{C}$ & Mass of idler along the carrying side  of the conveyor & 49 & $kg/m $\\
+$m_{R}$ & Mass of idler along the return side  of the conveyor & 14.6 & $kg/m $\\
+$N_{1}$ & Motor rpm & 1500 & $Rev/m$\\
+$N_{t}$ & Number of trippers  & 0 & -\\
+$P_{1}$ & Pressure between external belt cleaner and belt & 80000 & $N/m^2 $\\
+$P_{2}$ & Pressure between internal belt cleaner and belt & 50000 & $N/m^2 $\\
+$P_{b}$ & Allowable bending stress of shaft material & 1000 & $kgf/cm^2$\\
+$P_{t}$ & Allowable shear stress of shaft material & 500 & $kgf/cm^2$\\
+$R_{b}$ & Pulley bearing resistance (excluding driving pulley) & 240 & $N$\\
+$R_{bd}$ & Pulley bearing resistance for driving pulley & 250 & $N$\\
+$R_{i}$ & Resistance due to idler tilting & 0 & $N$\\
+$R_{P}$ & Resistance due to friction at the discharge plough & 0 & -\\
+$R_{w}$ & Wrap resistance (excluding driving pulley) & 315 & $N$\\
+$R_{wd}$ & Wrap resistance for driving pulley & 230 & $N$\\
+$SF$ & Brake service factor & 1.5 & -\\
+$V$ &  \textbf{Belt speed} & \textbf{2.5} & $m/s $\\
+$V_{0}$ & Handled material speed in direction of belt motion & 1.25 & $m/s$\\
+
+
+
+
+\specialrule{.05em}{.3em}{.3em} 
+
+\end{tabular}
+\end{table*}
+
+
+
+
+\begin{table*}[]
+%\centering
+\caption{Definitions of parameters used in the belt conveyor case, except for input, decision and performance parameters. Calculations shown as $f(...)$ indicate use of a lookup table to generate the specified output from the specified set of inputs.}
+\label{allparameters}
+\renewcommand{\arraystretch}{1.3}
+\footnotesize
+\begin{tabular}{ p{0.5cm} p{0.7cm} p{0.2cm} p{6cm} p{6.5cm} p{0.8cm} }
+\specialrule{.05em}{.3em}{.3em} 
+Node & Symbol & & Calculation & Description & Unit \\
+\specialrule{.1em}{.3em}{.3em} 
+
+1	&	$m_{G}$ 	&	 = 	&	$(C  \times  1000)/(3600  \times  V)$ 	&	Mass of handled material on conveyor	&	$Kg/m$\\
+2	&	$Q$ 	&	 = 	&	$C \times (\rho  \times  3600)$ 	&	Volumetric capacity of conveyor	&	$kg/m^{3}$\\
+3	&	$R_{ska}$ 	&	 = 	&	$(m_{2}   Q^2  \times  1000   \rho   g    L_{a}) / [{(V+V_{0})/2}^2  \times  (b_{1})^2]$ 	&	 Frictional resistance at acceleration area 	&	 N\\
+4	&	$R_{sk}$ 	&	 = 	&	$2   (m_{2}   Q^2  \times  1000    \rho   g    L_{sk}) / {(V)^2  \times  (b_{1})^2}$ 	&	 Frictional resistance between material and skirt plates 	&	 N\\
+5	&	$R_{a}$ 	&	 = 	&	$Q  \times  1000  \rho   \times  ( V–V_{0} )$ 	&	 Inertial resistance at loading point 	&	 N\\
+6	&	$R_{bc1}$ 	&	 = 	&	$A_{1}  \times  P1  \times  m_{3}$ 	&	 Frictional resistance due to external belt cleaner 	&	 N\\
+7	&	$R_{bc2}$ 	&	 = 	&	$A_{2}  \times  P2  \times  m_{3}$ 	&	 Frictional resistance due to internal belt cleaner 	&	 N\\
+8	&	$R_{bc}$ 	&	 = 	&	$Rbc1 + Rbc2$ 	&	 Frictional resistance due belt cleaners 	&	 N\\
+9	&	$R_{sp}$ 	&	 = 	&	$R_{i} + R_{sk} + R_{bc} + R_{p}$ 	&	 Special resistances 	&	 N\\
+10	&	$R_{S}$ 	&	 = 	&	$R_{a} + R_{ska} + R_{w} + R_{b}$ 	&	 Secondary resistances 	&	 N\\
+11	&	$R$ 	&	 = 	&	$f   L   g  ( { m_{c} + m_{r} + ( 2m_{B} + m_{G} ) Cos \delta } )$ 	&	 Main resistance 	&	 N\\
+12	&	$R_{SL}$ 	&	 = 	&	$m_{G}  \times  H  \times  g$ 	&	 Slope resistances 	&	 N\\
+13	&	$T_{E}$ 	&	 = 	&	$R + R_{S} + R_{SP} + R_{SL}$ 	&	 Net effective tension on the driving pulley 	&	 N\\
+14	&	$T_{1}$ 	&	 = 	&	$T_{E}  \times  [{ \zeta /( e^\mu - 1)} + 1]$ 	&	 Belt tension on tight side of driving pulley 	&	 N\\
+15	&	$T_{2}$ 	&	 = 	&	$T_{1} / e^ \mu$ 	&	 Belt tension on slack side of driving pulley 	&	 N\\
+16	&	$P_{DP}$ 	&	 = 	&	$(T_{E}  \times  V)(1+N_{t} \beta) / 1000$ 	&	 Operating power required at driving pulley 	&	 kW\\
+17	&	$P_{A}$ 	&	 = 	&	$P_{DP} + {(R_{wd} + R_{bd})  \times  V} / 1000$ 	&	 Absorbed power 	&	 kW\\
+18	&	$T_{T}$ 	&	 = 	&	$T_{2} + { f   L    g    ( m_{B} + m_{r} )} – ( H   g    m_{B} )$ 	&	Belt tension at the tail pulley  	&	 N\\
+19	&	$D_{SR}$ 	&	 = 	&	$f(B_{W}, B_{CT})$ 	&	Required diameter of the snub pulley	&	 mm\\
+20	&	$D_{TR}$ 	&	 = 	&	$f(B_{W}, B_{CT})$ 	&	Required diameter of the tail pulley	&	 mm\\
+21	&	$D_{DR}$ 	&	 = 	&	$f(B_{W}, B_{CT})$ 	&	Required diameter of drive pulley	&	 mm\\
+22	&	$D_{S}$ 	&	 = 	&	$f(M_{TP})$ 	&	Actual diameter of the snub pulley 	&	 mm\\
+23	&	$D_{T}$ 	&	 = 	&	$f(M_{SP})$ 	&	Actual diameter of the tail pulley 	&	 mm\\
+24	&	$D_{D}$ 	&	 = 	&	$f(M_{DP})$ 	&	Actual diameter of drive pulley 	&	 mm\\
+25	&	$W_{PS}$ 	&	 = 	&	$f(D_{S})$ 	&	Weight of snub pulley 	&	 kg\\
+26	&	$W_{PT}$ 	&	 = 	&	$f(D_{T})$ 	&	Weight of tail pulley 	&	 kg\\
+27	&	$W_{PD}$ 	&	 = 	&	$f(D_{D})$ 	&	Weight of drive pulley 	&	 kg\\
+28	&	$N_{D}$ 	&	 = 	&	$(V  \times  60  \times 1000) / (\pi  \times  D_{d})$ 	&	Drive pulley speed 	&	 rpm\\
+29	&	$G_{RR}$ 	&	 = 	&	$N_{1}/N_{D}$ 	&	Required gear ratio 	&	 \\
+30	&	$P_{M1}$ 	&	 = 	&	$P_{A} / \eta_{i}$ 	&	Min. motor power considering motor efficiency 	&	 kW\\
+31	&	$P_{M2}$ 	&	 = 	&	$P_{M1} / DF$ 	&	Min. motor power considering efficiency and derating factor 	&	 kW\\
+32	&	$P_{M}$ 	&	 = 	&	$f(M_{M})$ 	&	Motor shaft power 	&	 kW\\
+33	&	$C_{GB}$ 	&	 = 	&	$[40 \times (P_{M2} or G_{M})] + 200$ 	&	Cost of gearbox	&	$\$$\\
+34	&	$T_{BR}$ 	&	 = 	&	$(SF_{B}  \times  g  \times  P_{M})/N_{1}$ 	&	Required torque for brake 	&	 Nm\\
+35	&	$T_{BS}$ 	&	 = 	&	$f(B_{RS})$ 	&	Rated torque of selected brake 	&	 Nm\\
+36	&	$C_{BR}$ 	&	 = 	&	$[2\times (T_{BS} or T_{BR})] + 800$ 	&	Cost of brake	&	$\$$\\
+37	&	$F_{YD}$ 	&	 = 	&	$ W_{PD} – T_{2} Sin (\phi_{D} – 180^0 )$ 	&	 Force on drive pulley in y plane 	&	 N\\
+38	&	$F_{XD}$ 	&	 = 	&	$ T_{1} + T_{2} Cos ( \phi_{D} – 180^0 )$ 	&	 Force on drive pulley in x plane 	&	 N\\
+39	&	$W_{D}$ 	&	 = 	&	$ ( F_{XD}^2  + F_{YD}^2)^{1/2}$ 	&	 Resultant load on drive pulley shaft 	&	 N\\
+40	&	$M_{TD}$ 	&	 = 	&	$ ( P_{A}  \times  4500  \times  100 ) / ( 2 \pi  \times  N_{D} )$ 	&	 Torsional loading on drive pulley shaft 	&	 Nm\\
+41	&	$M_{BD}$ 	&	 = 	&	$ (W_{D}/2)  \times  B_{W}$ 	&	 Bending moment on drive pulley shaft 	&	 Nm\\
+42	&	$d_{aD}$ 	&	 = 	&	$[[ 16   { ( K_{b}  M_{BD} )^2 + ( K_{t}   M_{TD} )^2 }]^{1/2} / ( \pi    P_{t} ) ]^{1/3}$ 	&	 Min. drive pulley shaft dia.considering bending and torsion 	&	 mm\\
+43	&	$I_{D}$ 	&	 = 	&	$( W_{D}  \times  C_{H} \times  L_{H} ) / ( 4  \times  E  \times  Tan \alpha )$ 	&	 Moment of inertia of drive pulley shaft 	&	 $cm^4$\\
+44	&	$d_{bD}$ 	&	 = 	&	$({ ( I_{D}  \times  64 ) / \pi })^{1/4}$ 	&	 Min drive pulley shaft dia. considering deflection 	&	 mm\\
+
+\specialrule{.05em}{.3em}{.3em} 
+
+\end{tabular}
+\end{table*}
+
+
+
+
+
+\begin{table*}[]
+%\centering
+\caption{Table \ref{allparameters} continued}
+\label{allparameters2}
+\renewcommand{\arraystretch}{1.3}
+\footnotesize
+\begin{tabular}{ p{0.5cm} p{0.5cm} p{0.2cm} p{6cm} p{6.2cm} p{1cm} }
+\specialrule{.05em}{.3em}{.3em} 
+Node & Output & & Equation & Description & Unit \\
+\specialrule{.1em}{.3em}{.3em} 
+
+45	&	$d_{D}$ 	&	 = 	&	$f(d_{bD},d_{D})$ 	&	 Actual diameter of drive pulley 	&	 mm\\
+46	&	$C_{m}$ 	&	 = 	&	$[50\times (P_{M2} or P_{M})] + 120$ 	&	Cost of motor	&	$\$$\\
+47	&	$F_{YT}$ 	&	 = 	&	$W_{PT} – T_{2} Sin (\phi _{T} – 180^0 )$ 	&	 Force on tail pulley in y plane 	&	 N\\
+48	&	$F_{XT}$ 	&	 = 	&	$ 2T_{T} Cos (\phi_{T})$ 	&	 Force on tail pulley in x plane 	&	 N\\
+49	&	$W_{T}$ 	&	 = 	&	$( F \times T_{2}  + F_{Y}T_{2}  )^{1/2}$ 	&	 Resultant load on tail pulley shaft 	&	 N\\
+50	&	$M_{BT}$ 	&	 = 	&	$(W_{T}/2)  \times  B_{W}$ 	&	 Bending moment on tail pulley shaft 	&	 Nm\\
+51	&	$I_{T}$ 	&	 = 	&	$(W_{T}  \times  C_{H}  \times  L_{H} ) / ( 4  \times  E  \times  Tan \alpha)$ 	&	 Moment of inertia of tail pulley shaft 	&	 $cm^4$\\
+52	&	$d_{aT}$ 	&	 = 	&	${( 32  \times  M_{BT}  \times  K_{b} ) / ( \pi  \times  P_{b} )}^{1/3}$ 	&	 Min. tail pulley shaft dia. considering bending and torsion 	&	 mm\\
+53	&	$d_{bT}$ 	&	 = 	&	$({( I  \times  64 ) / \pi })^{1/4}$ 	&	 Min. tail pulley shaft dia. considering deflection 	&	 mm\\
+54	&	$d_{T}$ 	&	 = 	&	$f(d_{aT},d_{bT})$ 	&	 Actual diameter of the tail pulley 	&	 mm\\
+55	&	$W_{DP}$ 	&	 = 	&	$(7700 \times \pi \times 2.05 \ {(d_{DS}|d_{D})}^{2}/4$	&	Weight of drive pulley shaft	&	kg\\
+56	&	$F_{YS}$ 	&	 = 	&	$ W_{PS} – T_{2} Sin (\phi_{S} – 180^0 )$ 	&	 Force on snub pulley in y plane 	&	 N\\
+57	&	$F_{XS}$ 	&	 = 	&	$ T_{2} + T_{2} Cos (\phi_{S} – 180^0)$ 	&	 Force on snub pulley in x plane 	&	 N\\
+58	&	$W_{S}$ 	&	 = 	&	$ ( F_{XS}^2  + F_{YS}^2  )^{{1/2}}$ 	&	 Resultant load on snub pulley shaft 	&	 N\\
+59	&	$M_{BS}$ 	&	 = 	&	$(W_{S}/2)  \times  B_{CS}$ 	&	 Bending moment on snub pulley shaft 	&	 Nm\\
+60	&	$I_{S}$ 	&	 = 	&	$( W_{S}  \times  C_{H}  \times  L_{H} ) / ( 4  \times  E  \times  Tan \alpha )$ 	&	 Moment of inertia of snub pulley shaft 	&	 $cm^4$\\
+61	&	$d_{aS}$ 	&	 = 	&	${( 32  \times  M_{BS}  \times  K_{b} ) / ( \pi  \times  P_{b} )}^{1/3}$ 	&	 Min snub pulley shaft dia. considering bending and torsion 	&	 mm\\
+62	&	$d_{bS}$ 	&	 = 	&	$({(I_{S}  \times  64 ) / \pi })^{1/4}$ 	&	Min snub pulley shaft dia. considering deflection 	&	 mm\\
+63	&	$d_{S}$ 	&	 = 	&	$f(d_{S},d_{SS})$ 	&	 Actual diameter of snub pulley 	&	 mm\\
+64	&	$I_{GB}$ 	&	 = 	&	$f(P_{M2}|G_{M})$ 	&	Moment of inertia of gearbox 	&	$kgm^2$\\
+65	&	$C_{SP}$ 	&	 = 	&	$(12397 \times {{((d_{SS}|d_{S})/1000)}^2}/2)+150$	&	Cost of snub pulley shaft	&	$\$$\\
+66	&	$C_{TS}$ 	&	 = 	&	$(12397 \times {{((d_{TS}|d_{T})/1000)}^2}/2)+150$	&	Cost of tail pulley shaft	&	$\$$\\
+67	&	$C_{DP}$ 	&	 = 	&	$(12397 \times {{((d_{DS}|d_{D})/1000)}^2}/2)+150$	&	Cost of drive pulley shaft	&	$\$$\\
+68	&	$W_{M}$ 	&	 = 	&	$f(P_{M2}|P_{M})$	&	Weight of motor	&	kg\\
+69	&	$W_{RS}$ 	&	 = 	&	$f(T_{BS}|T_{BR})$	&	Weight of brake	&	kg\\
+70	&	$W_{GB}$ 	&	 = 	&	$f(P_{M2}|G_{M})$	&	Weight of gearbox	&	kg\\
+71	&	$I_{m}$ 	&	 = 	&	$f(P_{M2}|P_{M})$	&	Moment of inertia of motor	&	$kgm^2$\\
+74	&	$C_{PT}$ 	&	 = 	&	$0.25 \times W_{PT}$	&	Cost of tail pulley	&	$\$$\\
+75	&	$W_{TS}$ 	&	 = 	&	$(7700 \times \pi \times 2.05 / {(d_{TS}|d_{T})}^{2}/4$	&	Weight of tail pulley shaft	&	kg\\
+76	&	$W_{SP}$ 	&	 = 	&	$(7700 \times \pi \times 2.05 / {(d_{SS}|d_{S})}^{2}/4$	&	Weight of snub pulley shaft	&	kg\\
+77	&	$C_{PS}$ 	&	 = 	&	$0.34 \times W_{PS}$	&	Cost of snub pulley	&	$\$$\\
+78	&	$C_{PD}$ 	&	 = 	&	$0.41 \times W_{PD}$	&	Cost of drive pulley	&	$\$$\\
+
+
+\specialrule{.05em}{.3em}{.3em} 
+
+\end{tabular}
+\end{table*}
+
+\begin{table*}
+\caption{Definitions of margin nodes, their decided values and target thresholds for the belt conveyor case}
+\label{tab:listofmarginnodes}
+ \renewcommand{\arraystretch}{1.3}
+\footnotesize
+\begin{tabular}{ p{1cm} p{3cm} p{2cm} p{7cm} p{1cm}}
+\specialrule{.05em}{.3em}{.3em} 
+Margin node & Target threshold & Decided value & Description & Unit\\
+\specialrule{.1em}{.3em}{.3em} 
+$E_{1}$ & $P_{M2}$ & $P_{M}$ & Excess margin at the rated power of the motor & kW \\
+$E_{2}$ & $T_{BS}$ & $T_{BR}$ & Excess margin at the rated torque of the brake & Nm \\
+$E_{3}$ & $P_{M2}$ & $G_{M}$ & Excess margin at the rated power of the gearbox & kW \\
+$E_{4}$ & $D_{D}$ & $D_{DR}$ & Excess margin at the drive pulley diameter & mm\\
+$E_{5}$ & $D_{T}$ & $D_{TR}$ & Excess margin at the tail pulley diameter& mm\\
+$E_{6}$ & $D_{S}$ & $D_{SR}$ & Excess margin at the snub pulley diameter& mm\\
+$E_{7}$ & $d_{SS}$ & $d_{S}$ & Excess margin at the snub shaft diameter& mm\\
+$E_{8}$ & $d_{DS}$ & $d_{D}$ & Excess margin at the drive shaft diameter& mm\\
+$E_{9}$ & $d_{TS}$ & $d_{T}$ & Excess margin related to the tail shaft diameter& mm\\
+\specialrule{.05em}{.3em}{.3em} 
+
+
+\end{tabular}
+\end{table*}
+
+\begin{table*}
+\caption{Definitions of performance parameters and their calculation for the belt conveyor case}
+\label{tab:listofperformanceparameters}
+ \renewcommand{\arraystretch}{1.3}
+\footnotesize
+\begin{tabular}{ p{0.5cm} p{0.5cm} p{0.2cm} p{10cm} p{1cm}}
+\specialrule{.05em}{.3em}{.3em} 
+Node & Output & & Equation & Unit \\
+\specialrule{.1em}{.3em}{.3em} 
+72 & $\eta_{m}$ & = & $f(P_{M2}|P_{M})$ & $\%$\\
+73 & $I_{S}$ & = & $I_{m}+I_{GB}$ & $cm^4$\\
+79 & $TC_{S}$ & = & $C_{m}+C_{BR}+C_{GB}+C_{DP}+C_{TS}+C_{SP}+C_{PD}+C_{PT}+C_{PS}$ & $\$$\\
+80 & $TW_{S}$ & = & $W_{m}+W_{RS}+W_{TS}+W_{GB}+W_{DP}+W_{SP}+W_{PD}+C_{PT}+C_{PS}$ & $kg$\\
+\specialrule{.05em}{.3em}{.3em} 
+
+
+\end{tabular}
+\end{table*}
+
+\begin{table*}
+\caption{Definitions of decisions and their output parameters for the belt conveyor case}
+\label{tab:decisionnodes}
+ \renewcommand{\arraystretch}{1.3}
+\footnotesize
+\begin{tabular}{ p{1cm} p{2cm} p{6cm} p{1cm} }
+\specialrule{.05em}{.3em}{.3em} 
+Decision & Output & Description & Unit\\
+\specialrule{.1em}{.3em}{.3em} 
+D1	&	$M_{M}$ 	&	 Selected motor model 	&--	 \\
+D2.1	&	$M_{DP}$ 	&	 Selected model of drive pulley 	&--	 \\
+D2.2	&	$M_{SP}$ 	&	 Selected model of snub pulley 	&--	 \\
+D2.3	&	$M_{TP}$ 	&	 Selected model of the tail pulley 	&--	 \\
+D3	&	$G_{M}$ 	&	 Selected model of the gearbox	&	-- \\
+D4	&	$B_{RS}$ 	&	 Selected brake size 	&--	 \\
+D5	&	$d_{DS}$ 	&	 Selected drive pulley shaft diameter 	&	 mm\\
+D6	&	$d_{TS}$ 	&	 Selected tail pulley shaft diameter 	&	 mm\\
+D7	&	$d_{SS}$ 	&	 Selected snub pulley shaft diameter 	&	 mm\\
+
+\specialrule{.05em}{.3em}{.3em} 
+
+
+\end{tabular}
+\end{table*}
+
+
+
+\end{document}
+%% end of file template.tex
+%
