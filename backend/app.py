@@ -108,6 +108,15 @@ def build_lambda(formula_str, input_var_names):
     # Replace common unicode math symbols
     clean = clean.replace('\u00D7', '*').replace('\u00B7', '*').replace('\u2212', '-')
 
+    # Handle implicit multiplication (common math notation that Python rejects):
+    #   "12(x+1)"  -> "12*(x+1)"
+    #   "(a+b)(c-d)" -> "(a+b)*(c-d)"
+    # NOTE: only digit-before-( and )-before-( are handled here;
+    # word-before-( is intentionally skipped to avoid breaking function calls
+    # like sqrt(x) or user-defined names that are processed further below.
+    clean = re.sub(r'(\d)\s*\(', r'\1*(', clean)   # 12(...) -> 12*(...)
+    clean = re.sub(r'(\))\s*\(', r'\1*(', clean)   # )(...) -> )*(...
+
     # Map short math names to math module
     for fn in ['sqrt', 'abs', 'pow', 'log', 'log10', 'exp',
                'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2',
