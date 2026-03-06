@@ -507,6 +507,10 @@ function Canvas({
             const next = Math.max(-420, Math.min(420, current + main));
             onUpdateEdge(edgeId, { manualOffset: next, routeOffset: 0 });
           }}
+          onSetEdgeWaypoints={(edgeId, wpts) => {
+            if (onUpdateEdge) onUpdateEdge(edgeId, { waypoints: wpts, manualOffset: 0 });
+          }}
+          zoom={zoom}
           probeConnectFromId={(() => {
             if (!connecting) return null;
             const src = nodeById[connecting.fromId];
@@ -564,6 +568,10 @@ function Canvas({
             const next = Math.max(-420, Math.min(420, current + main));
             onUpdateEdge(edgeId, { manualOffset: next, routeOffset: 0 });
           }}
+          onSetEdgeWaypoints={(edgeId, wpts) => {
+            if (onUpdateEdge) onUpdateEdge(edgeId, { waypoints: wpts, manualOffset: 0 });
+          }}
+          zoom={zoom}
           overlayOnly
           probeConnectFromId={null}
           onAttachProbeToEdge={() => {}}

@@ -240,9 +240,15 @@ function reducer(state, action) {
         const movedNodes = state.nodes.map(n =>
           n.id === action.id ? { ...n, x: pos.x, y: pos.y } : n
         );
+        const clearedEdges = state.edges.map(e =>
+          (e.from === action.id || e.to === action.id) && e.waypoints
+            ? { ...e, waypoints: null }
+            : e
+        );
         return {
           ...state,
           nodes: movedNodes,
+          edges: clearedEdges,
           clusters: fitClustersToMembers(state.clusters, movedNodes),
         };
       }
@@ -327,6 +333,9 @@ function reducer(state, action) {
         if (!current) return state;
         const dx = action.x - current.x;
         const dy = action.y - current.y;
+        const clusterNodeIds = new Set(
+          state.nodes.filter(n => n.clusterId === current.id).map(n => n.id)
+        );
         const movedNodes = state.nodes.map((n) =>
           n.clusterId === current.id
             ? { ...n, x: n.x + dx, y: n.y + dy }
@@ -335,9 +344,15 @@ function reducer(state, action) {
         const movedClusters = state.clusters.map(c =>
           c.id === action.id ? { ...c, x: action.x, y: action.y } : c
         );
+        const clearedEdges = state.edges.map(e =>
+          (clusterNodeIds.has(e.from) || clusterNodeIds.has(e.to)) && e.waypoints
+            ? { ...e, waypoints: null }
+            : e
+        );
         return {
           ...state,
           nodes: movedNodes,
+          edges: clearedEdges,
           clusters: fitClustersToMembers(movedClusters, movedNodes),
         };
       }

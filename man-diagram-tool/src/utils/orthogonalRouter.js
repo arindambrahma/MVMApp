@@ -13,6 +13,9 @@ function snap(v) {
   return Math.round(v / LANE) * LANE;
 }
 
+export function simplifyPath(points) { return simplify(points); }
+export function makeStubPoint(p, dir) { return makeStub(p, dir); }
+
 export function selectPorts(srcNode, tgtNode, preferredAxis = 'horizontal') {
   // Make calculation function nodes explicit:
   // horizontal mode: incoming terminate on left, outgoing from right.
@@ -251,6 +254,18 @@ export function computeOrthogonalPath(srcNode, tgtNode, options = {}) {
     }
   };
 
+  // Relaxed variant: ignores collinear overlap to prevent edges getting stuck
+  // on top of one another when no clean route exists.
+  const tryPathRelaxed = (p) => {
+    const pp = simplify(p);
+    if (!pathIsClear(pp, obstacles)) return;
+    const s = scoreAgainstRouted(pp, routedSegs);
+    if (s < bestScore) {
+      bestScore = s;
+      bestPath = pp;
+    }
+  };
+
   const srcH = srcDir === 'left' || srcDir === 'right';
   const tgtH = tgtDir === 'left' || tgtDir === 'right';
   const srcV = !srcH;
@@ -312,6 +327,27 @@ export function computeOrthogonalPath(srcNode, tgtNode, options = {}) {
     ];
     for (const p of boundaryCandidates) tryPath(p);
   }
+
+  // Relaxed pass: if strict routing still found nothing, retry the main candidates
+  // without the collinear-overlap rejection so edges don't silently pile on top of each other.
+  if (!bestPath) {
+    bestScore = Infinity;
+    if (srcH && tgtH) {
+      const lanes = candidateLanes((out.x + inn.x) / 2, routeOffset, out.x - inn.x);
+      for (const laneX of lanes) {
+        tryPathRelaxed([src, out, { x: laneX, y: out.y }, { x: laneX, y: inn.y }, inn, tgt]);
+      }
+    } else if (srcV && tgtV) {
+      const lanes = candidateLanes((out.y + inn.y) / 2, routeOffset, out.y - inn.y);
+      for (const laneY of lanes) {
+        tryPathRelaxed([src, out, { x: out.x, y: laneY }, { x: inn.x, y: laneY }, inn, tgt]);
+      }
+    } else {
+      tryPathRelaxed([src, out, { x: out.x, y: inn.y }, inn, tgt]);
+      tryPathRelaxed([src, out, { x: inn.x, y: out.y }, inn, tgt]);
+    }
+  }
+
   if (!bestPath) {
     bestPath = simplify([src, out, { x: out.x, y: inn.y }, inn, tgt]);
   }

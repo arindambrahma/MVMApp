@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { pointsToSvgPath, computeArrowhead } from '../../utils/orthogonalRouter';
 import { EDGE_TYPES } from '../../constants/nodeTypes';
 import { sanitize } from '../../utils/helpers';
@@ -45,18 +45,39 @@ function pointAtFraction(points, fraction = 0.5) {
   return points[points.length - 1];
 }
 
+// Move a draggable segment perpendicularly. Stub segments (index 0 and n-2) are not draggable.
+// For a horizontal segment (same y): moves in y. For vertical: moves in x.
+function moveSegment(points, segIdx, delta) {
+  if (!points || segIdx < 1 || segIdx > points.length - 3) return points;
+  const result = points.map(p => ({ ...p }));
+  const a = result[segIdx];
+  const b = result[segIdx + 1];
+  const isHorizontal = Math.abs(a.y - b.y) < 0.5;
+  if (isHorizontal) {
+    a.y += delta;
+    b.y += delta;
+  } else {
+    a.x += delta;
+    b.x += delta;
+  }
+  return result;
+}
+
 function OrthogonalPath({
   edge, srcNode, tgtNode, points, jumps, onDelete, paramValues,
   hovered = false, selected = false, onHoverChange = () => {}, overlayOnly = false,
   onSelectEdge = () => {},
   onNudgeEdge = () => {},
+  onSetEdgeWaypoints = () => {},
+  zoom = 1,
   attachedProbes = [],
   probeConnectFromId = null,
   onAttachProbeToEdge = () => {},
   onDetachProbe = () => {},
 }) {
-  const dragRef = useRef(null);
   const dragCleanupRef = useRef(null);
+  const segDragRef = useRef(null);
+  const [liveRoute, setLiveRoute] = useState(null);
 
   useEffect(() => {
     return () => {
@@ -68,8 +89,9 @@ function OrthogonalPath({
   }, []);
 
   const route = points || [srcNode, tgtNode];
-  const pathD = pointsToSvgPath(route);
-  const arrowPts = computeArrowhead(route);
+  const effectiveRoute = liveRoute || route;
+  const pathD = pointsToSvgPath(effectiveRoute);
+  const arrowPts = computeArrowhead(effectiveRoute);
 
   const color = edge.edgeType === EDGE_TYPES.THRESHOLD ? '#DC2626'
     : edge.edgeType === EDGE_TYPES.DECIDED ? '#111827'
@@ -79,8 +101,8 @@ function OrthogonalPath({
     : '#64748B';
 
   // Midpoint for delete button and tooltip anchor
-  const midIdx = Math.floor(route.length / 2);
-  const mid = route[midIdx] || route[0];
+  const midIdx = Math.floor(effectiveRoute.length / 2);
+  const mid = effectiveRoute[midIdx] || effectiveRoute[0];
   const hasPortBinding = Boolean(edge.fromPort || edge.toPort);
   const portLabel = hasPortBinding
     ? `${edge.fromPort || '*'} -> ${edge.toPort || '*'}`
@@ -141,6 +163,71 @@ function OrthogonalPath({
     const elbow = { x: from.x, y: to.y };
     return `M ${from.x} ${from.y} L ${elbow.x} ${elbow.y} L ${to.x} ${to.y}`;
   };
+
+  // Build per-segment drag handles for selected edges.
+  // Segments 1..n-3 are draggable trunk segments (stubs at 0 and n-2 are fixed).
+  const segmentHandles = [];
+  if (selected && effectiveRoute.length >= 4) {
+    for (let i = 1; i <= effectiveRoute.length - 3; i++) {
+      const a = effectiveRoute[i];
+      const b = effectiveRoute[i + 1];
+      const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+      if (segLen < 14) continue; // too short to show handle
+      const isHorizontal = Math.abs(a.y - b.y) < 0.5;
+      const cx = (a.x + b.x) / 2;
+      const cy = (a.y + b.y) / 2;
+      const segIdx = i;
+      segmentHandles.push(
+        <circle
+          key={`seg_h_${i}`}
+          cx={cx}
+          cy={cy}
+          r={5}
+          fill="#fff"
+          stroke={color}
+          strokeWidth={1.5}
+          style={{ cursor: isHorizontal ? 'ns-resize' : 'ew-resize' }}
+          onMouseDown={(e) => {
+            if (e.button !== 0) return;
+            e.stopPropagation();
+            const baseRoute = effectiveRoute.map(p => ({ ...p }));
+            const startClient = { x: e.clientX, y: e.clientY };
+            segDragRef.current = { segIdx, isHorizontal, startClient, baseRoute };
+
+            const onMove = (ev) => {
+              const d = segDragRef.current;
+              if (!d) return;
+              const screenDelta = d.isHorizontal
+                ? ev.clientY - d.startClient.y
+                : ev.clientX - d.startClient.x;
+              const worldDelta = screenDelta / Math.max(zoom, 0.001);
+              setLiveRoute(moveSegment(d.baseRoute, d.segIdx, worldDelta));
+            };
+
+            const onUp = (ev) => {
+              const d = segDragRef.current;
+              if (d) {
+                const screenDelta = d.isHorizontal
+                  ? ev.clientY - d.startClient.y
+                  : ev.clientX - d.startClient.x;
+                const worldDelta = screenDelta / Math.max(zoom, 0.001);
+                const finalRoute = moveSegment(d.baseRoute, d.segIdx, worldDelta);
+                onSetEdgeWaypoints(edge.id, finalRoute);
+              }
+              segDragRef.current = null;
+              setLiveRoute(null);
+              window.removeEventListener('mousemove', onMove);
+              window.removeEventListener('mouseup', onUp);
+            };
+
+            dragCleanupRef.current = onUp;
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+          }}
+        />
+      );
+    }
+  }
 
   return (
     <g>
@@ -250,7 +337,7 @@ function OrthogonalPath({
 
       {/* Probe latches attached to this edge */}
       {!overlayOnly && (attachedProbes || []).map((probe) => {
-        const latch = pointAtFraction(route, probe.t);
+        const latch = pointAtFraction(effectiveRoute, probe.t);
         const anchor = probeAnchorOnRect(probe, latch);
         const vx = anchor.x - latch.x;
         const vy = anchor.y - latch.y;
@@ -382,74 +469,9 @@ function OrthogonalPath({
               ×
             </text>
           </g>
-          <g
-            style={{ cursor: 'move' }}
-            onMouseDown={(e) => {
-              if (e.button !== 0) return;
-              onSelectEdge(edge.id);
-              dragRef.current = { x: e.clientX, y: e.clientY };
-              const onMove = (ev) => {
-                const d = dragRef.current;
-                if (!d) return;
-                const dx = ev.clientX - d.x;
-                const dy = ev.clientY - d.y;
-                if (dx !== 0 || dy !== 0) {
-                  onNudgeEdge(edge.id, dx, dy);
-                  d.x = ev.clientX;
-                  d.y = ev.clientY;
-                }
-              };
-              const onUp = () => {
-                dragRef.current = null;
-                window.removeEventListener('mousemove', onMove);
-                window.removeEventListener('mouseup', onUp);
-                dragCleanupRef.current = null;
-              };
-              dragCleanupRef.current = onUp;
-              window.addEventListener('mousemove', onMove);
-              window.addEventListener('mouseup', onUp);
-              e.stopPropagation();
-            }}
-          >
-            <circle
-              cx={mid.x}
-              cy={mid.y}
-              r={4.5}
-              fill="#fff"
-              stroke={hovered ? hoverColor : color}
-              strokeWidth={1.6}
-            />
-          </g>
-          <g>
-            <circle
-              cx={mid.x - 10}
-              cy={mid.y}
-              r={4}
-              fill="#fff"
-              stroke="#64748B"
-              strokeWidth={1}
-              style={{ cursor: 'pointer' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectEdge(edge.id);
-                onNudgeEdge(edge.id, -24, 0);
-              }}
-            />
-            <circle
-              cx={mid.x + 10}
-              cy={mid.y}
-              r={4}
-              fill="#fff"
-              stroke="#64748B"
-              strokeWidth={1}
-              style={{ cursor: 'pointer' }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectEdge(edge.id);
-                onNudgeEdge(edge.id, 24, 0);
-              }}
-            />
-          </g>
+
+          {/* Per-segment drag handles (only when selected) */}
+          {segmentHandles}
         </g>
       )}
     </g>

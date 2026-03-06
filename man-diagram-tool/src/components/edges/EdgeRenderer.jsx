@@ -28,15 +28,15 @@ function applyManualOffset(points, offset) {
   }
   const p0 = points[0];
   const pn = points[points.length - 1];
+  // Shift only the inner (trunk) points, keeping the first and last stubs fixed.
+  // This prevents the end-bridge from creating a backward segment when amt != 0.
   const shiftedMid = points.slice(1, -1).map((p) => ({ x: p.x + amt, y: p.y }));
   const out = [
     { ...p0 },
-    { x: p0.x + amt, y: p0.y },
     ...shiftedMid,
-    { x: pn.x + amt, y: pn.y },
     { ...pn },
   ];
-  // Drop consecutive duplicates from bridging.
+  // Drop consecutive duplicates.
   const compact = [];
   for (const p of out) {
     const last = compact[compact.length - 1];
@@ -83,6 +83,8 @@ function EdgeRenderer({
   overlayAll = false,
   selectedEdgeId = null, onSelectEdge = () => {},
   onNudgeEdge = () => {},
+  onSetEdgeWaypoints = () => {},
+  zoom = 1,
   probeConnectFromId = null,
   onAttachProbeToEdge = () => {},
   onDetachProbe = () => {},
@@ -287,39 +289,49 @@ function EdgeRenderer({
       }
     }
 
-    const autoPoints = computeOrthogonalPath(srcNode, tgtNode, {
-      nodes,
-      routedPaths: STABLE_EDGE_ROUTING ? localRouted : routedPaths,
-      overlapPaths: routedPaths,
-      routeOffset,
-      preferredAxis: routePreference,
-      portDirs: dirs,
-      srcSlot: (() => {
-        if (srcNode.type === 'calcFunction' && edge.fromPort) {
-          const spec = getCalcFunctionVisualSpec(srcNode);
-          const idx = spec.outputSlots.findIndex(s => s.name === edge.fromPort);
-          if (idx >= 0) return idx;
-        }
-        if (!dirs) return 0;
-        const list = outBuckets.get(`${edge.from}:${dirs.srcDir}`) || [edge.id];
-        const idx = list.indexOf(edge.id);
-        return Math.max(0, idx);
-      })(),
-      tgtSlot: (() => {
-        if (tgtNode.type === 'calcFunction' && edge.toPort) {
-          const spec = getCalcFunctionVisualSpec(tgtNode);
-          const idx = spec.inputSlots.findIndex(s => s.name === edge.toPort);
-          if (idx >= 0) return idx;
-        }
-        if (!dirs) return 0;
-        const list = inBuckets.get(`${edge.to}:${dirs.tgtDir}`) || [edge.id];
-        const idx = list.indexOf(edge.id);
-        return Math.max(0, idx);
-      })(),
-    });
-    const routedPoints = autoPoints;
-    const effectiveManual = Number(edge.manualOffset) || 0;
-    const points = applyManualOffset(routedPoints, effectiveManual);
+    // Use stored waypoints if available (manually adjusted route).
+    const storedWaypoints = Array.isArray(edge.waypoints) && edge.waypoints.length >= 2
+      ? edge.waypoints : null;
+
+    let routedPoints, points;
+    if (storedWaypoints) {
+      routedPoints = storedWaypoints;
+      points = storedWaypoints;
+    } else {
+      const autoPoints = computeOrthogonalPath(srcNode, tgtNode, {
+        nodes,
+        routedPaths: STABLE_EDGE_ROUTING ? localRouted : routedPaths,
+        overlapPaths: routedPaths,
+        routeOffset,
+        preferredAxis: routePreference,
+        portDirs: dirs,
+        srcSlot: (() => {
+          if (srcNode.type === 'calcFunction' && edge.fromPort) {
+            const spec = getCalcFunctionVisualSpec(srcNode);
+            const idx = spec.outputSlots.findIndex(s => s.name === edge.fromPort);
+            if (idx >= 0) return idx;
+          }
+          if (!dirs) return 0;
+          const list = outBuckets.get(`${edge.from}:${dirs.srcDir}`) || [edge.id];
+          const idx = list.indexOf(edge.id);
+          return Math.max(0, idx);
+        })(),
+        tgtSlot: (() => {
+          if (tgtNode.type === 'calcFunction' && edge.toPort) {
+            const spec = getCalcFunctionVisualSpec(tgtNode);
+            const idx = spec.inputSlots.findIndex(s => s.name === edge.toPort);
+            if (idx >= 0) return idx;
+          }
+          if (!dirs) return 0;
+          const list = inBuckets.get(`${edge.to}:${dirs.tgtDir}`) || [edge.id];
+          const idx = list.indexOf(edge.id);
+          return Math.max(0, idx);
+        })(),
+      });
+      routedPoints = autoPoints;
+      const effectiveManual = Number(edge.manualOffset) || 0;
+      points = applyManualOffset(routedPoints, effectiveManual);
+    }
     routeByEdgeId.set(edge.id, points);
     if (STABLE_EDGE_ROUTING) {
       if (inKey) {
@@ -380,7 +392,9 @@ function EdgeRenderer({
             const aEnd = Math.hypot(c.x - a.b.x, c.y - a.b.y);
             const bStart = Math.hypot(c.x - b.a.x, c.y - b.a.y);
             const bEnd = Math.hypot(c.x - b.b.x, c.y - b.b.y);
-            const endpointPad = 6;
+            // Keep jumps away from corners (visual rounded-corner radius is 5px,
+            // so 12px gives comfortable clearance from the bend).
+            const endpointPad = 12;
             if (
               aStart < endpointPad || aEnd < endpointPad ||
               bStart < endpointPad || bEnd < endpointPad ||
@@ -402,15 +416,15 @@ function EdgeRenderer({
         }
       }
     }
-    // Clean up dense jump clusters per edge/segment so visuals stay readable.
+    // Clean up dense jump clusters per edge so visuals stay readable.
+    // Deduplication is global (not per-segment) so nearby crossings on adjacent
+    // segments (near a corner) don't produce stacked arcs.
     for (const edge of sortedEdges) {
       const raw = jumpsByEdgeId.get(edge.id) || [];
       const deduped = [];
       for (const j of raw) {
         const tooClose = deduped.some((k) =>
-          k.segIdx === j.segIdx &&
-          k.vertical === j.vertical &&
-          Math.hypot(k.x - j.x, k.y - j.y) < 10
+          Math.hypot(k.x - j.x, k.y - j.y) < 14
         );
         if (!tooClose) deduped.push(j);
       }
@@ -444,6 +458,8 @@ function EdgeRenderer({
             onSelectEdge={onSelectEdge}
             onDelete={onDeleteEdge}
             onNudgeEdge={onNudgeEdge}
+            onSetEdgeWaypoints={onSetEdgeWaypoints}
+            zoom={zoom}
             paramValues={paramValues}
             attachedProbes={probesByEdgeId.get(edge.id) || []}
             probeConnectFromId={probeConnectFromId}
