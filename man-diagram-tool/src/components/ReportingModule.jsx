@@ -82,6 +82,8 @@ function ReportingModule({
   appliedWeights = {},
   nodes = [],
   edges = [],
+  diagramImage = null,
+  onCaptureDiagram = null,
 }) {
   const [title, setTitle] = useState('Margin Value Analysis Report');
   const [author, setAuthor] = useState('');
@@ -95,6 +97,7 @@ function ReportingModule({
   const [includeAbsorptionMatrix, setIncludeAbsorptionMatrix] = useState(true);
   const [includeUtilisationMatrix, setIncludeUtilisationMatrix] = useState(false);
   const [includePlot, setIncludePlot] = useState(true);
+  const [includeDiagram, setIncludeDiagram] = useState(true);
 
   const nowIso = useMemo(() => new Date().toISOString(), []);
   const result = analysisResult?.result || {};
@@ -157,14 +160,17 @@ function ReportingModule({
     if (includeAbsorptionMatrix) payload.absorption_matrix = result.absorption_matrix || {};
     if (includeUtilisationMatrix) payload.utilisation_matrix = result.utilisation_matrix || {};
     if (includePlot && analysisResult?.plot) payload.plot_base64_png = analysisResult.plot;
+    if (includeDiagram && diagramImage) payload.diagram_svg_dataurl = diagramImage;
     return payload;
   }, [
     analysisResult,
     appliedWeights,
     author,
+    diagramImage,
     edges.length,
     includeAbsorptionMatrix,
     includeDeterioration,
+    includeDiagram,
     includeExcess,
     includeImpactMatrix,
     includePlot,
@@ -244,6 +250,9 @@ function ReportingModule({
     const img = includePlot && analysisResult?.plot
       ? `<h3>Margin Value Plot</h3><img alt="MVM plot" src="data:image/png;base64,${analysisResult.plot}" style="max-width:100%;border:1px solid #ddd;border-radius:8px;" />`
       : '';
+    const diagramImg = includeDiagram && diagramImage
+      ? `<h3>MAN Diagram</h3><img alt="MAN Diagram" src="${diagramImage}" style="max-width:100%;border:1px solid #ddd;border-radius:8px;" />`
+      : '';
     return `
 <!doctype html>
 <html><head><meta charset="utf-8" />
@@ -266,6 +275,7 @@ function ReportingModule({
   ${includeImpactMatrix ? tableHtml('Impact Matrix', ['Margin', 'Performance/Input', 'Value'], impactMatrixRows.map((r) => [r.margin, r.key, r.value])) : ''}
   ${includeAbsorptionMatrix ? tableHtml('Absorption Matrix', ['Margin', 'Performance/Input', 'Value'], absorptionMatrixRows.map((r) => [r.margin, r.key, r.value])) : ''}
   ${includeUtilisationMatrix ? tableHtml('Utilisation Matrix', ['Margin', 'Performance/Input', 'Value'], utilisationMatrixRows.map((r) => [r.margin, r.key, r.value])) : ''}
+  ${diagramImg}
   ${img}
 </body></html>`;
   };
@@ -338,6 +348,7 @@ function ReportingModule({
             ['Absorption matrix', includeAbsorptionMatrix, setIncludeAbsorptionMatrix],
             ['Utilisation matrix', includeUtilisationMatrix, setIncludeUtilisationMatrix],
             ['Plot image', includePlot, setIncludePlot],
+            ['Diagram snapshot', includeDiagram, setIncludeDiagram],
           ].map(([label, val, setter]) => (
             <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', marginBottom: 5 }}>
               <input type="checkbox" checked={val} onChange={(e) => setter(e.target.checked)} />
@@ -427,6 +438,27 @@ function ReportingModule({
             <pre style={{ margin: 0, fontSize: 11, color: '#334155', whiteSpace: 'pre-wrap' }}>
               {JSON.stringify(appliedWeights || {}, null, 2)}
             </pre>
+          </div>
+        )}
+        {includeDiagram && (
+          <div style={{ marginTop: 10, border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', padding: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>MAN Diagram</div>
+              {onCaptureDiagram && (
+                <button
+                  type="button"
+                  onClick={onCaptureDiagram}
+                  title="Re-capture the current diagram state"
+                  style={{ fontSize: 10, padding: '3px 7px', border: '1px solid #CBD5E1', borderRadius: 5, background: '#F8FAFC', color: '#475569', cursor: 'pointer' }}
+                >
+                  ↺ Refresh snapshot
+                </button>
+              )}
+            </div>
+            {diagramImage
+              ? <img alt="MAN Diagram" src={diagramImage} style={{ maxWidth: '100%', border: '1px solid #E2E8F0', borderRadius: 6 }} />
+              : <div style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>No snapshot available — run analysis or click Refresh.</div>
+            }
           </div>
         )}
         {includePlot && analysisResult?.plot && (

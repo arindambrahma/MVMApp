@@ -49,6 +49,7 @@ function App() {
   const [workspaceTabs, setWorkspaceTabs] = useState(['model']);
   const [activeTab, setActiveTab] = useState('model');
   const [fitViewRequest, setFitViewRequest] = useState(0);
+  const [diagramImage, setDiagramImage] = useState(null);
   const analysisProgressTimerRef = useRef(null);
   const captureDiagramRef = useRef(null);
 
@@ -148,6 +149,7 @@ function App() {
     clear();
     setAnalysisResult(null);
     setAnalysisError(null);
+    setDiagramImage(null);
     setWorkspaceTabs(['model']);
     setActiveTab('model');
     setSelectedClusterId(null);
@@ -223,6 +225,9 @@ function App() {
       const data = await runAnalysis(state.nodes, state.edges, effectiveWeights);
       setAnalysisProgress(96);
       setAnalysisResult(data);
+      // Capture diagram snapshot for reporting
+      const capture = captureDiagramRef.current;
+      if (capture) setDiagramImage(capture());
       setWorkspaceTabs((prev) => {
         const next = [...prev];
         if (!next.includes('sensitivity')) next.push('sensitivity');
@@ -464,6 +469,11 @@ function App() {
             nodes={state.nodes}
             edges={state.edges}
             appliedWeights={effectiveWeights}
+            diagramImage={diagramImage}
+            onCaptureDiagram={() => {
+              const capture = captureDiagramRef.current;
+              if (capture) setDiagramImage(capture());
+            }}
           />
         </div>
       )}
