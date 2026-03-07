@@ -2,9 +2,21 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
+import { execSync } from 'node:child_process'
+
+function getGitBranch() {
+  try {
+    return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __GIT_BRANCH__: JSON.stringify(getGitBranch()),
+  },
   plugins: [
     react(),
     {

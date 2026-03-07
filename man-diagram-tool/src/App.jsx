@@ -17,7 +17,7 @@ import { runAnalysis, fetchHealth } from './utils/api';
 import { validateGraph } from './utils/graphValidation';
 import { buildPreviewParamValues } from './utils/preAnalysisPreview';
 import { autoArrangeNodes } from './utils/autoLayout';
-import { FRONTEND_VERSION } from './version';
+import { FRONTEND_VERSION, GIT_BRANCH } from './version';
 import { sanitize } from './utils/helpers';
 
 function App() {
@@ -50,6 +50,7 @@ function App() {
   const [workspaceTabs, setWorkspaceTabs] = useState(['model']);
   const [activeTab, setActiveTab] = useState('model');
   const [fitViewRequest, setFitViewRequest] = useState(0);
+  const [repoName, setRepoName] = useState(null);
   const analysisProgressTimerRef = useRef(null);
   const captureDiagramRef = useRef(null);
 
@@ -108,7 +109,7 @@ function App() {
   }, [addNode, state.panOffset, state.zoom]);
 
   // Import JSON
-  const handleImport = useCallback((raw) => {
+  const handleImport = useCallback((raw, fileName) => {
     try {
       const data = importJSON(raw);
       loadGraph(data);
@@ -120,6 +121,7 @@ function App() {
       setActiveTab('model');
       setSelectedClusterId(null);
       setSelectedEdgeId(null);
+      setRepoName(fileName ? fileName.replace(/\.json$/i, '') : null);
     } catch (e) {
       alert('Invalid JSON file: ' + e.message);
     }
@@ -141,6 +143,7 @@ function App() {
       setActiveTab('model');
       setSelectedClusterId(null);
       setSelectedEdgeId(null);
+      setRepoName('conrod example');
     } catch (e) {
       alert(`Failed to load example JSON: ${e.message}`);
     }
@@ -156,6 +159,7 @@ function App() {
     setActiveTab('model');
     setSelectedClusterId(null);
     setSelectedEdgeId(null);
+    setRepoName(null);
   }, [clear]);
 
   // Capture a chart from an analysis module and queue it for the report.
@@ -398,6 +402,8 @@ function App() {
             onToggleArrowJumps={() => setArrowJumpsEnabled(v => !v)}
             frontendVersion={FRONTEND_VERSION}
             backendVersion={backendVersion}
+            repoName={repoName}
+            gitBranch={GIT_BRANCH}
           />
 
           <Canvas
@@ -516,6 +522,17 @@ function App() {
           onClose={() => setShowPreAnalysis(false)}
         />
       )}
+
+      <div className="app-footer">
+        Based on the Margin Value Method &nbsp;·&nbsp;{' '}
+        <a
+          href="https://link.springer.com/article/10.1007/s00163-020-00335-8"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Res. Eng. Design (2021)
+        </a>
+      </div>
     </div>
   );
 }

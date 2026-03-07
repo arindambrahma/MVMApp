@@ -222,6 +222,22 @@
   overflow: hidden;
 }
 
+.app-footer {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 4px 16px;
+  background: #F8FAFC;
+  border-top: 1px solid #E2E8F0;
+  font-size: 9px;
+  color: #94A3B8;
+  text-align: center;
+}
+
+.app-footer a {
+  color: #64748B;
+  text-decoration: underline;
+}
+
 .right-panel {
   width: 320px;
   min-width: 320px;

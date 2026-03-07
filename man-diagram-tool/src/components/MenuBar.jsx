@@ -129,7 +129,18 @@ function MenuBar({
 
   return (
     <div className="menu-bar" ref={menuWrapRef}>
-      <div className="menu-brand">MAN Diagram Tool</div>
+      <div className="menu-brand" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="22" height="22" style={{ flexShrink: 0 }}>
+          <rect width="32" height="32" rx="6" fill="#0F172A"/>
+          <line x1="7" y1="7.5" x2="25" y2="7.5" stroke="#475569" strokeWidth="1.5" strokeLinecap="round"/>
+          <line x1="7" y1="7.5" x2="16" y2="23" stroke="#F97316" strokeWidth="2" strokeLinecap="round"/>
+          <line x1="25" y1="7.5" x2="16" y2="23" stroke="#F97316" strokeWidth="2" strokeLinecap="round"/>
+          <polygon points="7,2.5 11.5,7.5 7,12.5 2.5,7.5" fill="#1D4ED8" stroke="#60A5FA" strokeWidth="0.8"/>
+          <circle cx="25" cy="7.5" r="4.5" fill="#1D4ED8" stroke="#60A5FA" strokeWidth="0.8"/>
+          <rect x="11.5" y="20.5" width="9" height="6.5" rx="2" fill="#059669" stroke="#34D399" strokeWidth="0.8"/>
+        </svg>
+        MAVEN
+      </div>
 
       <div className="menu-group">
         {menus.map((menu) => (
@@ -217,7 +228,7 @@ function MenuBar({
           const file = e.target.files?.[0];
           if (!file) return;
           const reader = new FileReader();
-          reader.onload = (ev) => onImport(ev.target.result);
+          reader.onload = (ev) => onImport(ev.target.result, file.name);
           reader.readAsText(file);
           e.target.value = '';
         }}

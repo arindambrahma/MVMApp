@@ -156,6 +156,8 @@ function Palette({
   onToggleArrowJumps,
   frontendVersion,
   backendVersion,
+  repoName,
+  gitBranch,
 }) {
   const types = [
     NODE_TYPES.INPUT,
@@ -340,6 +342,22 @@ function Palette({
           color: '#CBD5E1',
           lineHeight: 1.6,
         }}>
+          {repoName && (
+            <div style={{
+              marginBottom: 4,
+              paddingBottom: 4,
+              borderBottom: '1px solid #E2E8F0',
+              color: '#94A3B8',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }} title={repoName}>
+              {repoName}
+            </div>
+          )}
+          {gitBranch && (
+            <div style={{ color: '#94A3B8' }}>⎇ {gitBranch}</div>
+          )}
           <span style={{ color: backendVersion ? '#86EFAC' : '#FCA5A5' }}>●</span>
           {' '}UI: {frontendVersion || '—'}<br />
           <span style={{ color: backendVersion ? '#86EFAC' : '#FCA5A5' }}>●</span>
