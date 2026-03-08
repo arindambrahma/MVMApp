@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { jsPDF } from 'jspdf';
 
 function clamp(value, min, max) {
@@ -75,6 +75,9 @@ function ImageExportDialog({
   onClose,
   imageSrc,
   plotData,
+  plotOverlayPoints,
+  plotPoints,
+  forcePlotMode = false,
   defaultTitle = 'Margin Value Plot',
   defaultName = 'margin_value_plot',
 }) {
@@ -120,7 +123,8 @@ function ImageExportDialog({
   const [showAxisLabels, setShowAxisLabels] = useState(true);
   const [showPointLabels, setShowPointLabels] = useState(true);
   const [showMidlines, setShowMidlines] = useState(true);
-  const [showColorScale, setShowColorScale] = useState(true);
+  const [showColorScale, setShowColorScale] = useState(false);
+  const [showArrows, setShowArrows] = useState(true);
   const [showGridlines, setShowGridlines] = useState(false);
   const [quadOpacity, setQuadOpacity] = useState(32);
   const [quadTL, setQuadTL] = useState('#D4BEBA');
@@ -151,6 +155,16 @@ function ImageExportDialog({
   const [pointLabelSize, setPointLabelSize] = useState(10);
   const [bubbleOpacity, setBubbleOpacity] = useState(100);
   const [pointLabelOpacity, setPointLabelOpacity] = useState(100);
+  const [baselineLabelOffsetX, setBaselineLabelOffsetX] = useState(0);
+  const [baselineLabelOffsetY, setBaselineLabelOffsetY] = useState(0);
+  const [overlayLabelOffsetX, setOverlayLabelOffsetX] = useState(0);
+  const [overlayLabelOffsetY, setOverlayLabelOffsetY] = useState(0);
+  const [baselineFillColor, setBaselineFillColor] = useState('#9CA3AF');
+  const [baselineStrokeColor, setBaselineStrokeColor] = useState('#6B7280');
+  const [overlayFillColor, setOverlayFillColor] = useState('#F59E0B');
+  const [overlayStrokeColor, setOverlayStrokeColor] = useState('#B45309');
+  const [arrowColor, setArrowColor] = useState('#94A3B8');
+  const [arrowThickness, setArrowThickness] = useState(1);
   const [useCustomPlotSize, setUseCustomPlotSize] = useState(false);
   const [plotWidth, setPlotWidth] = useState(600);
   const [plotHeight, setPlotHeight] = useState(420);
@@ -169,7 +183,7 @@ function ImageExportDialog({
   const [settingsTab, setSettingsTab] = useState('layout');
   const previewCanvasRef = useRef(null);
   const settingsFileInputRef = useRef(null);
-  const isPlotMode = Boolean(plotData);
+  const isPlotMode = Boolean(plotData) || forcePlotMode;
 
   useEffect(() => {
     if (!open) return;
@@ -288,8 +302,22 @@ function ImageExportDialog({
   };
 
   const buildPoints = () => {
+    if (Array.isArray(plotPoints) && plotPoints.length) {
+      return plotPoints
+        .map((p) => ({
+          key: String(p?.key ?? p?.label ?? ''),
+          label: String(p?.label ?? '').replace('E_', 'E'),
+          x: Number(p?.x) * 100,
+          y: Number(p?.y) * 100,
+          excess: Number(p?.excess ?? 0) * 100,
+          r: Number.isFinite(Number(p?.r)) ? Number(p?.r) : 8,
+        }))
+        .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+    }
     if (!plotData) return null;
-    const marginKeys = Object.keys(plotData.excess || {});
+    let marginKeys = Object.keys(plotData.excess || {});
+    if (!marginKeys.length) marginKeys = Object.keys(plotData.weighted_impact || {});
+    if (!marginKeys.length) marginKeys = Object.keys(plotData.weighted_absorption || {});
     if (!marginKeys.length) return null;
     const points = marginKeys.map((key) => {
       const impact = Number(plotData.weighted_impact?.[key] ?? 0) * 100;
@@ -312,6 +340,24 @@ function ImageExportDialog({
     });
   };
 
+  const buildOverlayPoints = () => {
+    if (!plotOverlayPoints || !plotOverlayPoints.length) return [];
+    return plotOverlayPoints
+      .map((p) => ({
+        label: String(p?.label ?? '').replace('E_', 'E'),
+        x: Number(p?.x),
+        y: Number(p?.y),
+        r: Number(p?.r),
+      }))
+      .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+      .map((p) => ({
+        ...p,
+        x: p.x * 100,
+        y: p.y * 100,
+        r: Number.isFinite(p.r) ? p.r : 8,
+      }));
+  };
+
   const pickPointColor = (value, min, max) => {
     if (!Number.isFinite(value) || max === min) return scaleStartColor;
     const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
@@ -331,8 +377,10 @@ function ImageExportDialog({
   const buildPlotScales = () => {
     const points = buildPoints();
     if (!points) return null;
-    const xs = points.map((p) => p.x).filter(Number.isFinite);
-    const ys = points.map((p) => p.y).filter(Number.isFinite);
+    const overlayPoints = buildOverlayPoints();
+    const allPoints = overlayPoints.length ? [...points, ...overlayPoints] : points;
+    const xs = allPoints.map((p) => p.x).filter(Number.isFinite);
+    const ys = allPoints.map((p) => p.y).filter(Number.isFinite);
     if (!xs.length || !ys.length) return null;
     const minXRaw = Math.min(...xs);
     const maxXRaw = Math.max(...xs);
@@ -365,6 +413,8 @@ function ImageExportDialog({
     const scales = buildPlotScales();
     if (!scales) return;
     const { points, minX, maxX, minY, maxY, midX, midY } = scales;
+    const overlayPoints = buildOverlayPoints();
+    const baselineByLabel = new Map(points.map((p) => [p.label, p]));
 
     const { plot } = layout;
     const xScale = (x) => (maxX === minX ? plot.x + plot.w / 2 : plot.x + ((x - minX) / (maxX - minX)) * plot.w);
@@ -519,7 +569,7 @@ function ImageExportDialog({
       grad.addColorStop(1, scaleEndColor);
       ctx.fillStyle = grad;
       ctx.fillRect(barX, barY, barW, barH);
-      ctx.strokeStyle = '#0f172a';
+      ctx.strokeStyle = overlayPoints.length ? baselineStrokeColor : '#0f172a';
       ctx.lineWidth = 1;
       ctx.strokeRect(barX, barY, barW, barH);
       ctx.font = `${captionPx}px ${axisFont}, Arial, sans-serif`;
@@ -539,13 +589,12 @@ function ImageExportDialog({
       ctx.fillText(minAbs.toFixed(clamp(scaleDecimals, 0, 6)), barX + barW + 6 + labelPad, barY + barH);
       ctx.fillText(maxAbs.toFixed(clamp(scaleDecimals, 0, 6)), barX + barW + 6 + labelPad, barY + 8);
     }
-
     points.forEach((p) => {
       const cx = xScale(p.x);
       const cy = yScale(p.y);
       const r = clamp(p.r * scaleRef, minR, maxR);
       ctx.beginPath();
-      ctx.fillStyle = pickPointColor(Math.abs(p.excess), minAbs, maxAbs);
+      ctx.fillStyle = overlayPoints.length ? baselineFillColor : pickPointColor(Math.abs(p.excess), minAbs, maxAbs);
       ctx.globalAlpha = clamp(bubbleOpacity, 0, 100) / 100;
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
@@ -554,6 +603,23 @@ function ImageExportDialog({
       ctx.lineWidth = 0.9;
       ctx.stroke();
     });
+
+    if (overlayPoints.length) {
+      overlayPoints.forEach((p) => {
+        const cx = xScale(p.x);
+        const cy = yScale(p.y);
+        const r = clamp(p.r * scaleRef, minR, maxR);
+        ctx.beginPath();
+        ctx.fillStyle = overlayFillColor;
+        ctx.globalAlpha = 0.32;
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = overlayStrokeColor;
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+      });
+    }
 
     if (showPointLabels) {
       ctx.font = `700 ${fontPx(pointLabelSize, 6, 64)}px ${axisFont}, Arial, sans-serif`;
@@ -564,10 +630,51 @@ function ImageExportDialog({
         const cx = xScale(p.x);
         const cy = yScale(p.y);
         const r = clamp(p.r * scaleRef, minR, maxR);
-        ctx.fillText(p.label, cx + r + 6, cy - r / 2);
+        ctx.fillText(p.label, cx + r + 6 + Number(baselineLabelOffsetX), cy - r / 2 + Number(baselineLabelOffsetY));
       });
+      if (overlayPoints.length) {
+        ctx.font = `700 ${fontPx(pointLabelSize, 6, 64)}px ${axisFont}, Arial, sans-serif`;
+        ctx.fillStyle = '#9A3412';
+        overlayPoints.forEach((p) => {
+          const cx = xScale(p.x);
+          const cy = yScale(p.y);
+          const r = clamp(p.r * scaleRef, minR, maxR);
+          ctx.fillText(p.label, cx + r + 6 + Number(overlayLabelOffsetX), cy - r / 2 + Number(overlayLabelOffsetY));
+        });
+      }
       ctx.globalAlpha = 1;
     }
+
+    if (showArrows && overlayPoints.length) {
+      ctx.save();
+      ctx.strokeStyle = arrowColor;
+      ctx.fillStyle = arrowColor;
+      ctx.lineWidth = clamp(arrowThickness, 0.2, 12);
+      ctx.globalAlpha = 0.45;
+      const headLen = Math.max(4, 6 * scaleRef + clamp(arrowThickness, 0.2, 12));
+      overlayPoints.forEach((p) => {
+        const base = baselineByLabel.get(p.label);
+        if (!base) return;
+        const x1 = xScale(base.x);
+        const y1 = yScale(base.y);
+        const x2 = xScale(p.x);
+        const y2 = yScale(p.y);
+        if (Math.hypot(x2 - x1, y2 - y1) < 1e-3) return;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+        ctx.closePath();
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+    
   };
 
   const buildSvgString = (w, h) => {
@@ -594,6 +701,8 @@ function ImageExportDialog({
     const scales = buildPlotScales();
     if (!scales) return null;
     const { points, minX, maxX, minY, maxY, midX, midY } = scales;
+    const overlayPoints = buildOverlayPoints();
+    const baselineByLabel = new Map(points.map((p) => [p.label, p]));
     const { plot } = layout;
     const plotArea = {
       x: plot.x,
@@ -626,6 +735,11 @@ function ImageExportDialog({
     if (showTitle) {
       const titlePx = fontPx(titleSize, 6, 90);
       svg.push(`<text x="${layout.pad}" y="${layout.pad + titlePx}" font-family="${escape(titleFont)}, Arial, sans-serif" font-size="${titlePx}" font-weight="700" fill="${escape(titleColor)}">${escape(title)}</text>`);
+    }
+
+    if (showArrows && overlayPoints.length) {
+      const arrowHeadSize = Math.max(8, 6 + clamp(arrowThickness, 0.2, 12) * 1.2);
+      svg.push(`<defs><marker id="mvm-overlay-arrow" markerUnits="userSpaceOnUse" viewBox="0 0 10 10" markerWidth="${arrowHeadSize}" markerHeight="${arrowHeadSize}" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="${escape(arrowColor)}"/></marker></defs>`);
     }
 
     if (showQuadrants && quadOpacity > 0) {
@@ -707,14 +821,22 @@ function ImageExportDialog({
       svg.push(`<text x="${barX + barW + 6 + labelPad}" y="${barY + barH}" text-anchor="start" font-size="${labelPx}" fill="${escape(axisColor)}" font-family="${escape(axisFont)}, Arial, sans-serif">${minAbs.toFixed(clamp(scaleDecimals, 0, 6))}</text>`);
       svg.push(`<text x="${barX + barW + 6 + labelPad}" y="${barY + 8}" text-anchor="start" font-size="${labelPx}" fill="${escape(axisColor)}" font-family="${escape(axisFont)}, Arial, sans-serif">${maxAbs.toFixed(clamp(scaleDecimals, 0, 6))}</text>`);
     }
-
     points.forEach((p) => {
       const cx = xScale(p.x);
       const cy = yScale(p.y);
-      const fill = pickPointColor(Math.abs(p.excess), minAbs, maxAbs);
+      const fill = overlayPoints.length ? baselineFillColor : pickPointColor(Math.abs(p.excess), minAbs, maxAbs);
       const r = clamp(p.r * scaleRef, minR, maxR);
-      svg.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" fill-opacity="${(clamp(bubbleOpacity, 0, 100) / 100).toFixed(3)}" stroke="#0f172a" stroke-width="0.9"/>`);
+      svg.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" fill-opacity="${(clamp(bubbleOpacity, 0, 100) / 100).toFixed(3)}" stroke="${escape(overlayPoints.length ? baselineStrokeColor : '#0f172a')}" stroke-width="0.9"/>`);
     });
+
+    if (overlayPoints.length) {
+      overlayPoints.forEach((p) => {
+        const cx = xScale(p.x);
+        const cy = yScale(p.y);
+        const r = clamp(p.r * scaleRef, minR, maxR);
+        svg.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${escape(overlayFillColor)}" fill-opacity="0.32" stroke="${escape(overlayStrokeColor)}" stroke-width="1.4"/>`);
+      });
+    }
 
     if (showPointLabels) {
       const labelPx = fontPx(pointLabelSize, 6, 64);
@@ -723,10 +845,30 @@ function ImageExportDialog({
         const cx = xScale(p.x);
         const cy = yScale(p.y);
         const r = clamp(p.r * scaleRef, minR, maxR);
-        svg.push(`<text x="${cx + r + 6}" y="${cy - r / 2}" font-family="${escape(axisFont)}, Arial, sans-serif" font-size="${labelPx}" font-weight="700" fill="#0f172a" fill-opacity="${labelOpacity}">${escape(p.label)}</text>`);
+        svg.push(`<text x="${cx + r + 6 + Number(baselineLabelOffsetX)}" y="${cy - r / 2 + Number(baselineLabelOffsetY)}" font-family="${escape(axisFont)}, Arial, sans-serif" font-size="${labelPx}" font-weight="700" fill="#0f172a" fill-opacity="${labelOpacity}">${escape(p.label)}</text>`);
       });
+      if (overlayPoints.length) {
+        overlayPoints.forEach((p) => {
+          const cx = xScale(p.x);
+          const cy = yScale(p.y);
+          const r = clamp(p.r * scaleRef, minR, maxR);
+          svg.push(`<text x="${cx + r + 6 + Number(overlayLabelOffsetX)}" y="${cy - r / 2 + Number(overlayLabelOffsetY)}" font-family="${escape(axisFont)}, Arial, sans-serif" font-size="${labelPx}" font-weight="700" fill="#9A3412" fill-opacity="${labelOpacity}">${escape(p.label)}</text>`);
+        });
+      }
     }
 
+    if (showArrows && overlayPoints.length) {
+      overlayPoints.forEach((p) => {
+        const base = baselineByLabel.get(p.label);
+        if (!base) return;
+        const x1 = xScale(base.x);
+        const y1 = yScale(base.y);
+        const x2 = xScale(p.x);
+        const y2 = yScale(p.y);
+        if (Math.hypot(x2 - x1, y2 - y1) < 1e-3) return;
+        svg.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${escape(arrowColor)}" stroke-opacity="0.45" stroke-width="${clamp(arrowThickness, 0.2, 12)}" marker-end="url(#mvm-overlay-arrow)"/>`);
+      });
+    }
     svg.push(`</svg>`);
     return svg.join('');
   };
@@ -788,6 +930,7 @@ function ImageExportDialog({
     showRightBorder,
     showAxisLabels,
     showPointLabels,
+    showArrows,
     showMidlines,
     showColorScale,
     showGridlines,
@@ -820,6 +963,16 @@ function ImageExportDialog({
     pointLabelSize,
     bubbleOpacity,
     pointLabelOpacity,
+    baselineLabelOffsetX,
+    baselineLabelOffsetY,
+    overlayLabelOffsetX,
+    overlayLabelOffsetY,
+    baselineFillColor,
+    baselineStrokeColor,
+    overlayFillColor,
+    overlayStrokeColor,
+    arrowColor,
+    arrowThickness,
     useCustomPlotSize,
     plotWidth,
     plotHeight,
@@ -835,6 +988,8 @@ function ImageExportDialog({
     scaleLabelPadding,
     scaleEdgePadding,
     plotData,
+    plotOverlayPoints,
+    plotPoints,
     imageSrc,
   ]);
 
@@ -892,6 +1047,7 @@ function ImageExportDialog({
     showRightBorder,
     showAxisLabels,
     showPointLabels,
+    showArrows,
     showMidlines,
     showColorScale,
     showGridlines,
@@ -924,6 +1080,12 @@ function ImageExportDialog({
     pointLabelSize,
     bubbleOpacity,
     pointLabelOpacity,
+    baselineLabelOffsetX,
+    baselineLabelOffsetY,
+    overlayLabelOffsetX,
+    overlayLabelOffsetY,
+    arrowColor,
+    arrowThickness,
     useCustomPlotSize,
     plotWidth,
     plotHeight,
@@ -982,6 +1144,7 @@ function ImageExportDialog({
     if (has('showRightBorder')) setShowRightBorder(Boolean(data.showRightBorder));
     if (has('showAxisLabels')) setShowAxisLabels(Boolean(data.showAxisLabels));
     if (has('showPointLabels')) setShowPointLabels(Boolean(data.showPointLabels));
+    if (has('showArrows')) setShowArrows(Boolean(data.showArrows));
     if (has('showMidlines')) setShowMidlines(Boolean(data.showMidlines));
     if (has('showColorScale')) setShowColorScale(Boolean(data.showColorScale));
     if (has('showGridlines')) setShowGridlines(Boolean(data.showGridlines));
@@ -1014,6 +1177,12 @@ function ImageExportDialog({
     if (has('pointLabelSize')) setPointLabelSize(num(data.pointLabelSize, 6, 64));
     if (has('bubbleOpacity')) setBubbleOpacity(num(data.bubbleOpacity, 0, 100));
     if (has('pointLabelOpacity')) setPointLabelOpacity(num(data.pointLabelOpacity, 0, 100));
+    if (has('baselineLabelOffsetX')) setBaselineLabelOffsetX(num(data.baselineLabelOffsetX, -1000, 1000));
+    if (has('baselineLabelOffsetY')) setBaselineLabelOffsetY(num(data.baselineLabelOffsetY, -1000, 1000));
+    if (has('overlayLabelOffsetX')) setOverlayLabelOffsetX(num(data.overlayLabelOffsetX, -1000, 1000));
+    if (has('overlayLabelOffsetY')) setOverlayLabelOffsetY(num(data.overlayLabelOffsetY, -1000, 1000));
+    if (has('arrowColor')) setArrowColor(str(data.arrowColor, arrowColor));
+    if (has('arrowThickness')) setArrowThickness(num(data.arrowThickness, 0.2, 12));
     if (has('useCustomPlotSize')) setUseCustomPlotSize(Boolean(data.useCustomPlotSize));
     if (has('plotWidth')) setPlotWidth(num(data.plotWidth, 120, 10000));
     if (has('plotHeight')) setPlotHeight(num(data.plotHeight, 120, 10000));
@@ -1052,7 +1221,7 @@ function ImageExportDialog({
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div style={{ width: 'min(1500px, 96vw)', height: 'min(920px, 92vh)', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden', display: 'flex', boxShadow: '0 20px 60px rgba(15,23,42,0.25)', position: 'relative', paddingBottom: 62 }}>
-        <button type="button" onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 10, right: 10, border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#475569' }}>×</button>
+        <button type="button" onClick={onClose} aria-label="Close" style={{ position: 'absolute', top: 10, right: 10, border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#475569' }}>x</button>
           <div style={{ width: 380, flexShrink: 0, padding: 16, borderRight: '1px solid #e2e8f0', overflowY: 'auto', background: '#f1f5f9' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 12, marginLeft: 4 }}>Settings</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12, borderBottom: '1px solid #cbd5e1', paddingBottom: 0 }}>
@@ -1132,11 +1301,11 @@ function ImageExportDialog({
                 </label>
                 <label>
                   <span style={{ fontSize: 11, color: '#475569' }}>Graph offset X (px)</span>
-                  <input type="number" value={plotOffsetX} onChange={(e) => setPlotOffsetX(e.target.value)} disabled={!useCustomPlotSize} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomPlotSize ? '#fff' : '#f8fafc' }} />
+                  <input type="number" value={plotOffsetX} onChange={(e) => setPlotOffsetX(e.target.value)} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: '#fff' }} />
                 </label>
                 <label>
                   <span style={{ fontSize: 11, color: '#475569' }}>Graph offset Y (px)</span>
-                  <input type="number" value={plotOffsetY} onChange={(e) => setPlotOffsetY(e.target.value)} disabled={!useCustomPlotSize} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomPlotSize ? '#fff' : '#f8fafc' }} />
+                  <input type="number" value={plotOffsetY} onChange={(e) => setPlotOffsetY(e.target.value)} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: '#fff' }} />
                 </label>
               </div>
             </>
@@ -1219,6 +1388,10 @@ function ImageExportDialog({
                 <input type="checkbox" checked={showPointLabels} onChange={(e) => setShowPointLabels(e.target.checked)} />
                 Show point labels
               </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 6 }}>
+                <input type="checkbox" checked={showArrows} onChange={(e) => setShowArrows(e.target.checked)} />
+                Show arrows
+              </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 10 }}>
                 <input type="checkbox" checked={showColorScale} onChange={(e) => setShowColorScale(e.target.checked)} />
                 Show colour scale
@@ -1238,6 +1411,63 @@ function ImageExportDialog({
             <label>
               <span style={{ fontSize: 11, color: '#64748b' }}>Point label opacity (%)</span>
               <input type="range" min="0" max="100" value={pointLabelOpacity} onChange={(e) => setPointLabelOpacity(e.target.value)} />
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <label>
+                <span style={{ fontSize: 11, color: '#64748b' }}>Baseline label X (px)</span>
+                <input type="number" value={baselineLabelOffsetX} onChange={(e) => setBaselineLabelOffsetX(e.target.value)} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4 }} />
+              </label>
+              <label>
+                <span style={{ fontSize: 11, color: '#64748b' }}>Baseline label Y (px)</span>
+                <input type="number" value={baselineLabelOffsetY} onChange={(e) => setBaselineLabelOffsetY(e.target.value)} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4 }} />
+              </label>
+              <label>
+                <span style={{ fontSize: 11, color: '#64748b' }}>Redesign label X (px)</span>
+                <input type="number" value={overlayLabelOffsetX} onChange={(e) => setOverlayLabelOffsetX(e.target.value)} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4 }} />
+              </label>
+              <label>
+                <span style={{ fontSize: 11, color: '#64748b' }}>Redesign label Y (px)</span>
+                <input type="number" value={overlayLabelOffsetY} onChange={(e) => setOverlayLabelOffsetY(e.target.value)} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4 }} />
+              </label>
+            </div>
+            <label>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Baseline point fill</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                <input type="color" value={baselineFillColor} onChange={(e) => setBaselineFillColor(e.target.value)} style={{ width: 44, height: 34, borderRadius: 6, border: '1px solid #cbd5e1' }} />
+                <input value={baselineFillColor} onChange={(e) => setBaselineFillColor(e.target.value)} placeholder="#9CA3AF" style={{ flex: 1, minWidth: 0, padding: 6, borderRadius: 6, border: '1px solid #cbd5e1' }} />
+              </div>
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Baseline point stroke</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                <input type="color" value={baselineStrokeColor} onChange={(e) => setBaselineStrokeColor(e.target.value)} style={{ width: 44, height: 34, borderRadius: 6, border: '1px solid #cbd5e1' }} />
+                <input value={baselineStrokeColor} onChange={(e) => setBaselineStrokeColor(e.target.value)} placeholder="#6B7280" style={{ flex: 1, minWidth: 0, padding: 6, borderRadius: 6, border: '1px solid #cbd5e1' }} />
+              </div>
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Redesign point fill</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                <input type="color" value={overlayFillColor} onChange={(e) => setOverlayFillColor(e.target.value)} style={{ width: 44, height: 34, borderRadius: 6, border: '1px solid #cbd5e1' }} />
+                <input value={overlayFillColor} onChange={(e) => setOverlayFillColor(e.target.value)} placeholder="#F59E0B" style={{ flex: 1, minWidth: 0, padding: 6, borderRadius: 6, border: '1px solid #cbd5e1' }} />
+              </div>
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Redesign point stroke</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                <input type="color" value={overlayStrokeColor} onChange={(e) => setOverlayStrokeColor(e.target.value)} style={{ width: 44, height: 34, borderRadius: 6, border: '1px solid #cbd5e1' }} />
+                <input value={overlayStrokeColor} onChange={(e) => setOverlayStrokeColor(e.target.value)} placeholder="#B45309" style={{ flex: 1, minWidth: 0, padding: 6, borderRadius: 6, border: '1px solid #cbd5e1' }} />
+              </div>
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Arrow color</span>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                <input type="color" value={arrowColor} onChange={(e) => setArrowColor(e.target.value)} style={{ width: 44, height: 34, borderRadius: 6, border: '1px solid #cbd5e1' }} />
+                <input value={arrowColor} onChange={(e) => setArrowColor(e.target.value)} placeholder="#94A3B8" style={{ flex: 1, minWidth: 0, padding: 6, borderRadius: 6, border: '1px solid #cbd5e1' }} />
+              </div>
+            </label>
+            <label>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Arrow thickness (px)</span>
+              <input type="number" step="0.1" value={arrowThickness} onChange={(e) => setArrowThickness(e.target.value)} onBlur={(e) => setArrowThickness(clamp(e.target.value, 0.2, 12))} style={{ width: '100%', minWidth: 0, padding: 6, borderRadius: 6, border: '1px solid #cbd5e1' }} />
             </label>
             <label>
               <span style={{ fontSize: 11, color: '#64748b' }}>Scale start</span>
@@ -1450,4 +1680,35 @@ function ImageExportDialog({
 }
 
 export default ImageExportDialog;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
