@@ -1007,7 +1007,7 @@ function SensitivityStudyModule({
     overflowX: 'auto',
     paddingBottom: 8,
   };
-  const renderSubRunColumn = (title, rows) => (
+  const renderSubRunColumn = (title, rows, xLabelOverride = null) => (
     <div
       key={title}
       style={{
@@ -1030,7 +1030,7 @@ function SensitivityStudyModule({
       </div>
       <MarginLineChart
         series={buildSeriesForRows(rows)}
-        xLabel={chartXLabel}
+        xLabel={xLabelOverride || chartXLabel}
         yLabel="Local excess / response (%)"
         height={chartHeight}
         extraLines={extraLines}
@@ -1711,7 +1711,7 @@ function SensitivityStudyModule({
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button
                     type="button"
-                    onClick={() => subRun && setComparisonSubRun(subRun)}
+                    onClick={() => subRun && setComparisonSubRun({ ...subRun, savedXLabel: chartXLabel })}
                     disabled={!subRun}
                     style={{
                       border: '1px solid #CBD5E1',
@@ -1750,7 +1750,7 @@ function SensitivityStudyModule({
                   style={graphAreaStyle}
                 >
                   {renderSubRunColumn('Primary run', rowsForDisplay)}
-                  {comparisonSubRun && renderSubRunColumn('Comparison run', rowsForComparison)}
+                  {comparisonSubRun && renderSubRunColumn('Comparison run', rowsForComparison, comparisonSubRun.savedXLabel)}
                 </div>
               </div>
             </div>

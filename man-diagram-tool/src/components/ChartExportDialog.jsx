@@ -54,6 +54,7 @@ function computeLayout(W, H, opts) {
     showAxes = true, showAxisLabels = true,
     axisValueFontSize = 10, axisHeaderFontSize = 11,
     legendRows = 0, showLegend = false, legendFontSize = 10,
+    xTickRotation = 0,
   } = opts;
 
   const tickPx  = fontPx(axisValueFontSize, dpi);
@@ -63,7 +64,8 @@ function computeLayout(W, H, opts) {
 
   const yTickApproxW = showAxes ? tickPx * 5.2 + 6 : 0;
   const yLabelW      = showAxisLabels ? hdrPx * 1.5 + 6 : 0;
-  const xTickH       = showAxes ? tickPx + 6 : 0;
+  const rotFactor    = xTickRotation === 0 ? 1.0 : xTickRotation <= 30 ? 2.2 : xTickRotation <= 45 ? 3.0 : 4.0;
+  const xTickH       = showAxes ? tickPx * rotFactor + 6 : 0;
   const xLabelH      = showAxisLabels ? hdrPx * 1.5 + 4 : 0;
   const legH         = (showLegend && legendRows > 0) ? legendRows * (legPx * 1.7 + 2) + 6 : 0;
 
@@ -125,8 +127,10 @@ function buildLineSvg(W, H, series, extraLines, opts) {
     dpi = 300, padding = 20, background = '#ffffff',
     showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Arial', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true, showLegend = true,
+    showTopBorder = false, showRightBorder = false,
     axisFont = 'Arial', axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
     xAxisLabel = '', yAxisLabel = '', xDecimals = 3, yDecimals = 1,
+    xTickRotation = 0,
     useCustomBounds = false, xMin = 0, xMax = 1, yMin = -0.1, yMax = 0.1,
     seriesColors = SERIES_COLORS, legendFontSize = 10,
     xDomainProp = null, yDomainProp = null,
@@ -145,7 +149,7 @@ function buildLineSvg(W, H, series, extraLines, opts) {
   const layout = computeLayout(W, H, {
     dpi, padding, showTitle, titleSize,
     showAxes, showAxisLabels, axisValueFontSize, axisHeaderFontSize,
-    legendRows, showLegend, legendFontSize,
+    legendRows, showLegend, legendFontSize, xTickRotation,
   });
   const { tickPx, hdrPx, legPx, titlePx, left, plotX, plotY, plotW, plotH, legY } = layout;
 
@@ -188,13 +192,19 @@ function buildLineSvg(W, H, series, extraLines, opts) {
     });
     xTickVals.forEach(v => {
       const xx = xScale(v);
-      const labelY = Math.min(plotY + plotH + tickPx + 4, xAxisY + tickPx + 4);
-      svg.push(`<text x="${xx}" y="${labelY}" text-anchor="middle" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}">${v.toFixed(xDecimals)}</text>`);
+      const tickBaseY = Math.min(plotY + plotH + 4, xAxisY + 4);
+      if (xTickRotation === 0) {
+        svg.push(`<text x="${xx}" y="${tickBaseY + tickPx}" text-anchor="middle" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}">${v.toFixed(xDecimals)}</text>`);
+      } else {
+        svg.push(`<text x="${xx}" y="${tickBaseY}" text-anchor="end" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}" transform="rotate(-${xTickRotation} ${xx} ${tickBaseY})">${v.toFixed(xDecimals)}</text>`);
+      }
     });
-    // Y-axis line
+    // Y-axis line (left border)
     svg.push(`<line x1="${plotX}" y1="${plotY}" x2="${plotX}" y2="${plotY + plotH}" stroke="#475569" stroke-width="1.2"/>`);
     // X-axis at y=0
     svg.push(`<line x1="${plotX}" y1="${xAxisY}" x2="${plotX + plotW}" y2="${xAxisY}" stroke="#475569" stroke-width="1.6"/>`);
+    if (showTopBorder) svg.push(`<line x1="${plotX}" y1="${plotY}" x2="${plotX + plotW}" y2="${plotY}" stroke="#475569" stroke-width="1.2"/>`);
+    if (showRightBorder) svg.push(`<line x1="${plotX + plotW}" y1="${plotY}" x2="${plotX + plotW}" y2="${plotY + plotH}" stroke="#475569" stroke-width="1.2"/>`);
   }
 
   // Axis labels
@@ -254,10 +264,12 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
     showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Arial', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true,
     showPointLabels = true, showArrows = true,
+    showTopBorder = false, showRightBorder = false,
     axisFont = 'Arial', axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
     xAxisLabel = 'Undesirable impact on performance parameters (%)',
     yAxisLabel = 'Change absorption potential (%)',
     xDecimals = 2, yDecimals = 2,
+    xTickRotation = 0,
     useCustomBounds = false, xMin = 0, xMax = 10, yMin = 0, yMax = 50,
     baselineColor = '#9CA3AF', overlayColor = '#F59E0B', arrowColor = '#94A3B8',
     baselineOpacity = 35, overlayOpacity = 32, pointLabelSize = 10,
@@ -276,7 +288,7 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
   const layout = computeLayout(W, H, {
     dpi, padding, showTitle, titleSize,
     showAxes, showAxisLabels, axisValueFontSize, axisHeaderFontSize,
-    legendRows: 0, showLegend: false,
+    legendRows: 0, showLegend: false, xTickRotation,
   });
   const { tickPx, hdrPx, titlePx, left, plotX, plotY, plotW, plotH } = layout;
 
@@ -325,10 +337,18 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
       svg.push(`<text x="${plotX - 6}" y="${yScale(v) + tickPx * 0.35}" text-anchor="end" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}">${(v * 100).toFixed(yDecimals)}</text>`);
     });
     xTickVals.forEach(v => {
-      svg.push(`<text x="${xScale(v)}" y="${plotY + plotH + tickPx + 4}" text-anchor="middle" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}">${(v * 100).toFixed(xDecimals)}</text>`);
+      const xx = xScale(v);
+      const tickBaseY = plotY + plotH + 4;
+      if (xTickRotation === 0) {
+        svg.push(`<text x="${xx}" y="${tickBaseY + tickPx}" text-anchor="middle" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}">${(v * 100).toFixed(xDecimals)}</text>`);
+      } else {
+        svg.push(`<text x="${xx}" y="${tickBaseY}" text-anchor="end" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}" transform="rotate(-${xTickRotation} ${xx} ${tickBaseY})">${(v * 100).toFixed(xDecimals)}</text>`);
+      }
     });
     svg.push(`<line x1="${plotX}" y1="${plotY}" x2="${plotX}" y2="${plotY + plotH}" stroke="#475569" stroke-width="1.2"/>`);
     svg.push(`<line x1="${plotX}" y1="${plotY + plotH}" x2="${plotX + plotW}" y2="${plotY + plotH}" stroke="#475569" stroke-width="1.2"/>`);
+    if (showTopBorder) svg.push(`<line x1="${plotX}" y1="${plotY}" x2="${plotX + plotW}" y2="${plotY}" stroke="#475569" stroke-width="1.2"/>`);
+    if (showRightBorder) svg.push(`<line x1="${plotX + plotW}" y1="${plotY}" x2="${plotX + plotW}" y2="${plotY + plotH}" stroke="#475569" stroke-width="1.2"/>`);
   }
 
   if (showAxisLabels) {
@@ -385,8 +405,10 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
     dpi = 96, padding = 20, background = '#ffffff',
     showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Arial', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true, showLegend = true,
+    showTopBorder = false, showRightBorder = false,
     axisFont = 'Arial', axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
     xAxisLabel = '', yAxisLabel = '', xDecimals = 3, yDecimals = 1,
+    xTickRotation = 0,
     useCustomBounds = false, xMin = 0, xMax = 1, yMin = -0.1, yMax = 0.1,
     seriesColors = SERIES_COLORS, legendFontSize = 10,
     xDomainProp = null, yDomainProp = null,
@@ -405,7 +427,7 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
   const layout = computeLayout(W, H, {
     dpi, padding, showTitle, titleSize,
     showAxes, showAxisLabels, axisValueFontSize, axisHeaderFontSize,
-    legendRows, showLegend, legendFontSize,
+    legendRows, showLegend, legendFontSize, xTickRotation,
   });
   const { tickPx, hdrPx, legPx, titlePx, left, plotX, plotY, plotW, plotH, legY } = layout;
 
@@ -442,16 +464,27 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
     ctx.fillStyle = axisColor;
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     yTickVals.forEach(v => { ctx.fillText(`${(v * 100).toFixed(yDecimals)}%`, plotX - 6, yScale(v)); });
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
     xTickVals.forEach(v => {
       const xx = xScale(v);
-      const labelY = Math.min(plotY + plotH + 4, xAxisY + 4);
-      ctx.fillText(v.toFixed(xDecimals), xx, labelY + tickPx * 0.1);
+      const tickBaseY = Math.min(plotY + plotH + 4, xAxisY + 4);
+      if (xTickRotation === 0) {
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(v.toFixed(xDecimals), xx, tickBaseY + tickPx * 0.1);
+      } else {
+        ctx.save();
+        ctx.translate(xx, tickBaseY);
+        ctx.rotate(-xTickRotation * Math.PI / 180);
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        ctx.fillText(v.toFixed(xDecimals), 0, 0);
+        ctx.restore();
+      }
     });
     ctx.strokeStyle = '#475569'; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.moveTo(plotX, plotY); ctx.lineTo(plotX, plotY + plotH); ctx.stroke();
     ctx.lineWidth = 1.6;
     ctx.beginPath(); ctx.moveTo(plotX, xAxisY); ctx.lineTo(plotX + plotW, xAxisY); ctx.stroke();
+    if (showTopBorder) { ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(plotX, plotY); ctx.lineTo(plotX + plotW, plotY); ctx.stroke(); }
+    if (showRightBorder) { ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(plotX + plotW, plotY); ctx.lineTo(plotX + plotW, plotY + plotH); ctx.stroke(); }
   }
 
   if (showAxisLabels) {
@@ -526,10 +559,12 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
     showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Arial', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true,
     showPointLabels = true, showArrows = true,
+    showTopBorder = false, showRightBorder = false,
     axisFont = 'Arial', axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
     xAxisLabel = 'Undesirable impact on performance parameters (%)',
     yAxisLabel = 'Change absorption potential (%)',
     xDecimals = 2, yDecimals = 2,
+    xTickRotation = 0,
     useCustomBounds = false, xMin = 0, xMax = 10, yMin = 0, yMax = 50,
     baselineColor = '#9CA3AF', overlayColor = '#F59E0B', arrowColor = '#94A3B8',
     baselineOpacity = 35, overlayOpacity = 32, pointLabelSize = 10,
@@ -548,7 +583,7 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
   const layout = computeLayout(W, H, {
     dpi, padding, showTitle, titleSize,
     showAxes, showAxisLabels, axisValueFontSize, axisHeaderFontSize,
-    legendRows: 0, showLegend: false,
+    legendRows: 0, showLegend: false, xTickRotation,
   });
   const { tickPx, hdrPx, titlePx, left, plotX, plotY, plotW, plotH } = layout;
 
@@ -587,11 +622,26 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
     ctx.font = `${tickPx}px ${fontStr}`; ctx.fillStyle = axisColor;
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     yTickVals.forEach(v => { ctx.fillText((v * 100).toFixed(yDecimals), plotX - 6, yScale(v)); });
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    xTickVals.forEach(v => { ctx.fillText((v * 100).toFixed(xDecimals), xScale(v), plotY + plotH + 4); });
+    xTickVals.forEach(v => {
+      const xx = xScale(v);
+      const tickBaseY = plotY + plotH + 4;
+      if (xTickRotation === 0) {
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText((v * 100).toFixed(xDecimals), xx, tickBaseY);
+      } else {
+        ctx.save();
+        ctx.translate(xx, tickBaseY);
+        ctx.rotate(-xTickRotation * Math.PI / 180);
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        ctx.fillText((v * 100).toFixed(xDecimals), 0, 0);
+        ctx.restore();
+      }
+    });
     ctx.strokeStyle = '#475569'; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.moveTo(plotX, plotY); ctx.lineTo(plotX, plotY + plotH); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(plotX, plotY + plotH); ctx.lineTo(plotX + plotW, plotY + plotH); ctx.stroke();
+    if (showTopBorder) { ctx.beginPath(); ctx.moveTo(plotX, plotY); ctx.lineTo(plotX + plotW, plotY); ctx.stroke(); }
+    if (showRightBorder) { ctx.beginPath(); ctx.moveTo(plotX + plotW, plotY); ctx.lineTo(plotX + plotW, plotY + plotH); ctx.stroke(); }
   }
 
   if (showAxisLabels) {
@@ -705,6 +755,8 @@ function ChartExportDialog({
   const [showLegend, setShowLegend]         = useState(true);      // line only
   const [showPointLabels, setShowPointLabels] = useState(true);    // scatter only
   const [showArrows, setShowArrows]         = useState(true);      // scatter only
+  const [showTopBorder, setShowTopBorder]   = useState(false);
+  const [showRightBorder, setShowRightBorder] = useState(false);
 
   // ── Line style ──
   const [seriesColors, setSeriesColors] = useState([...SERIES_COLORS]);
@@ -731,6 +783,7 @@ function ChartExportDialog({
   );
   const [xDecimals, setXDecimals]   = useState(isLine ? 3 : 2);
   const [yDecimals, setYDecimals]   = useState(isLine ? 1 : 2);
+  const [xTickRotation, setXTickRotation] = useState(0);
   const [useCustomBounds, setUseCustomBounds] = useState(false);
   const [xMin, setXMin] = useState('0');
   const [xMax, setXMax] = useState(isLine ? '1' : '10');
@@ -770,10 +823,12 @@ function ChartExportDialog({
     background,
     showTitle, title, titleFont, titleSize: clamp(titleSize, 6, 60), titleColor,
     showAxes, showGridlines, showAxisLabels,
+    showTopBorder, showRightBorder,
     axisFont, axisValueFontSize: clamp(axisValueFontSize, 6, 40),
     axisHeaderFontSize: clamp(axisHeaderFontSize, 6, 60), axisColor,
     xAxisLabel, yAxisLabel,
     xDecimals: clamp(xDecimals, 0, 6), yDecimals: clamp(yDecimals, 0, 6),
+    xTickRotation,
     useCustomBounds, xMin, xMax, yMin, yMax,
     // line-specific
     showLegend, seriesColors, legendFontSize: clamp(legendFontSize, 7, 20),
@@ -842,12 +897,90 @@ function ChartExportDialog({
     open, widthPx, heightPx, padding, background,
     showTitle, title, titleFont, titleSize, titleColor,
     showAxes, showGridlines, showAxisLabels, showLegend, showPointLabels, showArrows,
+    showTopBorder, showRightBorder,
     axisFont, axisValueFontSize, axisHeaderFontSize, axisColor,
-    xAxisLabel, yAxisLabel, xDecimals, yDecimals,
+    xAxisLabel, yAxisLabel, xDecimals, yDecimals, xTickRotation,
     useCustomBounds, xMin, xMax, yMin, yMax,
     seriesColors, legendFontSize,
     baselineColor, overlayColor, arrowColor, baselineOpacity, overlayOpacity, pointLabelSize,
   ]);
+
+  const handleSaveSettings = () => {
+    const s = {
+      filename, format, widthVal, heightVal, unit, dpi, lockAspect, padding,
+      showTitle, title, titleFont, titleSize, titleColor, background,
+      showAxes, showGridlines, showAxisLabels, showLegend, showPointLabels, showArrows,
+      showTopBorder, showRightBorder,
+      seriesColors, legendFontSize,
+      baselineColor, overlayColor, arrowColor, baselineOpacity, overlayOpacity, pointLabelSize,
+      axisFont, axisValueFontSize, axisHeaderFontSize, axisColor,
+      xAxisLabel, yAxisLabel, xDecimals, yDecimals, xTickRotation,
+      useCustomBounds, xMin, xMax, yMin, yMax,
+    };
+    const blob = new Blob([JSON.stringify(s, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${sanitizeName(filename)}_settings.json`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  const handleLoadSettings = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      try {
+        const s = JSON.parse(evt.target.result);
+        if (s.filename !== undefined) setFilename(s.filename);
+        if (s.format !== undefined) setFormat(s.format);
+        if (s.widthVal !== undefined) setWidthVal(s.widthVal);
+        if (s.heightVal !== undefined) setHeightVal(s.heightVal);
+        if (s.unit !== undefined) setUnit(s.unit);
+        if (s.dpi !== undefined) setDpi(s.dpi);
+        if (s.lockAspect !== undefined) setLockAspect(s.lockAspect);
+        if (s.padding !== undefined) setPadding(s.padding);
+        if (s.showTitle !== undefined) setShowTitle(s.showTitle);
+        if (s.title !== undefined) setTitle(s.title);
+        if (s.titleFont !== undefined) setTitleFont(s.titleFont);
+        if (s.titleSize !== undefined) setTitleSize(s.titleSize);
+        if (s.titleColor !== undefined) setTitleColor(s.titleColor);
+        if (s.background !== undefined) setBackground(s.background);
+        if (s.showAxes !== undefined) setShowAxes(s.showAxes);
+        if (s.showGridlines !== undefined) setShowGridlines(s.showGridlines);
+        if (s.showAxisLabels !== undefined) setShowAxisLabels(s.showAxisLabels);
+        if (s.showLegend !== undefined) setShowLegend(s.showLegend);
+        if (s.showPointLabels !== undefined) setShowPointLabels(s.showPointLabels);
+        if (s.showArrows !== undefined) setShowArrows(s.showArrows);
+        if (s.showTopBorder !== undefined) setShowTopBorder(s.showTopBorder);
+        if (s.showRightBorder !== undefined) setShowRightBorder(s.showRightBorder);
+        if (s.seriesColors !== undefined) setSeriesColors(s.seriesColors);
+        if (s.legendFontSize !== undefined) setLegendFontSize(s.legendFontSize);
+        if (s.baselineColor !== undefined) setBaselineColor(s.baselineColor);
+        if (s.overlayColor !== undefined) setOverlayColor(s.overlayColor);
+        if (s.arrowColor !== undefined) setArrowColor(s.arrowColor);
+        if (s.baselineOpacity !== undefined) setBaselineOpacity(s.baselineOpacity);
+        if (s.overlayOpacity !== undefined) setOverlayOpacity(s.overlayOpacity);
+        if (s.pointLabelSize !== undefined) setPointLabelSize(s.pointLabelSize);
+        if (s.axisFont !== undefined) setAxisFont(s.axisFont);
+        if (s.axisValueFontSize !== undefined) setAxisValueFontSize(s.axisValueFontSize);
+        if (s.axisHeaderFontSize !== undefined) setAxisHeaderFontSize(s.axisHeaderFontSize);
+        if (s.axisColor !== undefined) setAxisColor(s.axisColor);
+        if (s.xAxisLabel !== undefined) setXAxisLabel(s.xAxisLabel);
+        if (s.yAxisLabel !== undefined) setYAxisLabel(s.yAxisLabel);
+        if (s.xDecimals !== undefined) setXDecimals(s.xDecimals);
+        if (s.yDecimals !== undefined) setYDecimals(s.yDecimals);
+        if (s.xTickRotation !== undefined) setXTickRotation(s.xTickRotation);
+        if (s.useCustomBounds !== undefined) setUseCustomBounds(s.useCustomBounds);
+        if (s.xMin !== undefined) setXMin(s.xMin);
+        if (s.xMax !== undefined) setXMax(s.xMax);
+        if (s.yMin !== undefined) setYMin(s.yMin);
+        if (s.yMax !== undefined) setYMax(s.yMax);
+      } catch { /* ignore malformed files */ }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   if (!open) return null;
 
@@ -955,6 +1088,8 @@ function ChartExportDialog({
                     [showPointLabels, setShowPointLabels, 'Show point labels'],
                     [showArrows, setShowArrows, 'Show movement arrows'],
                   ]),
+                  [showTopBorder, setShowTopBorder, 'Show top border'],
+                  [showRightBorder, setShowRightBorder, 'Show right border'],
                 ].map(([val, setter, label]) => (
                   <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer' }}>
                     <input type="checkbox" checked={val} onChange={e => setter(e.target.checked)} />{label}
@@ -1030,6 +1165,14 @@ function ChartExportDialog({
                   <div><label style={lbl}>X decimals</label><input style={inp} type="number" value={xDecimals} min={0} max={6} onChange={e => setXDecimals(clamp(e.target.value, 0, 6))} /></div>
                   <div><label style={lbl}>Y decimals</label><input style={inp} type="number" value={yDecimals} min={0} max={6} onChange={e => setYDecimals(clamp(e.target.value, 0, 6))} /></div>
                 </div>
+                <div><label style={lbl}>X tick rotation</label>
+                  <select style={inp} value={xTickRotation} onChange={e => setXTickRotation(Number(e.target.value))}>
+                    <option value={0}>0° (horizontal)</option>
+                    <option value={30}>30°</option>
+                    <option value={45}>45°</option>
+                    <option value={90}>90° (vertical)</option>
+                  </select>
+                </div>
                 <div><label style={lbl}>X-axis label</label><input style={inp} value={xAxisLabel} onChange={e => setXAxisLabel(e.target.value)} /></div>
                 <div><label style={lbl}>Y-axis label</label><input style={inp} value={yAxisLabel} onChange={e => setYAxisLabel(e.target.value)} /></div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer' }}>
@@ -1053,27 +1196,39 @@ function ChartExportDialog({
           </div>
 
           {/* Preview */}
-          <div style={{ flex: 1, background: '#f1f5f9', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 16, overflow: 'hidden', gap: 8 }}>
+          <div style={{ flex: 1, background: '#f1f5f9', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 16, overflow: 'hidden' }}>
             <canvas ref={previewRef} style={{
               borderRadius: 6, border: '1px solid #e2e8f0',
               boxShadow: '0 2px 12px rgba(15,23,42,0.10)',
-              maxWidth: '100%', maxHeight: 'calc(100% - 44px)',
+              maxWidth: '100%', maxHeight: '100%',
               transform: `scale(${previewZoom / 100})`, transformOrigin: 'center center',
             }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#64748b', flexShrink: 0 }}>
-              <span>Zoom</span>
-              <input type="range" min={25} max={200} step={5} value={previewZoom} onChange={e => setPreviewZoom(Number(e.target.value))} style={{ width: 90 }} />
-              <span>{previewZoom}%</span>
-            </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '10px 16px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: 8, background: '#fff' }}>
-          <button type="button" onClick={onClose} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
-          <button type="button" onClick={handleExport} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
-            {format === 'svg' ? 'Export SVG' : 'Export PNG'}
-          </button>
+        <div style={{ padding: '8px 14px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b' }}>
+              <span>Zoom</span>
+              <input type="range" min={25} max={200} step={5} value={previewZoom} onChange={e => setPreviewZoom(Number(e.target.value))} style={{ width: 80 }} />
+              <span style={{ minWidth: 34 }}>{previewZoom}%</span>
+            </div>
+            <button type="button" onClick={handleSaveSettings}
+              style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#475569' }}>
+              Save settings
+            </button>
+            <label style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#475569', lineHeight: 1.4 }}>
+              Load settings
+              <input type="file" accept=".json" onChange={handleLoadSettings} style={{ display: 'none' }} />
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={onClose} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button type="button" onClick={handleExport} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+              {format === 'svg' ? 'Export SVG' : 'Export PNG'}
+            </button>
+          </div>
         </div>
 
       </div>
