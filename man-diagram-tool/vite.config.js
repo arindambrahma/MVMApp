@@ -41,6 +41,9 @@ export default defineConfig({
       },
     },
   ],
+  build: {
+    chunkSizeWarningLimit: 1000, // in kB, default is 500
+  },
   server: {
     proxy: {
       '/api': {
