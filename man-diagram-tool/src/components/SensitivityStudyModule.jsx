@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { runAnalysis } from '../utils/api';
 import { sanitize } from '../utils/helpers';
+import ChartExportDialog from './ChartExportDialog';
 
 function pct(v, decimals = 2) {
   return `${((v || 0) * 100).toFixed(decimals)}%`;
@@ -117,6 +118,7 @@ function MarginLineChart({
   tables = [],
 }) {
   const svgRef = useRef(null);
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   if (!series?.length) {
     return (
@@ -253,8 +255,8 @@ function MarginLineChart({
           </div>
         ))}
       </div>
-      {onAddToReport && (
-        <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        {onAddToReport && (
           <button
             type="button"
             onClick={() => {
@@ -268,8 +270,27 @@ function MarginLineChart({
           >
             📋 Add to report
           </button>
-        </div>
-      )}
+        )}
+        <button
+          type="button"
+          onClick={() => setShowExportDialog(true)}
+          style={{ border: '1px solid #BBF7D0', background: '#F0FDF4', color: '#166534', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+        >
+          ↓ Export image
+        </button>
+      </div>
+      <ChartExportDialog
+        open={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
+        svgRef={svgRef}
+        chartType="line"
+        defaultName={exportName}
+        legendItems={series.map((s, idx) => ({
+          label: s.label,
+          color: colors[idx % colors.length],
+          dashed: String(s.key || '').startsWith('perf_'),
+        }))}
+      />
     </div>
   );
 }
