@@ -5,6 +5,7 @@ import MenuBar from './components/MenuBar';
 import Palette from './components/Palette';
 import Canvas from './components/Canvas';
 import PropertyPanel from './components/PropertyPanel';
+import HierarchicalSubCanvas from './components/HierarchicalSubCanvas';
 import MarginValuePlot from './components/MarginValuePlot';
 import SensitivityStudyModule from './components/SensitivityStudyModule';
 import RedesignAnalysisModule from './components/RedesignAnalysisModule';
@@ -28,6 +29,7 @@ function App() {
     select, setZoom, setPan,
     startConnecting, cancelConnecting, finishConnecting,
     toggleInterest, loadGraph, clear, setNodes,
+    updateSubGraph,
   } = useGraphStore();
 
   const [showExport, setShowExport] = useState(false);
@@ -286,6 +288,12 @@ function App() {
     setActiveTab(tabId);
   }, [analysisResult]);
 
+  const openSubCanvasTab = useCallback((nodeId) => {
+    const tabId = `subCanvas_${nodeId}`;
+    setWorkspaceTabs((prev) => (prev.includes(tabId) ? prev : [...prev, tabId]));
+    setActiveTab(tabId);
+  }, []);
+
   const closeWorkspaceTab = useCallback((tabId) => {
     if (tabId === 'model') return;
     setWorkspaceTabs((prev) => {
@@ -301,8 +309,13 @@ function App() {
     if (tabId === 'model') return 'Model';
     if (tabId === 'redesign') return 'Redesign';
     if (tabId === 'reporting') return 'Reporting';
+    if (tabId.startsWith('subCanvas_')) {
+      const nodeId = tabId.slice('subCanvas_'.length);
+      const node = state.nodes.find(n => n.id === nodeId);
+      return `⊕ ${node?.label || node?.autoLabel || 'Sub-network'}`;
+    }
     return 'Sensitivity';
-  }, []);
+  }, [state.nodes]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -435,6 +448,7 @@ function App() {
             arrowJumpsEnabled={arrowJumpsEnabled}
             fitViewRequest={fitViewRequest}
             onRegisterCapture={(fn) => { captureDiagramRef.current = fn; }}
+            onOpenSubCanvas={openSubCanvasTab}
           />
 
           <div className="right-panel">
@@ -452,6 +466,7 @@ function App() {
                 setSelectedClusterId(null);
               }}
               onDeleteNode={deleteNode}
+              onOpenSubCanvas={openSubCanvasTab}
             />
             <MarginValuePlot
               analysisResult={analysisResult}
@@ -483,7 +498,7 @@ function App() {
             onAddChartToReport={handleAddChartToReport}
           />
         </div>
-      ) : (
+      ) : activeTab === 'reporting' ? (
         <div className="analysis-workspace">
           <ReportingModule
             analysisResult={analysisResult}
@@ -494,7 +509,23 @@ function App() {
             reportCharts={reportCharts}
           />
         </div>
-      )}
+      ) : activeTab.startsWith('subCanvas_') ? (() => {
+        const nodeId = activeTab.slice('subCanvas_'.length);
+        const parentNode = state.nodes.find(n => n.id === nodeId);
+        if (!parentNode) return <div className="analysis-workspace" />;
+        return (
+          <div className="app-body" style={{ padding: 0 }}>
+            <HierarchicalSubCanvas
+              parentNode={parentNode}
+              onClose={() => closeWorkspaceTab(activeTab)}
+              onSave={(updatedSubGraph, updatedPorts) => {
+                updateSubGraph(nodeId, updatedSubGraph, updatedPorts);
+                closeWorkspaceTab(activeTab);
+              }}
+            />
+          </div>
+        );
+      })() : null}
 
       {showExport && (
         <ExportModal

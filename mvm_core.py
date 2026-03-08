@@ -270,7 +270,8 @@ class MANEngine:
         for mn in self._margin_nodes:
             decided = base[mn.decided_name]
             threshold = base[mn.threshold_name]
-            if abs(threshold) < 1e-12:
+            ref = max(abs(decided), abs(threshold), 1e-300)
+            if abs(threshold) < 1e-12 * ref:
                 excess[mn.name] = 0.0
             else:
                 excess[mn.name] = (decided - threshold) / threshold
@@ -291,7 +292,8 @@ class MANEngine:
             for pp in self._perf_param_names:
                 pp_base = base[pp]
                 pp_mod = p_mod[pp]
-                if abs(pp_mod) < 1e-12:
+                ref = max(abs(pp_base), abs(pp_mod), 1e-300)
+                if abs(pp_mod) < 1e-12 * ref:
                     impact_matrix[mn.name][pp] = 0.0
                 else:
                     impact_matrix[mn.name][pp] = (pp_base - pp_mod) / pp_mod

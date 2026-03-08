@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { NODE_META } from '../constants/nodeTypes';
 import { sanitize } from '../utils/helpers';
 import { validateFormula } from '../utils/formulaValidator';
@@ -55,42 +55,55 @@ function Field({ label, value, placeholder, multiline, onChange, type }) {
   );
 }
 
-function FormulaField({ label, value, placeholder, onChange, availableVars }) {
+function FormulaField({ label, value, placeholder, onChange, availableVarNames, inputRef }) {
   const validation = useMemo(
-    () => value ? validateFormula(value, availableVars) : null,
-    [value, availableVars]
+    () => value ? validateFormula(value, availableVarNames) : null,
+    [value, availableVarNames]
   );
 
   const borderColor = !value ? '#D1D5DB'
     : validation?.valid ? '#22C55E'
     : '#EF4444';
 
+  const insertAtCursor = (text) => {
+    const el = inputRef?.current;
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const newVal = el.value.slice(0, start) + text + el.value.slice(end);
+    onChange(newVal);
+    setTimeout(() => {
+      el.setSelectionRange(start + text.length, start + text.length);
+      el.focus();
+    }, 0);
+  };
+
   return (
-    <label style={{
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 3,
-      marginBottom: 12,
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 12 }}>
       <span style={{
         fontSize: 11,
         fontWeight: 600,
         color: '#64748B',
         textTransform: 'uppercase',
         letterSpacing: 0.5,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
       }}>
         {label}
         {value && (
           <span style={{
-            marginLeft: 6,
+            marginLeft: 2,
             color: validation?.valid ? '#22C55E' : '#EF4444',
             fontSize: 12,
           }}>
             {validation?.valid ? '\u2713' : '\u2717'}
           </span>
         )}
+        <GreekPicker onInsert={insertAtCursor} />
       </span>
       <input
+        ref={inputRef}
         type="text"
         value={value || ''}
         placeholder={placeholder}
@@ -110,12 +123,93 @@ function FormulaField({ label, value, placeholder, onChange, availableVars }) {
           {validation.error}
         </span>
       )}
-    </label>
+    </div>
   );
 }
 
-function AvailableInputs({ varNames }) {
-  if (varNames.length === 0) {
+// Greek letter picker — shows 'α' button; click opens a grid of all Greek chars
+function GreekPicker({ onInsert }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const greekLow = 'αβγδεζηθικλμνξοπρστυφχψω';
+  const greekUp  = 'ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ';
+  const chars = [...greekLow, ...greekUp];
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block', marginLeft: 6 }}>
+      <button
+        type="button"
+        title="Insert Greek letter"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          fontSize: 13,
+          padding: '1px 6px',
+          background: open ? '#DBEAFE' : '#F1F5F9',
+          border: '1px solid #CBD5E1',
+          borderRadius: 4,
+          cursor: 'pointer',
+          color: '#334155',
+          lineHeight: 1.4,
+        }}
+      >
+        α
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: 0,
+          zIndex: 300,
+          background: '#fff',
+          border: '1px solid #E2E8F0',
+          borderRadius: 6,
+          padding: 6,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(12, 1fr)',
+          gap: 1,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+          width: 230,
+        }}>
+          {chars.map(ch => (
+            <button
+              key={ch}
+              type="button"
+              title={ch}
+              onClick={() => { onInsert(ch); setOpen(false); }}
+              style={{
+                fontSize: 13,
+                padding: '3px 2px',
+                background: 'none',
+                border: '1px solid transparent',
+                borderRadius: 3,
+                cursor: 'pointer',
+                textAlign: 'center',
+              }}
+              onMouseEnter={e => e.target.style.background = '#EFF6FF'}
+              onMouseLeave={e => e.target.style.background = 'none'}
+            >
+              {ch}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Available inputs — accepts enriched { label, name } objects
+// Shows original label → sanitized name when they differ (Greek labels)
+function AvailableInputs({ vars }) {
+  if (!vars || vars.length === 0) {
     return (
       <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 12, fontStyle: 'italic' }}>
         No incoming edges — connect inputs to this node first
@@ -135,21 +229,26 @@ function AvailableInputs({ varNames }) {
       }}>
         Available Inputs
       </span>
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 4,
-      }}>
-        {varNames.map(v => (
-          <code key={v} style={{
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {vars.map(v => (
+          <code key={v.name} style={{
             fontSize: 11,
             background: '#E2E8F0',
             padding: '2px 6px',
             borderRadius: 4,
             color: '#334155',
             fontFamily: "'Consolas', 'Monaco', monospace",
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 3,
           }}>
-            {v}
+            {v.label !== v.name && (
+              <>
+                <span style={{ color: '#78350F' }}>{v.label}</span>
+                <span style={{ color: '#94A3B8', fontSize: 10 }}>→</span>
+              </>
+            )}
+            <span>{v.name}</span>
           </code>
         ))}
       </div>
@@ -157,9 +256,191 @@ function AvailableInputs({ varNames }) {
   );
 }
 
+// Math function reference + syntax tips shown below formula field
+const FORMULA_MATH_FNS = [
+  { name: 'sqrt(x)',   tip: 'Square root' },
+  { name: 'abs(x)',    tip: 'Absolute value' },
+  { name: 'pow(x,n)', tip: 'x raised to power n (or use x^n)' },
+  { name: 'log(x)',   tip: 'Natural logarithm' },
+  { name: 'log10(x)', tip: 'Base-10 logarithm' },
+  { name: 'exp(x)',   tip: 'e^x' },
+  { name: 'sin(x)',   tip: 'Sine (radians)' },
+  { name: 'cos(x)',   tip: 'Cosine (radians)' },
+  { name: 'tan(x)',   tip: 'Tangent (radians)' },
+  { name: 'asin(x)',  tip: 'Arc-sine' },
+  { name: 'acos(x)',  tip: 'Arc-cosine' },
+  { name: 'atan(x)',  tip: 'Arc-tangent' },
+  { name: 'atan2(y,x)', tip: 'Four-quadrant arc-tangent' },
+  { name: 'ceil(x)',  tip: 'Round up to integer' },
+  { name: 'floor(x)', tip: 'Round down to integer' },
+  { name: 'round(x)', tip: 'Round to nearest integer' },
+  { name: 'min(a,b)', tip: 'Minimum of two values' },
+  { name: 'max(a,b)', tip: 'Maximum of two values' },
+  { name: 'pi',       tip: 'π ≈ 3.14159' },
+  { name: 'e',        tip: 'Euler\'s number ≈ 2.71828' },
+];
+
+function FormulaHelper({ vars, formulaRef }) {
+  const [showFns, setShowFns] = useState(false);
+
+  const insertAtCursor = (text) => {
+    const el = formulaRef?.current;
+    if (!el) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const before = el.value.slice(0, start);
+    const after = el.value.slice(end);
+    const newVal = before + text + after;
+    // Use React's synthetic event approach
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    if (nativeInputValueSetter) {
+      nativeInputValueSetter.call(el, newVal);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    // restore cursor
+    const newPos = start + text.length;
+    el.setSelectionRange(newPos, newPos);
+    el.focus();
+  };
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {/* Clickable vars */}
+      {vars.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 6 }}>
+          {vars.map(v => (
+            <button
+              key={v.name}
+              type="button"
+              title={`Insert "${v.name}" at cursor`}
+              onClick={() => insertAtCursor(v.name)}
+              style={{
+                fontSize: 11,
+                background: '#EFF6FF',
+                border: '1px solid #BFDBFE',
+                padding: '2px 6px',
+                borderRadius: 4,
+                color: '#1D4ED8',
+                cursor: 'pointer',
+                fontFamily: "'Consolas', 'Monaco', monospace",
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
+              }}
+            >
+              {v.label !== v.name && <span style={{ color: '#78350F' }}>{v.label} → </span>}
+              {v.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Math functions toggle */}
+      <button
+        type="button"
+        onClick={() => setShowFns(f => !f)}
+        style={{
+          fontSize: 10,
+          color: '#64748B',
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          textDecoration: 'underline',
+          marginBottom: showFns ? 6 : 0,
+        }}
+      >
+        {showFns ? 'Hide math functions' : 'Show math functions'}
+      </button>
+
+      {showFns && (
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 3,
+          marginBottom: 6,
+        }}>
+          {FORMULA_MATH_FNS.map(fn => (
+            <button
+              key={fn.name}
+              type="button"
+              title={fn.tip}
+              onClick={() => insertAtCursor(fn.name.split('(')[0])}
+              style={{
+                fontSize: 10,
+                background: '#F0FDF4',
+                border: '1px solid #BBF7D0',
+                padding: '2px 5px',
+                borderRadius: 4,
+                color: '#15803D',
+                cursor: 'pointer',
+                fontFamily: "'Consolas', 'Monaco', monospace",
+              }}
+            >
+              {fn.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Syntax tips */}
+      <div style={{ fontSize: 10, color: '#94A3B8', lineHeight: 1.5 }}>
+        Tips: use <code style={{ fontSize: 10 }}>^</code> for exponents (x^2), implicit multiplication (2x), and Python conditionals (<code style={{ fontSize: 10 }}>a if c else b</code>)
+      </div>
+    </div>
+  );
+}
+
+// Label field with an inline GreekPicker button
+function LabelField({ value, placeholder, onChange }) {
+  const inputRef = useRef(null);
+  const inputStyle = {
+    padding: '6px 8px',
+    border: '1px solid #D1D5DB',
+    borderRadius: 6,
+    fontSize: 12,
+    fontFamily: 'inherit',
+    width: '100%',
+    boxSizing: 'border-box',
+  };
+  const insertAtCursor = (text) => {
+    const el = inputRef.current;
+    if (!el) { onChange((value || '') + text); return; }
+    const start = el.selectionStart ?? (value || '').length;
+    const end = el.selectionEnd ?? (value || '').length;
+    const newVal = (value || '').slice(0, start) + text + (value || '').slice(end);
+    onChange(newVal);
+    setTimeout(() => {
+      el.setSelectionRange(start + text.length, start + text.length);
+      el.focus();
+    }, 0);
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 12 }}>
+      <span style={{
+        fontSize: 11, fontWeight: 600, color: '#64748B',
+        textTransform: 'uppercase', letterSpacing: 0.5,
+        display: 'flex', alignItems: 'center',
+      }}>
+        Label / Name
+        <GreekPicker onInsert={insertAtCursor} />
+      </span>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value || ''}
+        placeholder={placeholder}
+        onChange={e => onChange(e.target.value)}
+        style={inputStyle}
+      />
+    </div>
+  );
+}
+
 function PropertyPanel({
   node, cluster, nodes, edges, clusters, previewParamValues,
   onUpdateNode, onUpdateCluster, onDeleteCluster, onDeleteNode,
+  onOpenSubCanvas,
 }) {
   // Check for duplicate label among other nodes
   const isDuplicateLabel = useMemo(() => {
@@ -167,7 +448,9 @@ function PropertyPanel({
     return nodes.some(n => n.id !== node.id && n.label === node.label);
   }, [node, nodes]);
 
-  // Compute available input variable names for the selected node
+  // Compute available input variable names for the selected node.
+  // Returns enriched { label, name } objects so the UI can show
+  // "η_mech → eta_mech" when Greek letters are used in labels.
   const availableVars = useMemo(() => {
     if (!node || !nodes || !edges) return [];
     const incomingEdges = edges.filter(e => e.to === node.id);
@@ -175,11 +458,18 @@ function PropertyPanel({
       const srcNode = nodes.find(n => n.id === e.from);
       if (!srcNode) return null;
       if (node.type === 'calcFunction') {
-        return sanitize(e.toPort || e.fromPort || srcNode.label);
+        const name = sanitize(e.toPort || e.fromPort || srcNode.label);
+        const label = e.toPort || e.fromPort || srcNode.label;
+        return { label, name };
       }
-      return sanitize(e.fromPort || srcNode.label);
+      const name = sanitize(e.fromPort || srcNode.label);
+      const label = e.fromPort || srcNode.label;
+      return { label, name };
     }).filter(Boolean);
   }, [node, nodes, edges]);
+
+  // Plain array of sanitized names for formula validation
+  const availableVarNames = useMemo(() => availableVars.map(v => v.name), [availableVars]);
   const nodeById = useMemo(
     () => Object.fromEntries((nodes || []).map(n => [n.id, n])),
     [nodes]
@@ -190,6 +480,7 @@ function PropertyPanel({
     return parseCalculationFunction(node.functionCode || '');
   }, [node]);
 
+  const formulaInputRef = useRef(null);
   const [validationState, setValidationState] = useState({ status: 'idle', message: '' });
   const [validationOutputs, setValidationOutputs] = useState(node?.validationOutputs || null);
 
@@ -203,8 +494,8 @@ function PropertyPanel({
 
   const missingCalcFunctionInputs = useMemo(() => {
     if (!node || node.type !== 'calcFunction' || !parsedCalcFunction?.valid) return [];
-    return parsedCalcFunction.params.filter((p) => !availableVars.includes(p));
-  }, [node, parsedCalcFunction, availableVars]);
+    return parsedCalcFunction.params.filter((p) => !availableVarNames.includes(p));
+  }, [node, parsedCalcFunction, availableVarNames]);
 
   const canValidateCalc = Boolean(parsedCalcFunction?.valid);
 
@@ -414,7 +705,7 @@ function PropertyPanel({
     );
   }
 
-  const meta = NODE_META[node.type];
+  const meta = NODE_META[node.type] || NODE_META['calc'];
 
   const update = (key, value) => {
     onUpdateNode({ ...node, [key]: value });
@@ -422,6 +713,7 @@ function PropertyPanel({
 
   const showFormula = node.type === 'calc' || node.type === 'performance';
   const showCalcFunction = node.type === 'calcFunction';
+  const showHierarchical = node.type === 'calcHierarchical';
 
   return (
     <div style={{
@@ -452,8 +744,7 @@ function PropertyPanel({
       </div>
 
       {/* Common fields */}
-      <Field
-        label="Label / Name"
+      <LabelField
         value={node.label}
         placeholder="e.g. Belt Speed"
         onChange={v => update('label', v)}
@@ -538,18 +829,22 @@ function PropertyPanel({
 
       {/* Available inputs for calc/performance/calculation function nodes */}
       {(showFormula || showCalcFunction) && (
-        <AvailableInputs varNames={availableVars} />
+        <AvailableInputs vars={availableVars} />
       )}
 
       {/* Calc/performance equation with validation */}
       {showFormula && (
-        <FormulaField
-          label="Equation / Formula"
-          value={node.equation}
-          placeholder={node.type === 'performance' ? 'e.g. E1 + E2' : 'e.g. P_A / eta_i'}
-          onChange={v => update('equation', v)}
-          availableVars={availableVars}
-        />
+        <>
+          <FormulaField
+            label="Equation / Formula"
+            value={node.equation}
+            placeholder={node.type === 'performance' ? 'e.g. E1 + E2' : 'e.g. P_A / eta_i'}
+            onChange={v => update('equation', v)}
+            availableVarNames={availableVarNames}
+            inputRef={formulaInputRef}
+          />
+          <FormulaHelper vars={availableVars} formulaRef={formulaInputRef} />
+        </>
       )}
 
       {showCalcFunction && (
@@ -781,6 +1076,87 @@ function PropertyPanel({
         </div>
       )}
 
+      {/* Hierarchical calculation node fields */}
+      {showHierarchical && (
+        <>
+          <div style={{ marginBottom: 8 }}>
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: '#64748B',
+              textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4,
+            }}>
+              Input Ports
+            </span>
+            {(node.ports?.inputs || []).map((p, i) => (
+              <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 3, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  value={p}
+                  onChange={e => {
+                    const newInputs = [...(node.ports?.inputs || [])];
+                    newInputs[i] = e.target.value;
+                    update('ports', { ...node.ports, inputs: newInputs });
+                  }}
+                  style={{ flex: 1, padding: '3px 6px', border: '1px solid #D1D5DB', borderRadius: 4, fontSize: 11, fontFamily: "'Consolas', monospace" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newInputs = (node.ports?.inputs || []).filter((_, j) => j !== i);
+                    update('ports', { ...node.ports, inputs: newInputs });
+                  }}
+                  style={{ padding: '2px 6px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 4, color: '#DC2626', cursor: 'pointer', fontSize: 11 }}
+                >×</button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => update('ports', { ...node.ports, inputs: [...(node.ports?.inputs || []), `in${(node.ports?.inputs?.length || 0) + 1}`] })}
+              style={{ fontSize: 11, padding: '3px 8px', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 4, color: '#1D4ED8', cursor: 'pointer', marginTop: 3 }}
+            >+ Add Input Port</button>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: '#64748B',
+              textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4,
+            }}>
+              Output Ports
+            </span>
+            {(node.ports?.outputs || []).map((p, i) => (
+              <div key={i} style={{ display: 'flex', gap: 4, marginBottom: 3, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  value={p}
+                  onChange={e => {
+                    const newOutputs = [...(node.ports?.outputs || [])];
+                    newOutputs[i] = e.target.value;
+                    update('ports', { ...node.ports, outputs: newOutputs });
+                  }}
+                  style={{ flex: 1, padding: '3px 6px', border: '1px solid #D1D5DB', borderRadius: 4, fontSize: 11, fontFamily: "'Consolas', monospace" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newOutputs = (node.ports?.outputs || []).filter((_, j) => j !== i);
+                    update('ports', { ...node.ports, outputs: newOutputs });
+                  }}
+                  style={{ padding: '2px 6px', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 4, color: '#DC2626', cursor: 'pointer', fontSize: 11 }}
+                >×</button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => update('ports', { ...node.ports, outputs: [...(node.ports?.outputs || []), `out${(node.ports?.outputs?.length || 0) + 1}`] })}
+              style={{ fontSize: 11, padding: '3px 8px', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 4, color: '#15803D', cursor: 'pointer', marginTop: 3 }}
+            >+ Add Output Port</button>
+          </div>
+
+          <div style={{ fontSize: 10, color: '#64748B', marginBottom: 12, lineHeight: 1.5 }}>
+            Double-click the node on the canvas to open and design the sub-network.
+          </div>
+        </>
+      )}
+
       {/* Node actions */}
       <div style={{
         marginTop: 12,
@@ -788,6 +1164,25 @@ function PropertyPanel({
         flexDirection: 'column',
         gap: 8,
       }}>
+        {showHierarchical && onOpenSubCanvas && (
+          <button
+            type="button"
+            onClick={() => onOpenSubCanvas(node.id)}
+            style={{
+              width: '100%',
+              padding: '8px',
+              background: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              borderRadius: 6,
+              color: '#1D4ED8',
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            Edit Sub-network
+          </button>
+        )}
         {showCalcFunction && (
           <button
             type="button"

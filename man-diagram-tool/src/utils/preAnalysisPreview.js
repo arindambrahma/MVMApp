@@ -168,15 +168,105 @@ export function getDecisionThresholdRefs(nodes, edges, decisionId, previewParamV
   return refs;
 }
 
-export function buildPreviewParamValues(nodes, edges) {
+function flattenHierarchicalNodes(nodes, edges, _depth = 0) {
+  if (_depth > 10) return [nodes, edges];
+
+  const hierarchical = (nodes || []).filter(n => n.type === 'calcHierarchical');
+  if (!hierarchical.length) return [nodes, edges];
+
   const nodeById = Object.fromEntries((nodes || []).map(n => [n.id, n]));
-  const normEdges = (edges || []).map(e => ({ ...e, edgeType: normalizeEdgeType(e, nodeById) }));
+  const hierarchicalIds = new Set(hierarchical.map(n => n.id));
+
+  const resultNodes = (nodes || []).filter(n => !hierarchicalIds.has(n.id));
+  let resultEdges = [...(edges || [])];
+
+  for (const parent of hierarchical) {
+    const pid = parent.id;
+    const sg = parent.subGraph || {};
+    const subNodes = [...(sg.nodes || [])];
+    const subEdges = [...(sg.edges || [])];
+
+    if (!subNodes.length) {
+      resultEdges = resultEdges.filter(e => e.from !== pid && e.to !== pid);
+      continue;
+    }
+
+    const ns = (subId) => `${pid}__${subId}`;
+    const subById = Object.fromEntries(subNodes.map(sn => [sn.id, sn]));
+
+    const parentInEdges = resultEdges.filter(e => e.to === pid);
+    const parentOutEdges = resultEdges.filter(e => e.from === pid);
+
+    const portInMap = {};
+    for (const e of parentInEdges) {
+      const port = e.toPort || '';
+      const src = nodeById[e.from];
+      if (src) portInMap[port] = { edge: e, extVar: sanitize(e.fromPort || src.label || '') };
+    }
+
+    const portOutMap = {};
+    for (const e of parentOutEdges) {
+      const port = e.fromPort || '';
+      if (!portOutMap[port]) portOutMap[port] = [];
+      portOutMap[port].push(e);
+    }
+
+    const boundaryIds = new Set([...parentInEdges, ...parentOutEdges].map(e => e.id));
+    resultEdges = resultEdges.filter(e => !boundaryIds.has(e.id));
+
+    const hiOutEq = {};
+    for (const sn of subNodes) {
+      if (sn.type !== 'hierarchicalOutput') continue;
+      const snInEdges = subEdges.filter(se => se.to === sn.id);
+      if (snInEdges.length) {
+        const srcSn = subById[snInEdges[0].from];
+        if (srcSn) hiOutEq[sn.id] = sanitize(snInEdges[0].fromPort || srcSn.label || '');
+      }
+    }
+
+    for (const sn of subNodes) {
+      const newNode = { ...sn, id: ns(sn.id) };
+      if (sn.type === 'hierarchicalInput') {
+        const portName = sn.portName || sn.label || '';
+        const inPair = portInMap[portName] || portInMap[''];
+        if (inPair) {
+          newNode.type = 'calc';
+          newNode.equation = inPair.extVar;
+          resultEdges.push({ ...inPair.edge, id: `${inPair.edge.id}__h${ns(sn.id)}`, to: ns(sn.id), toPort: null });
+        } else {
+          newNode.type = 'input';
+          newNode.value = 0;
+        }
+      } else if (sn.type === 'hierarchicalOutput') {
+        const eq = hiOutEq[sn.id];
+        newNode.type = eq ? 'calc' : 'input';
+        if (eq) newNode.equation = eq; else newNode.value = 0;
+        const portName = sn.portName || sn.label || '';
+        for (const origOut of portOutMap[portName] || portOutMap[''] || []) {
+          resultEdges.push({ ...origOut, from: ns(sn.id) });
+        }
+      }
+      resultNodes.push(newNode);
+    }
+
+    for (const se of subEdges) {
+      resultEdges.push({ ...se, id: `${pid}__${se.id}`, from: ns(se.from), to: ns(se.to) });
+    }
+  }
+
+  return flattenHierarchicalNodes(resultNodes, resultEdges, _depth + 1);
+}
+
+export function buildPreviewParamValues(nodes, edges) {
+  const [flatNodes, flatEdges] = flattenHierarchicalNodes(nodes, edges);
+  const nodeById = Object.fromEntries((flatNodes || []).map(n => [n.id, n]));
+  const normEdges = (flatEdges || []).map(e => ({ ...e, edgeType: normalizeEdgeType(e, nodeById) }));
   const edgesBySource = new Map();
   for (const e of normEdges) {
     if (!edgesBySource.has(e.from)) edgesBySource.set(e.from, []);
     edgesBySource.get(e.from).push(e);
   }
-  const sortedNodes = topoSortNodes(nodes, normEdges);
+  const sortedNodes = topoSortNodes(flatNodes, normEdges);
 
   const nodeOutputName = {};
   const edgeRuntimeName = {};

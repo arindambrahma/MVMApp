@@ -11,6 +11,7 @@ const initialState = {
   panOffset: { x: 0, y: 0 },
   nextCalcNumber: 1,
   nextCalcFunctionNumber: 1,
+  nextCalcHierarchicalNumber: 1,
   nextMarginNumber: 1,
   nextDecisionNumber: 1,
   nextPerformanceNumber: 1,
@@ -144,11 +145,14 @@ function reducer(state, action) {
       let newState = { ...state };
       const nextCalc = findLowestAvailableSuffix(state.nodes, 'calc', ['F', 'Step\\s*']);
       const nextCalcFunction = findLowestAvailableSuffix(state.nodes, 'calcFunction', ['CF']);
+      const nextCalcHierarchical = findLowestAvailableSuffix(state.nodes, 'calcHierarchical', ['CH']);
       const nextMargin = findLowestAvailableSuffix(state.nodes, 'margin', ['E']);
       const nextDecision = findLowestAvailableSuffix(state.nodes, 'decision', ['D']);
       const nextPerf = findLowestAvailableSuffix(state.nodes, 'performance', ['P']);
       const nextInput = findLowestAvailableSuffix(state.nodes, 'input', ['I']);
       const nextProbe = findLowestAvailableSuffix(state.nodes, 'probe', ['PR']);
+      const nextHierarchicalInput = findLowestAvailableSuffix(state.nodes, 'hierarchicalInput', ['IP']);
+      const nextHierarchicalOutput = findLowestAvailableSuffix(state.nodes, 'hierarchicalOutput', ['OP']);
 
       if (nodeType === 'calc') {
         overrides.stepNumber = nextCalc;
@@ -161,6 +165,12 @@ function reducer(state, action) {
         overrides.label = `CF${nextCalcFunction}`;
         overrides.functionCode = 'def calc(x):\n    return x';
         newState.nextCalcFunctionNumber = nextCalcFunction + 1;
+      } else if (nodeType === 'calcHierarchical') {
+        overrides.autoLabel = `CH${nextCalcHierarchical}`;
+        overrides.label = `CH${nextCalcHierarchical}`;
+        overrides.ports = { inputs: ['in'], outputs: ['out'] };
+        overrides.subGraph = { nodes: [], edges: [] };
+        newState.nextCalcHierarchicalNumber = nextCalcHierarchical + 1;
     } else if (nodeType === 'input') {
         overrides.autoLabel = `I${nextInput}`;
         overrides.label = `I${nextInput}`;
@@ -181,6 +191,14 @@ function reducer(state, action) {
         overrides.autoLabel = `PR${nextProbe}`;
         overrides.label = `PR${nextProbe}`;
         newState.nextProbeNumber = nextProbe + 1;
+      } else if (nodeType === 'hierarchicalInput') {
+        overrides.autoLabel = `IP${nextHierarchicalInput}`;
+        overrides.label = `IP${nextHierarchicalInput}`;
+        overrides.portName = `IP${nextHierarchicalInput}`;
+      } else if (nodeType === 'hierarchicalOutput') {
+        overrides.autoLabel = `OP${nextHierarchicalOutput}`;
+        overrides.label = `OP${nextHierarchicalOutput}`;
+        overrides.portName = `OP${nextHierarchicalOutput}`;
       }
 
       const node = createNode(nodeType, x, y, overrides);
@@ -224,6 +242,9 @@ function reducer(state, action) {
         } else if (incoming.type === 'probe') {
           const m = label.match(/^PR(\d+)$/i);
           if (m) incoming.autoLabel = `PR${Number(m[1])}`;
+        } else if (incoming.type === 'calcHierarchical') {
+          const m = label.match(/^CH(\d+)$/i);
+          if (m) incoming.autoLabel = `CH${Number(m[1])}`;
         }
 
         const updatedNodes = state.nodes.map(n => n.id === incoming.id ? incoming : n);
@@ -434,10 +455,21 @@ function reducer(state, action) {
         ),
       };
 
+    case 'UPDATE_SUBGRAPH':
+      return {
+        ...state,
+        nodes: state.nodes.map(n =>
+          n.id === action.nodeId
+            ? { ...n, subGraph: action.subGraph, ports: action.ports || n.ports }
+            : n
+        ),
+      };
+
     case 'LOAD_GRAPH':
       {
         const nextCalc = parseMaxSuffix(action.nodes, 'calc', ['F', 'Step\\s*']) + 1;
         const nextCalcFunction = parseMaxSuffix(action.nodes, 'calcFunction', ['CF']) + 1;
+        const nextCalcHierarchical = parseMaxSuffix(action.nodes, 'calcHierarchical', ['CH']) + 1;
         const nextMargin = parseMaxSuffix(action.nodes, 'margin', ['E']) + 1;
         const nextDecision = parseMaxSuffix(action.nodes, 'decision', ['D']) + 1;
         const nextPerformance = parseMaxSuffix(action.nodes, 'performance', ['P']) + 1;
@@ -450,6 +482,7 @@ function reducer(state, action) {
           clusters: fitClustersToMembers(action.clusters || [], action.nodes || []),
           nextCalcNumber: Math.max(1, nextCalc),
           nextCalcFunctionNumber: Math.max(1, nextCalcFunction),
+          nextCalcHierarchicalNumber: Math.max(1, nextCalcHierarchical),
           nextMarginNumber: Math.max(1, nextMargin),
           nextDecisionNumber: Math.max(1, nextDecision),
           nextPerformanceNumber: Math.max(1, nextPerformance),
@@ -518,6 +551,8 @@ export function useGraphStore() {
     dispatch({ type: 'CLEAR' }), []);
   const setNodes = useCallback((nodes) =>
     dispatch({ type: 'SET_NODES', nodes }), []);
+  const updateSubGraph = useCallback((nodeId, subGraph, ports) =>
+    dispatch({ type: 'UPDATE_SUBGRAPH', nodeId, subGraph, ports }), []);
 
   return {
     state,
@@ -528,5 +563,6 @@ export function useGraphStore() {
     select, setZoom, setPan,
     startConnecting, cancelConnecting, finishConnecting,
     toggleInterest, loadGraph, clear, setNodes,
+    updateSubGraph,
   };
 }

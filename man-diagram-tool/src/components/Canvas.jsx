@@ -128,6 +128,7 @@ function Canvas({
   onUpdateEdge,
   fitViewRequest = 0,
   onRegisterCapture,
+  onOpenSubCanvas,
 }) {
   const svgRef = useRef(null);
   const [dragging, setDragging] = useState(null);
@@ -542,6 +543,7 @@ function Canvas({
             connecting={connecting}
             onMouseDown={(e) => handleNodeMouseDown(e, node.id)}
             onClick={(e, _ignoredNodeId, toPort) => handleNodeClick(e, node.id, toPort)}
+            onDoubleClick={onOpenSubCanvas}
             onStartConnect={onStartConnect}
           />
             );
@@ -601,7 +603,7 @@ function Canvas({
           <rect
             x={0}
             y={0}
-            width={232}
+            width={100}
             height={44}
             rx={5}
             fill="#F8FAFC"
@@ -611,7 +613,7 @@ function Canvas({
           <rect
             x={8}
             y={8}
-            width={78}
+            width={84}
             height={28}
             rx={4}
             fill="#FEF2F2"
@@ -624,82 +626,16 @@ function Canvas({
             }}
           />
           <text
-            x={47}
+            x={50}
             y={26}
             textAnchor="middle"
             fontSize={10}
             fontWeight={700}
             fill="#B91C1C"
             fontFamily="system-ui, sans-serif"
+            pointerEvents="none"
           >
             Delete
-          </text>
-          <rect
-            x={96}
-            y={8}
-            width={28}
-            height={28}
-            rx={4}
-            fill="#EFF6FF"
-            stroke="#93C5FD"
-            strokeWidth={1}
-            onClick={(e) => {
-              e.stopPropagation();
-              const edge = (edges || []).find((ed) => ed.id === selectedEdgeId);
-              if (!edge || !onUpdateEdge) return;
-              const current = Number(edge.manualOffset) || 0;
-              onUpdateEdge(selectedEdgeId, { manualOffset: current - 18, routeOffset: 0 });
-            }}
-          />
-          <text
-            x={110}
-            y={26}
-            textAnchor="middle"
-            fontSize={13}
-            fontWeight={700}
-            fill="#1D4ED8"
-            fontFamily="system-ui, sans-serif"
-          >
-            -
-          </text>
-          <rect
-            x={130}
-            y={8}
-            width={28}
-            height={28}
-            rx={4}
-            fill="#EFF6FF"
-            stroke="#93C5FD"
-            strokeWidth={1}
-            onClick={(e) => {
-              e.stopPropagation();
-              const edge = (edges || []).find((ed) => ed.id === selectedEdgeId);
-              if (!edge || !onUpdateEdge) return;
-              const current = Number(edge.manualOffset) || 0;
-              onUpdateEdge(selectedEdgeId, { manualOffset: current + 18, routeOffset: 0 });
-            }}
-          />
-          <text
-            x={144}
-            y={26}
-            textAnchor="middle"
-            fontSize={13}
-            fontWeight={700}
-            fill="#1D4ED8"
-            fontFamily="system-ui, sans-serif"
-          >
-            +
-          </text>
-          <text
-            x={166}
-            y={26}
-            textAnchor="start"
-            fontSize={10}
-            fontWeight={700}
-            fill="#334155"
-            fontFamily="system-ui, sans-serif"
-          >
-            Nudge edge
           </text>
         </g>
       )}

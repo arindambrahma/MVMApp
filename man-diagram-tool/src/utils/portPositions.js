@@ -1,5 +1,6 @@
 import { NODE_META } from '../constants/nodeTypes';
 import { getCalcFunctionVisualSpec } from './calcFunctionVisual';
+import { getCalcHierarchicalVisualSpec } from './calcHierarchicalVisual';
 
 // Returns the 4 cardinal port positions for a node (absolute coordinates).
 // Each node's (x, y) is its center.
@@ -55,9 +56,21 @@ export function getPortPositions(node) {
       };
     }
     case 'functionBox': {
-      const spec = getCalcFunctionVisualSpec(node);
+      const spec = node.type === 'calcHierarchical'
+        ? getCalcHierarchicalVisualSpec(node)
+        : getCalcFunctionVisualSpec(node);
       const hw = spec.width / 2;
       const hh = spec.height / 2;
+      return {
+        top: { x: cx, y: cy - hh },
+        right: { x: cx + hw, y: cy },
+        bottom: { x: cx, y: cy + hh },
+        left: { x: cx - hw, y: cy },
+      };
+    }
+    case 'portArrow': {
+      const hw = (meta.size?.w ?? 80) / 2;
+      const hh = (meta.size?.h ?? 28) / 2;
       return {
         top: { x: cx, y: cy - hh },
         right: { x: cx + hw, y: cy },
@@ -144,6 +157,25 @@ export function getDirectionalPort(node, dir, towardNode = null, slotIndex = 0, 
   const shape = meta.shape;
   const base = getPortPositions(node);
   const d = dir || 'right';
+
+  // Hierarchical calculation node — same layout logic as calcFunction but reads from node.ports
+  if (node.type === 'calcHierarchical' && shape === 'functionBox') {
+    const spec = getCalcHierarchicalVisualSpec(node);
+    const hw = spec.width / 2;
+    const hh = spec.height / 2;
+    const STEM = 12;
+    const leftSlots = spec.inputSlots.map((s) => ({ x: node.x - hw - STEM, y: node.y + s.y }));
+    const rightSlots = spec.outputSlots.map((s) => ({ x: node.x + hw + STEM, y: node.y + s.y }));
+    const byDir = {
+      left: leftSlots,
+      right: rightSlots,
+      top: [{ x: node.x, y: node.y - hh }],
+      bottom: [{ x: node.x, y: node.y + hh }],
+    };
+    const fallback = rightSlots;
+    const list = byDir[d] || fallback;
+    return list[Math.min(slotIndex, list.length - 1)] || list[0];
+  }
 
   // Calculation function node uses explicit left input slots and a right output slot.
   if (node.type === 'calcFunction' && shape === 'functionBox') {
