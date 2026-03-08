@@ -132,6 +132,13 @@ function MarginLineChart({
   const allPoints = series.flatMap(s => s.points || []);
   const xs = allPoints.map(p => p.x);
   const ys = allPoints.map(p => p.y);
+  if (!xs.length || !ys.length) {
+    return (
+      <div style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic', marginTop: 6 }}>
+        No sweep samples to display.
+      </div>
+    );
+  }
   const minXRaw = Math.min(...xs);
   const maxXRaw = Math.max(...xs);
   const minYRaw = Math.min(...ys);
