@@ -24,6 +24,82 @@ function esc(v) {
     .replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function parseLabelTokens(label = '') {
+  const tokens = [];
+  let i = 0;
+  const s = String(label);
+  let buf = '';
+  const flush = () => {
+    if (buf) {
+      tokens.push({ type: 'text', value: buf });
+      buf = '';
+    }
+  };
+  while (i < s.length) {
+    const ch = s[i];
+    if ((ch === '_' || ch === '^') && i + 1 < s.length) {
+      flush();
+      const type = ch === '_' ? 'sub' : 'sup';
+      if (s[i + 1] === '{') {
+        const end = s.indexOf('}', i + 2);
+        if (end !== -1) {
+          const val = s.slice(i + 2, end);
+          tokens.push({ type, value: val });
+          i = end + 1;
+          continue;
+        }
+      }
+      const val = s[i + 1];
+      tokens.push({ type, value: val });
+      i += 2;
+      continue;
+    }
+    buf += ch;
+    i += 1;
+  }
+  flush();
+  return tokens;
+}
+
+function svgLabelSpans(label) {
+  const tokens = parseLabelTokens(label);
+  return tokens.map(t => {
+    if (t.type === 'text') return esc(t.value);
+    if (t.type === 'sub') return `<tspan baseline-shift="sub" font-size="80%" dx="-0.08em">${esc(t.value)}</tspan>`;
+    return `<tspan baseline-shift="super" font-size="80%" dx="-0.08em">${esc(t.value)}</tspan>`;
+  }).join('');
+}
+
+function drawLabelCanvas(ctx, label, x, y, fontPx, fontFamily, fontWeight = '700', align = 'center', baseline = 'middle') {
+  const tokens = parseLabelTokens(label);
+  ctx.save();
+  ctx.textAlign = align;
+  ctx.textBaseline = baseline;
+  let totalWidth = 0;
+  const sizes = tokens.map(t => {
+    const scale = (t.type === 'text') ? 1 : 0.8;
+    const size = fontPx * scale;
+    ctx.font = `${fontWeight} ${size}px ${fontFamily}`;
+    const w = ctx.measureText(t.value).width;
+    totalWidth += w;
+    return { size, width: w, type: t.type, value: t.value };
+  });
+  let startX = x;
+  if (align === 'center') startX = x - totalWidth / 2;
+  if (align === 'right' || align === 'end') startX = x - totalWidth;
+  let cursor = startX;
+  sizes.forEach(seg => {
+    ctx.font = `${fontWeight} ${seg.size}px ${fontFamily}`;
+    let dy = 0;
+    if (seg.type === 'sub') dy = fontPx * 0.3;
+    if (seg.type === 'sup') dy = -fontPx * 0.3;
+    ctx.fillText(seg.value, cursor, y + dy);
+    cursor += seg.width;
+    if (seg.type !== 'text') cursor -= fontPx * 0.08;
+  });
+  ctx.restore();
+}
+
 async function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -33,7 +109,7 @@ async function loadImage(src) {
   });
 }
 
-const SERIES_COLORS = ['#2563EB', '#DC2626', '#0891B2', '#D97706', '#059669', '#7C3AED', '#DB2777'];
+const SERIES_COLORS = ['#202038', '#43465F', '#9A8C98', '#D4BEBA', '#EADBD2'];
 
 const SYSTEM_FONTS = [
   'System UI', 'Aptos Narrow', 'Segoe UI', 'Helvetica', 'Arial',
@@ -55,22 +131,33 @@ function computeLayout(W, H, opts) {
     axisValueFontSize = 10, axisHeaderFontSize = 11,
     legendRows = 0, showLegend = false, legendFontSize = 10,
     xTickRotation = 0,
+    xAxisCaptionPadding = 0,
+    yAxisCaptionPadding = 0,
+    labelPadding = 0,
+    rightEdgePadding = 0,
+    leftEdgePadding = 0,
   } = opts;
+
+  const xCapPad = Number(xAxisCaptionPadding) || 0;
+  const yCapPad = Number(yAxisCaptionPadding) || 0;
+  const lblPad = Number(labelPadding) || 0;
+  const rightPad = Number(rightEdgePadding) || 0;
+  const leftPad = Number(leftEdgePadding) || 0;
 
   const tickPx  = fontPx(axisValueFontSize, dpi);
   const hdrPx   = fontPx(axisHeaderFontSize, dpi);
   const legPx   = fontPx(legendFontSize, dpi);
   const titlePx = showTitle ? fontPx(titleSize, dpi) : 0;
 
-  const yTickApproxW = showAxes ? tickPx * 5.2 + 6 : 0;
-  const yLabelW      = showAxisLabels ? hdrPx * 1.5 + 6 : 0;
+  const yTickApproxW = showAxes ? tickPx * 5.2 + 6 + lblPad : 0;
+  const yLabelW      = showAxisLabels ? hdrPx * 1.5 + 6 + yCapPad : 0;
   const rotFactor    = xTickRotation === 0 ? 1.0 : xTickRotation <= 30 ? 2.2 : xTickRotation <= 45 ? 3.0 : 4.0;
-  const xTickH       = showAxes ? tickPx * rotFactor + 6 : 0;
-  const xLabelH      = showAxisLabels ? hdrPx * 1.5 + 4 : 0;
+  const xTickH       = showAxes ? tickPx * rotFactor + 6 + lblPad : 0;
+  const xLabelH      = showAxisLabels ? hdrPx * 1.5 + 4 + xCapPad : 0;
   const legH         = (showLegend && legendRows > 0) ? legendRows * (legPx * 1.7 + 2) + 6 : 0;
 
-  const left   = padding + yTickApproxW + yLabelW;
-  const right  = padding + 16;
+  const left   = padding + yTickApproxW + yLabelW + leftPad;
+  const right  = padding + 16 + rightPad;
   const top    = padding + (showTitle ? titlePx + 10 : 0) + 6;
   const bottom = padding + Math.max(xTickH, xLabelH);
 
@@ -125,15 +212,20 @@ function getScatterScales(baselinePoints, overlayPoints, xDomainProp, yDomainPro
 function buildLineSvg(W, H, series, extraLines, opts) {
   const {
     dpi = 300, padding = 20, background = '#ffffff',
-    showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Arial', titleSize = 11,
+    showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Aptos Narrow', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true, showLegend = true,
     showTopBorder = false, showRightBorder = false,
-    axisFont = 'Arial', axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
+    axisCaptionFont = 'Aptos Narrow', axisValueFont = 'Aptos Narrow', legendFont = 'Aptos Narrow',
+    axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
     xAxisLabel = '', yAxisLabel = '', xDecimals = 3, yDecimals = 1,
     xTickRotation = 0,
     useCustomBounds = false, xMin = 0, xMax = 1, yMin = -0.1, yMax = 0.1,
     seriesColors = SERIES_COLORS, legendFontSize = 10,
+    legendOffsetX = 0, legendOffsetY = 0,
+    legendCols = 3, legendColGap = 12, legendRowGap = 6, legendLineLen = 18,
     xDomainProp = null, yDomainProp = null,
+    xAxisCaptionPadding = 0, yAxisCaptionPadding = 0, labelPadding = 0, rightEdgePadding = 0, leftEdgePadding = 0,
+    xAxisLabelOffsetY = 0, xTickOffsetY = 0, yAxisLabelOffsetX = 0, yAxisLabelOffsetY = 0, xTickOffsetX = 0, yTickOffsetX = 0,
   } = opts;
 
   const scales = getLineScales(series, xDomainProp, yDomainProp);
@@ -145,13 +237,20 @@ function buildLineSvg(W, H, series, extraLines, opts) {
     if (Number.isFinite(cMinY) && Number.isFinite(cMaxY) && cMinY < cMaxY) { minY = cMinY; maxY = cMaxY; }
   }
 
-  const legendRows = showLegend ? Math.ceil((series || []).length / 3) : 0;
+  const legendRows = showLegend ? Math.ceil((series || []).length / Math.max(1, legendCols)) : 0;
   const layout = computeLayout(W, H, {
     dpi, padding, showTitle, titleSize,
     showAxes, showAxisLabels, axisValueFontSize, axisHeaderFontSize,
     legendRows, showLegend, legendFontSize, xTickRotation,
+    xAxisCaptionPadding, yAxisCaptionPadding, labelPadding, rightEdgePadding, leftEdgePadding,
   });
   const { tickPx, hdrPx, legPx, titlePx, left, plotX, plotY, plotW, plotH, legY } = layout;
+
+  const xCapPad = Number(xAxisCaptionPadding) || 0;
+  const yCapPad = Number(yAxisCaptionPadding) || 0;
+  const lblPad = Number(labelPadding) || 0;
+  const legOffX = Number(legendOffsetX) || 0;
+  const legOffY = Number(legendOffsetY) || 0;
 
   const xScale = x => maxX === minX ? plotX + plotW / 2 : plotX + ((x - minX) / (maxX - minX)) * plotW;
   const yScale = y => maxY === minY ? plotY + plotH / 2 : plotY + ((maxY - y) / (maxY - minY)) * plotH;
@@ -161,7 +260,10 @@ function buildLineSvg(W, H, series, extraLines, opts) {
   const xTicks = 6;
   const yTickVals = Array.from({ length: yTicks + 1 }, (_, i) => minY + (i / yTicks) * (maxY - minY));
   const xTickVals = Array.from({ length: xTicks + 1 }, (_, i) => minX + (i / xTicks) * (maxX - minX));
-  const font = `${esc(axisFont)}, Arial, sans-serif`;
+  const valueFont = `${esc(axisValueFont)}, Arial, sans-serif`;
+  const captionFont = `${esc(axisCaptionFont)}, Arial, sans-serif`;
+  const legendFontFace = `${esc(legendFont)}, Arial, sans-serif`;
+  const titleFontFace = `${esc(titleFont)}, Arial, sans-serif`;
 
   const svg = [];
   svg.push(`<?xml version="1.0" encoding="UTF-8"?>`);
@@ -169,7 +271,7 @@ function buildLineSvg(W, H, series, extraLines, opts) {
   svg.push(`<rect width="${W}" height="${H}" fill="${esc(background)}"/>`);
 
   if (showTitle && title) {
-    svg.push(`<text x="${padding}" y="${padding + titlePx * 0.85}" font-family="${font}" font-size="${titlePx}" font-weight="700" fill="${esc(titleColor)}">${esc(title)}</text>`);
+    svg.push(`<text x="${padding}" y="${padding + titlePx * 0.85}" font-family="${titleFontFace}" font-size="${titlePx}" font-weight="700" fill="${esc(titleColor)}">${esc(title)}</text>`);
   }
 
   // Gridlines
@@ -188,15 +290,15 @@ function buildLineSvg(W, H, series, extraLines, opts) {
   if (showAxes) {
     yTickVals.forEach(v => {
       const yy = yScale(v);
-      svg.push(`<text x="${plotX - 6}" y="${yy + tickPx * 0.35}" text-anchor="end" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}">${(v * 100).toFixed(yDecimals)}%</text>`);
+      svg.push(`<text x="${plotX - 6 - lblPad + yTickOffsetX}" y="${yy + tickPx * 0.35}" text-anchor="end" font-size="${tickPx}" font-family="${valueFont}" fill="${esc(axisColor)}">${(v * 100).toFixed(yDecimals)}%</text>`);
     });
     xTickVals.forEach(v => {
       const xx = xScale(v);
-      const tickBaseY = Math.min(plotY + plotH + 4, xAxisY + 4);
+      const tickBaseY = Math.min(plotY + plotH + 4 + lblPad, xAxisY + 4 + lblPad) + xTickOffsetY;
       if (xTickRotation === 0) {
-        svg.push(`<text x="${xx}" y="${tickBaseY + tickPx}" text-anchor="middle" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}">${v.toFixed(xDecimals)}</text>`);
+        svg.push(`<text x="${xx + xTickOffsetX}" y="${tickBaseY + tickPx}" text-anchor="middle" font-size="${tickPx}" font-family="${valueFont}" fill="${esc(axisColor)}">${v.toFixed(xDecimals)}</text>`);
       } else {
-        svg.push(`<text x="${xx}" y="${tickBaseY}" text-anchor="end" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}" transform="rotate(-${xTickRotation} ${xx} ${tickBaseY})">${v.toFixed(xDecimals)}</text>`);
+        svg.push(`<text x="${xx + xTickOffsetX}" y="${tickBaseY}" text-anchor="end" font-size="${tickPx}" font-family="${valueFont}" fill="${esc(axisColor)}" transform="rotate(-${xTickRotation} ${xx} ${tickBaseY})">${v.toFixed(xDecimals)}</text>`);
       }
     });
     // Y-axis line (left border)
@@ -210,11 +312,11 @@ function buildLineSvg(W, H, series, extraLines, opts) {
   // Axis labels
   if (showAxisLabels) {
     if (xAxisLabel) {
-      svg.push(`<text x="${plotX + plotW / 2}" y="${plotY + plotH + (showAxes ? tickPx + 10 : 6) + hdrPx}" text-anchor="middle" font-size="${hdrPx}" font-weight="700" font-family="${font}" fill="${esc(axisColor)}">${esc(xAxisLabel)}</text>`);
+      svg.push(`<text x="${plotX + plotW / 2}" y="${plotY + plotH + (showAxes ? tickPx + 10 + lblPad : 6 + lblPad) + hdrPx + xCapPad + xAxisLabelOffsetY}" text-anchor="middle" font-size="${hdrPx}" font-weight="700" font-family="${captionFont}" fill="${esc(axisColor)}">${svgLabelSpans(xAxisLabel)}</text>`);
     }
     if (yAxisLabel) {
-      const tx = Math.max(hdrPx * 0.8, left - tickPx * 5.2 - 8);
-      svg.push(`<text x="${tx}" y="${plotY + plotH / 2}" text-anchor="middle" font-size="${hdrPx}" font-weight="700" font-family="${font}" fill="${esc(axisColor)}" transform="rotate(-90 ${tx} ${plotY + plotH / 2})">${esc(yAxisLabel)}</text>`);
+      const tx = Math.max(hdrPx * 0.8, left - (tickPx * 5.2 + 8 + lblPad + yCapPad)) + yAxisLabelOffsetX;
+      svg.push(`<text x="${tx}" y="${plotY + plotH / 2 + yAxisLabelOffsetY}" text-anchor="middle" dominant-baseline="middle" font-size="${hdrPx}" font-weight="700" font-family="${captionFont}" fill="${esc(axisColor)}" transform="rotate(-90 ${tx} ${plotY + plotH / 2})">${svgLabelSpans(yAxisLabel)}</text>`);
     }
   }
 
@@ -223,7 +325,7 @@ function buildLineSvg(W, H, series, extraLines, opts) {
     const yy = yScale(line.value);
     const c = esc(line.color || '#f97316');
     svg.push(`<line x1="${plotX}" y1="${yy}" x2="${plotX + plotW}" y2="${yy}" stroke="${c}" stroke-width="1" stroke-dasharray="6 4"/>`);
-    svg.push(`<text x="${plotX + plotW - 4}" y="${yy - 4}" text-anchor="end" font-size="${tickPx * 0.88}" font-family="${font}" fill="${c}">${esc(line.label || '')}</text>`);
+    svg.push(`<text x="${plotX + plotW - 4}" y="${yy - 4}" text-anchor="end" font-size="${tickPx * 0.88}" font-family="${valueFont}" fill="${c}">${esc(line.label || '')}</text>`);
   });
 
   // Series lines
@@ -238,17 +340,17 @@ function buildLineSvg(W, H, series, extraLines, opts) {
 
   // Legend
   if (showLegend && (series || []).length > 0) {
-    const cols = 3;
-    const colW = plotW / cols;
+    const cols = Math.max(1, legendCols);
+    const colW = (plotW - (cols - 1) * legendColGap) / cols;
     (series || []).forEach((s, idx) => {
       const row = Math.floor(idx / cols);
       const col = idx % cols;
-      const lx = plotX + col * colW;
-      const ly = legY + row * (legPx * 1.7 + 2);
+      const lx = plotX + col * (colW + legendColGap) + legOffX;
+      const ly = legY + row * (legPx * 1.7 + legendRowGap) + legOffY;
       const color = esc(seriesColors[idx] || SERIES_COLORS[idx % SERIES_COLORS.length]);
       const isPerf = String(s.key || '').startsWith('perf_');
-      svg.push(`<line x1="${lx}" y1="${ly + legPx * 0.5}" x2="${lx + 18}" y2="${ly + legPx * 0.5}" stroke="${color}" stroke-width="2.5" ${isPerf ? 'stroke-dasharray="6 4"' : ''}/>`);
-      svg.push(`<text x="${lx + 22}" y="${ly + legPx * 0.85}" font-size="${legPx}" font-family="${font}" fill="#334155">${esc(s.label || '')}</text>`);
+      svg.push(`<line x1="${lx}" y1="${ly + legPx * 0.5}" x2="${lx + legendLineLen}" y2="${ly + legPx * 0.5}" stroke="${color}" stroke-width="2.5" ${isPerf ? 'stroke-dasharray="6 4"' : ''}/>`);
+      svg.push(`<text x="${lx + legendLineLen + 4}" y="${ly + legPx * 0.85}" font-size="${legPx}" font-family="${legendFontFace}" fill="#334155">${esc(String(s.label || '').replace(/\(local excess\)/gi, '').trim())}</text>`);
     });
   }
 
@@ -261,11 +363,12 @@ function buildLineSvg(W, H, series, extraLines, opts) {
 function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
   const {
     dpi = 300, padding = 20, background = '#ffffff',
-    showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Arial', titleSize = 11,
+    showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Aptos Narrow', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true,
     showPointLabels = true, showArrows = true,
     showTopBorder = false, showRightBorder = false,
-    axisFont = 'Arial', axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
+    axisCaptionFont = 'Aptos Narrow', axisValueFont = 'Aptos Narrow',
+    axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
     xAxisLabel = 'Undesirable impact on performance parameters (%)',
     yAxisLabel = 'Change absorption potential (%)',
     xDecimals = 2, yDecimals = 2,
@@ -274,6 +377,8 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
     baselineColor = '#9CA3AF', overlayColor = '#F59E0B', arrowColor = '#94A3B8',
     baselineOpacity = 35, overlayOpacity = 32, pointLabelSize = 10,
     xDomainProp = null, yDomainProp = null,
+    xAxisCaptionPadding = 0, yAxisCaptionPadding = 0, labelPadding = 0, rightEdgePadding = 0, leftEdgePadding = 0,
+    xAxisLabelOffsetY = 0, xTickOffsetY = 0, yAxisLabelOffsetX = 0, yAxisLabelOffsetY = 0, xTickOffsetX = 0, yTickOffsetX = 0,
   } = opts;
 
   const scales = getScatterScales(baselinePoints, overlayPoints, xDomainProp, yDomainProp);
@@ -289,8 +394,13 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
     dpi, padding, showTitle, titleSize,
     showAxes, showAxisLabels, axisValueFontSize, axisHeaderFontSize,
     legendRows: 0, showLegend: false, xTickRotation,
+    xAxisCaptionPadding, yAxisCaptionPadding, labelPadding, rightEdgePadding, leftEdgePadding,
   });
   const { tickPx, hdrPx, titlePx, left, plotX, plotY, plotW, plotH } = layout;
+
+  const xCapPad = Number(xAxisCaptionPadding) || 0;
+  const yCapPad = Number(yAxisCaptionPadding) || 0;
+  const lblPad = Number(labelPadding) || 0;
 
   const xScale = x => maxX === minX ? plotX + plotW / 2 : plotX + ((x - minX) / (maxX - minX)) * plotW;
   const yScale = y => maxY === minY ? plotY + plotH / 2 : plotY + ((maxY - y) / (maxY - minY)) * plotH;
@@ -298,7 +408,9 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
   const yTicks = 6, xTicks = 6;
   const yTickVals = Array.from({ length: yTicks + 1 }, (_, i) => minY + (i / yTicks) * (maxY - minY));
   const xTickVals = Array.from({ length: xTicks + 1 }, (_, i) => minX + (i / xTicks) * (maxX - minX));
-  const font = `${esc(axisFont)}, Arial, sans-serif`;
+  const valueFont = `${esc(axisValueFont)}, Arial, sans-serif`;
+  const captionFont = `${esc(axisCaptionFont)}, Arial, sans-serif`;
+  const titleFontFace = `${esc(titleFont)}, Arial, sans-serif`;
 
   const all = [...(baselinePoints || []), ...(overlayPoints || [])];
   const allR = all.map(p => Math.abs(p.r || 6));
@@ -316,7 +428,7 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
   svg.push(`<rect width="${W}" height="${H}" fill="${esc(background)}"/>`);
 
   if (showTitle && title) {
-    svg.push(`<text x="${padding}" y="${padding + titlePx * 0.85}" font-family="${font}" font-size="${titlePx}" font-weight="700" fill="${esc(titleColor)}">${esc(title)}</text>`);
+    svg.push(`<text x="${padding}" y="${padding + titlePx * 0.85}" font-family="${titleFontFace}" font-size="${titlePx}" font-weight="700" fill="${esc(titleColor)}">${esc(title)}</text>`);
   }
 
   // Gridlines
@@ -334,15 +446,15 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
   // Axes
   if (showAxes) {
     yTickVals.forEach(v => {
-      svg.push(`<text x="${plotX - 6}" y="${yScale(v) + tickPx * 0.35}" text-anchor="end" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}">${(v * 100).toFixed(yDecimals)}</text>`);
+      svg.push(`<text x="${plotX - 6 - lblPad + yTickOffsetX}" y="${yScale(v) + tickPx * 0.35}" text-anchor="end" font-size="${tickPx}" font-family="${valueFont}" fill="${esc(axisColor)}">${(v * 100).toFixed(yDecimals)}</text>`);
     });
     xTickVals.forEach(v => {
       const xx = xScale(v);
-      const tickBaseY = plotY + plotH + 4;
+      const tickBaseY = plotY + plotH + 4 + lblPad + xTickOffsetY;
       if (xTickRotation === 0) {
-        svg.push(`<text x="${xx}" y="${tickBaseY + tickPx}" text-anchor="middle" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}">${(v * 100).toFixed(xDecimals)}</text>`);
+        svg.push(`<text x="${xx + xTickOffsetX}" y="${tickBaseY + tickPx}" text-anchor="middle" font-size="${tickPx}" font-family="${valueFont}" fill="${esc(axisColor)}">${(v * 100).toFixed(xDecimals)}</text>`);
       } else {
-        svg.push(`<text x="${xx}" y="${tickBaseY}" text-anchor="end" font-size="${tickPx}" font-family="${font}" fill="${esc(axisColor)}" transform="rotate(-${xTickRotation} ${xx} ${tickBaseY})">${(v * 100).toFixed(xDecimals)}</text>`);
+        svg.push(`<text x="${xx + xTickOffsetX}" y="${tickBaseY}" text-anchor="end" font-size="${tickPx}" font-family="${valueFont}" fill="${esc(axisColor)}" transform="rotate(-${xTickRotation} ${xx} ${tickBaseY})">${(v * 100).toFixed(xDecimals)}</text>`);
       }
     });
     svg.push(`<line x1="${plotX}" y1="${plotY}" x2="${plotX}" y2="${plotY + plotH}" stroke="#475569" stroke-width="1.2"/>`);
@@ -353,11 +465,11 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
 
   if (showAxisLabels) {
     if (xAxisLabel) {
-      svg.push(`<text x="${plotX + plotW / 2}" y="${plotY + plotH + (showAxes ? tickPx + 10 : 6) + hdrPx}" text-anchor="middle" font-size="${hdrPx}" font-weight="700" font-family="${font}" fill="${esc(axisColor)}">${esc(xAxisLabel)}</text>`);
+      svg.push(`<text x="${plotX + plotW / 2}" y="${plotY + plotH + (showAxes ? tickPx + 10 + lblPad : 6 + lblPad) + hdrPx + xCapPad + xAxisLabelOffsetY}" text-anchor="middle" font-size="${hdrPx}" font-weight="700" font-family="${captionFont}" fill="${esc(axisColor)}">${svgLabelSpans(xAxisLabel)}</text>`);
     }
     if (yAxisLabel) {
-      const tx = Math.max(hdrPx * 0.8, left - tickPx * 5.2 - 8);
-      svg.push(`<text x="${tx}" y="${plotY + plotH / 2}" text-anchor="middle" font-size="${hdrPx}" font-weight="700" font-family="${font}" fill="${esc(axisColor)}" transform="rotate(-90 ${tx} ${plotY + plotH / 2})">${esc(yAxisLabel)}</text>`);
+      const tx = Math.max(hdrPx * 0.8, left - (tickPx * 5.2 + 8 + lblPad + yCapPad)) + yAxisLabelOffsetX;
+      svg.push(`<text x="${tx}" y="${plotY + plotH / 2 + yAxisLabelOffsetY}" text-anchor="middle" dominant-baseline="middle" font-size="${hdrPx}" font-weight="700" font-family="${captionFont}" fill="${esc(axisColor)}" transform="rotate(-90 ${tx} ${plotY + plotH / 2})">${svgLabelSpans(yAxisLabel)}</text>`);
     }
   }
 
@@ -379,7 +491,7 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
     const cx = xScale(Number(p.x)), cy = yScale(Number(p.y)), r = getR(p.r);
     svg.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${esc(baselineColor)}" fill-opacity="${bOp}" stroke="${esc(baselineColor)}" stroke-width="1"/>`);
     if (showPointLabels) {
-      svg.push(`<text x="${cx}" y="${cy - r - 3}" text-anchor="middle" font-size="${labelFontPx}" font-family="${font}" fill="#334155">${esc(p.label || '')}</text>`);
+      svg.push(`<text x="${cx}" y="${cy - r - 3}" text-anchor="middle" font-size="${labelFontPx}" font-family="${valueFont}" fill="#334155">${esc(p.label || '')}</text>`);
     }
   });
 
@@ -389,7 +501,7 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
     const cx = xScale(Number(p.x)), cy = yScale(Number(p.y)), r = getR(p.r);
     svg.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${esc(overlayColor)}" fill-opacity="${oOp}" stroke="#B45309" stroke-width="1.4"/>`);
     if (showPointLabels) {
-      svg.push(`<text x="${cx}" y="${cy - r - 3}" text-anchor="middle" font-size="${labelFontPx}" font-weight="700" font-family="${font}" fill="#9A3412">${esc(p.label || '')}</text>`);
+      svg.push(`<text x="${cx}" y="${cy - r - 3}" text-anchor="middle" font-size="${labelFontPx}" font-weight="700" font-family="${valueFont}" fill="#9A3412">${esc(p.label || '')}</text>`);
     }
   });
 
@@ -403,15 +515,20 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
   const W = canvas.width, H = canvas.height;
   const {
     dpi = 96, padding = 20, background = '#ffffff',
-    showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Arial', titleSize = 11,
+    showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Aptos Narrow', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true, showLegend = true,
     showTopBorder = false, showRightBorder = false,
-    axisFont = 'Arial', axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
+    axisCaptionFont = 'Aptos Narrow', axisValueFont = 'Aptos Narrow', legendFont = 'Aptos Narrow',
+    axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
     xAxisLabel = '', yAxisLabel = '', xDecimals = 3, yDecimals = 1,
     xTickRotation = 0,
     useCustomBounds = false, xMin = 0, xMax = 1, yMin = -0.1, yMax = 0.1,
     seriesColors = SERIES_COLORS, legendFontSize = 10,
+    legendOffsetX = 0, legendOffsetY = 0,
+    legendCols = 3, legendColGap = 12, legendRowGap = 6, legendLineLen = 18,
     xDomainProp = null, yDomainProp = null,
+    xAxisCaptionPadding = 0, yAxisCaptionPadding = 0, labelPadding = 0, rightEdgePadding = 0, leftEdgePadding = 0,
+    xAxisLabelOffsetY = 0, xTickOffsetY = 0, yAxisLabelOffsetX = 0, yAxisLabelOffsetY = 0, xTickOffsetX = 0, yTickOffsetX = 0,
   } = opts;
 
   const scales = getLineScales(series, xDomainProp, yDomainProp);
@@ -423,13 +540,18 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
     if (Number.isFinite(cMinY) && Number.isFinite(cMaxY) && cMinY < cMaxY) { minY = cMinY; maxY = cMaxY; }
   }
 
-  const legendRows = showLegend ? Math.ceil((series || []).length / 3) : 0;
+  const legendRows = showLegend ? Math.ceil((series || []).length / Math.max(1, legendCols)) : 0;
   const layout = computeLayout(W, H, {
     dpi, padding, showTitle, titleSize,
     showAxes, showAxisLabels, axisValueFontSize, axisHeaderFontSize,
     legendRows, showLegend, legendFontSize, xTickRotation,
+    xAxisCaptionPadding, yAxisCaptionPadding, labelPadding, rightEdgePadding, leftEdgePadding,
   });
   const { tickPx, hdrPx, legPx, titlePx, left, plotX, plotY, plotW, plotH, legY } = layout;
+
+  const xCapPad = Number(xAxisCaptionPadding) || 0;
+  const yCapPad = Number(yAxisCaptionPadding) || 0;
+  const lblPad = Number(labelPadding) || 0;
 
   const xScale = x => maxX === minX ? plotX + plotW / 2 : plotX + ((x - minX) / (maxX - minX)) * plotW;
   const yScale = y => maxY === minY ? plotY + plotH / 2 : plotY + ((maxY - y) / (maxY - minY)) * plotH;
@@ -438,7 +560,11 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
   const yTicks = 5, xTicks = 6;
   const yTickVals = Array.from({ length: yTicks + 1 }, (_, i) => minY + (i / yTicks) * (maxY - minY));
   const xTickVals = Array.from({ length: xTicks + 1 }, (_, i) => minX + (i / xTicks) * (maxX - minX));
-  const fontStr = `${axisFont}, Arial, sans-serif`;
+  const valueFontStr = `${axisValueFont}, Arial, sans-serif`;
+  const captionFontStr = `${axisCaptionFont}, Arial, sans-serif`;
+  const legendFontStr = `${legendFont}, Arial, sans-serif`;
+  const legOffX = Number(legendOffsetX) || 0;
+  const legOffY = Number(legendOffsetY) || 0;
 
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = background;
@@ -460,22 +586,22 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
   }
 
   if (showAxes) {
-    ctx.font = `${tickPx}px ${fontStr}`;
+    ctx.font = `${tickPx}px ${valueFontStr}`;
     ctx.fillStyle = axisColor;
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    yTickVals.forEach(v => { ctx.fillText(`${(v * 100).toFixed(yDecimals)}%`, plotX - 6, yScale(v)); });
+    yTickVals.forEach(v => { ctx.fillText(`${(v * 100).toFixed(yDecimals)}%`, plotX - 6 - lblPad + yTickOffsetX, yScale(v)); });
     xTickVals.forEach(v => {
       const xx = xScale(v);
-      const tickBaseY = Math.min(plotY + plotH + 4, xAxisY + 4);
+      const tickBaseY = Math.min(plotY + plotH + 4 + lblPad, xAxisY + 4 + lblPad) + xTickOffsetY;
       if (xTickRotation === 0) {
         ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-        ctx.fillText(v.toFixed(xDecimals), xx, tickBaseY + tickPx * 0.1);
+        ctx.fillText(v.toFixed(xDecimals), xx + xTickOffsetX, tickBaseY + tickPx * 0.1);
       } else {
         ctx.save();
         ctx.translate(xx, tickBaseY);
         ctx.rotate(-xTickRotation * Math.PI / 180);
         ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-        ctx.fillText(v.toFixed(xDecimals), 0, 0);
+        ctx.fillText(v.toFixed(xDecimals), xTickOffsetX, 0);
         ctx.restore();
       }
     });
@@ -488,18 +614,18 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
   }
 
   if (showAxisLabels) {
-    ctx.font = `700 ${hdrPx}px ${fontStr}`; ctx.fillStyle = axisColor;
+    ctx.font = `700 ${hdrPx}px ${captionFontStr}`; ctx.fillStyle = axisColor;
     if (xAxisLabel) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText(xAxisLabel, plotX + plotW / 2, plotY + plotH + (showAxes ? tickPx + 8 : 4) + 2);
+      drawLabelCanvas(ctx, xAxisLabel, plotX + plotW / 2, plotY + plotH + (showAxes ? tickPx + 8 + lblPad : 4 + lblPad) + 2 + xCapPad + xAxisLabelOffsetY, hdrPx, captionFontStr, '700', 'center', 'top');
     }
     if (yAxisLabel) {
-      const tx = Math.max(hdrPx * 0.8, left - tickPx * 5.2 - 8);
+      const tx = Math.max(hdrPx * 0.8, left - (tickPx * 5.2 + 8 + lblPad + yCapPad)) + yAxisLabelOffsetX;
       ctx.save();
-      ctx.translate(tx, plotY + plotH / 2);
+      ctx.translate(tx, plotY + plotH / 2 + yAxisLabelOffsetY);
       ctx.rotate(-Math.PI / 2);
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(yAxisLabel, 0, 0);
+      drawLabelCanvas(ctx, yAxisLabel, 0, 0, hdrPx, captionFontStr, '700', 'center', 'middle');
       ctx.restore();
     }
   }
@@ -511,7 +637,7 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
     ctx.beginPath(); ctx.moveTo(plotX, yy); ctx.lineTo(plotX + plotW, yy); ctx.stroke();
     ctx.restore();
     ctx.fillStyle = line.color || '#f97316';
-    ctx.font = `${tickPx * 0.88}px ${fontStr}`;
+    ctx.font = `${tickPx * 0.88}px ${valueFontStr}`;
     ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
     ctx.fillText(line.label || '', plotX + plotW - 4, yy - 2);
   });
@@ -531,21 +657,21 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
   });
 
   if (showLegend && (series || []).length > 0) {
-    const cols = 3;
-    const colW = plotW / cols;
+    const cols = Math.max(1, legendCols);
+    const colW = (plotW - (cols - 1) * legendColGap) / cols;
     (series || []).forEach((s, idx) => {
       const row = Math.floor(idx / cols), col = idx % cols;
-      const lx = plotX + col * colW, ly = legY + row * (legPx * 1.7 + 2);
+      const lx = plotX + col * (colW + legendColGap) + legOffX, ly = legY + row * (legPx * 1.7 + legendRowGap) + legOffY;
       const color = seriesColors[idx] || SERIES_COLORS[idx % SERIES_COLORS.length];
       const isPerf = String(s.key || '').startsWith('perf_');
       ctx.save();
       if (isPerf) ctx.setLineDash([6, 4]);
       ctx.strokeStyle = color; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.moveTo(lx, ly + legPx * 0.5); ctx.lineTo(lx + 18, ly + legPx * 0.5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(lx, ly + legPx * 0.5); ctx.lineTo(lx + legendLineLen, ly + legPx * 0.5); ctx.stroke();
       ctx.restore();
-      ctx.font = `${legPx}px ${fontStr}`; ctx.fillStyle = '#334155';
+      ctx.font = `${legPx}px ${legendFontStr}`; ctx.fillStyle = '#334155';
       ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      ctx.fillText(s.label || '', lx + 22, ly);
+      ctx.fillText(String(s.label || '').replace(/\(local excess\)/gi, '').trim(), lx + legendLineLen + 4, ly);
     });
   }
 }
@@ -556,11 +682,12 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
   const W = canvas.width, H = canvas.height;
   const {
     dpi = 96, padding = 20, background = '#ffffff',
-    showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Arial', titleSize = 11,
+    showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Aptos Narrow', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true,
     showPointLabels = true, showArrows = true,
     showTopBorder = false, showRightBorder = false,
-    axisFont = 'Arial', axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
+    axisCaptionFont = 'Aptos Narrow', axisValueFont = 'Aptos Narrow',
+    axisValueFontSize = 10, axisHeaderFontSize = 11, axisColor = '#475569',
     xAxisLabel = 'Undesirable impact on performance parameters (%)',
     yAxisLabel = 'Change absorption potential (%)',
     xDecimals = 2, yDecimals = 2,
@@ -569,6 +696,8 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
     baselineColor = '#9CA3AF', overlayColor = '#F59E0B', arrowColor = '#94A3B8',
     baselineOpacity = 35, overlayOpacity = 32, pointLabelSize = 10,
     xDomainProp = null, yDomainProp = null,
+    xAxisCaptionPadding = 0, yAxisCaptionPadding = 0, labelPadding = 0, rightEdgePadding = 0, leftEdgePadding = 0,
+    xAxisLabelOffsetY = 0, xTickOffsetY = 0, yAxisLabelOffsetX = 0, yAxisLabelOffsetY = 0, xTickOffsetX = 0, yTickOffsetX = 0,
   } = opts;
 
   const scales = getScatterScales(baselinePoints, overlayPoints, xDomainProp, yDomainProp);
@@ -584,8 +713,13 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
     dpi, padding, showTitle, titleSize,
     showAxes, showAxisLabels, axisValueFontSize, axisHeaderFontSize,
     legendRows: 0, showLegend: false, xTickRotation,
+    xAxisCaptionPadding, yAxisCaptionPadding, labelPadding, rightEdgePadding, leftEdgePadding,
   });
   const { tickPx, hdrPx, titlePx, left, plotX, plotY, plotW, plotH } = layout;
+
+  const xCapPad = Number(xAxisCaptionPadding) || 0;
+  const yCapPad = Number(yAxisCaptionPadding) || 0;
+  const lblPad = Number(labelPadding) || 0;
 
   const xScale = x => maxX === minX ? plotX + plotW / 2 : plotX + ((x - minX) / (maxX - minX)) * plotW;
   const yScale = y => maxY === minY ? plotY + plotH / 2 : plotY + ((maxY - y) / (maxY - minY)) * plotH;
@@ -593,7 +727,9 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
   const yTicks = 6, xTicks = 6;
   const yTickVals = Array.from({ length: yTicks + 1 }, (_, i) => minY + (i / yTicks) * (maxY - minY));
   const xTickVals = Array.from({ length: xTicks + 1 }, (_, i) => minX + (i / xTicks) * (maxX - minX));
-  const fontStr = `${axisFont}, Arial, sans-serif`;
+  const valueFontStr = `${axisValueFont}, Arial, sans-serif`;
+  const captionFontStr = `${axisCaptionFont}, Arial, sans-serif`;
+
 
   const all = [...(baselinePoints || []), ...(overlayPoints || [])];
   const scaleRef = Math.max(0.5, Math.min(plotW, plotH) / 380);
@@ -619,21 +755,21 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
   }
 
   if (showAxes) {
-    ctx.font = `${tickPx}px ${fontStr}`; ctx.fillStyle = axisColor;
+    ctx.font = `${tickPx}px ${valueFontStr}`; ctx.fillStyle = axisColor;
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    yTickVals.forEach(v => { ctx.fillText((v * 100).toFixed(yDecimals), plotX - 6, yScale(v)); });
+    yTickVals.forEach(v => { ctx.fillText((v * 100).toFixed(yDecimals), plotX - 6 - lblPad + yTickOffsetX, yScale(v)); });
     xTickVals.forEach(v => {
       const xx = xScale(v);
-      const tickBaseY = plotY + plotH + 4;
+      const tickBaseY = plotY + plotH + 4 + lblPad + xTickOffsetY;
       if (xTickRotation === 0) {
         ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-        ctx.fillText((v * 100).toFixed(xDecimals), xx, tickBaseY);
+        ctx.fillText((v * 100).toFixed(xDecimals), xx + xTickOffsetX, tickBaseY);
       } else {
         ctx.save();
         ctx.translate(xx, tickBaseY);
         ctx.rotate(-xTickRotation * Math.PI / 180);
         ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-        ctx.fillText((v * 100).toFixed(xDecimals), 0, 0);
+        ctx.fillText((v * 100).toFixed(xDecimals), xTickOffsetX, 0);
         ctx.restore();
       }
     });
@@ -645,16 +781,16 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
   }
 
   if (showAxisLabels) {
-    ctx.font = `700 ${hdrPx}px ${fontStr}`; ctx.fillStyle = axisColor;
+    ctx.font = `700 ${hdrPx}px ${captionFontStr}`; ctx.fillStyle = axisColor;
     if (xAxisLabel) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText(xAxisLabel, plotX + plotW / 2, plotY + plotH + (showAxes ? tickPx + 8 : 4) + 2);
+      drawLabelCanvas(ctx, xAxisLabel, plotX + plotW / 2, plotY + plotH + (showAxes ? tickPx + 8 + lblPad : 4 + lblPad) + 2 + xCapPad + xAxisLabelOffsetY, hdrPx, captionFontStr, '700', 'center', 'top');
     }
     if (yAxisLabel) {
-      const tx = Math.max(hdrPx * 0.8, left - tickPx * 5.2 - 8);
-      ctx.save(); ctx.translate(tx, plotY + plotH / 2); ctx.rotate(-Math.PI / 2);
+      const tx = Math.max(hdrPx * 0.8, left - (tickPx * 5.2 + 8 + lblPad + yCapPad)) + yAxisLabelOffsetX;
+      ctx.save(); ctx.translate(tx, plotY + plotH / 2 + yAxisLabelOffsetY); ctx.rotate(-Math.PI / 2);
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(yAxisLabel, 0, 0); ctx.restore();
+      drawLabelCanvas(ctx, yAxisLabel, 0, 0, hdrPx, captionFontStr, '700', 'center', 'middle'); ctx.restore();
     }
   }
 
@@ -679,7 +815,7 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
     ctx.fillStyle = baselineColor; ctx.fill();
     ctx.globalAlpha = 1; ctx.strokeStyle = baselineColor; ctx.lineWidth = 1; ctx.stroke();
     if (showPointLabels) {
-      ctx.font = `${labelFontPx}px ${fontStr}`; ctx.fillStyle = '#334155';
+      ctx.font = `${labelFontPx}px ${valueFontStr}`; ctx.fillStyle = '#334155';
       ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
       ctx.fillText(p.label || '', cx, cy - r - 2);
     }
@@ -693,7 +829,7 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
     ctx.fillStyle = overlayColor; ctx.fill();
     ctx.globalAlpha = 1; ctx.strokeStyle = '#B45309'; ctx.lineWidth = 1.4; ctx.stroke();
     if (showPointLabels) {
-      ctx.font = `700 ${labelFontPx}px ${fontStr}`; ctx.fillStyle = '#9A3412';
+      ctx.font = `700 ${labelFontPx}px ${valueFontStr}`; ctx.fillStyle = '#9A3412';
       ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
       ctx.fillText(p.label || '', cx, cy - r - 2);
     }
@@ -732,18 +868,29 @@ function ChartExportDialog({
   const isLine = chartType === 'line';
 
   // ── Layout settings ──
-  const [filename, setFilename]     = useState(defaultName);
+  const [filename, setFilename]     = useState('input_variation_primary_run');
   const [format, setFormat]         = useState('svg');
-  const [widthVal, setWidthVal]     = useState(16);
-  const [heightVal, setHeightVal]   = useState(10);
+  const [widthVal, setWidthVal]     = useState(7.501);
+  const [heightVal, setHeightVal]   = useState(6);
   const [unit, setUnit]             = useState('cm');
   const [dpi, setDpi]               = useState(300);
-  const [lockAspect, setLockAspect] = useState(true);
-  const [ratio, setRatio]           = useState(16 / 10);
-  const [padding, setPadding]       = useState(20);
+  const [lockAspect, setLockAspect] = useState(false);
+  const [ratio, setRatio]           = useState(7.501 / 6);
+  const [padding, setPadding]       = useState(0);
+  const [xAxisCaptionPadding, setXAxisCaptionPadding] = useState(-3);
+  const [yAxisCaptionPadding, setYAxisCaptionPadding] = useState(-23);
+  const [labelPadding, setLabelPadding]     = useState(0);
+  const [rightEdgePadding, setRightEdgePadding] = useState(-7);
+  const [leftEdgePadding, setLeftEdgePadding] = useState(-20);
+  const [xAxisLabelOffsetY, setXAxisLabelOffsetY] = useState(31);
+  const [xTickOffsetY, setXTickOffsetY] = useState(4);
+  const [yAxisLabelOffsetX, setYAxisLabelOffsetX] = useState(-2);
+  const [yAxisLabelOffsetY, setYAxisLabelOffsetY] = useState(0);
+  const [xTickOffsetX, setXTickOffsetX] = useState(-11);
+  const [yTickOffsetX, setYTickOffsetX] = useState(0);
   const [showTitle, setShowTitle]   = useState(false);
   const [title, setTitle]           = useState('');
-  const [titleFont, setTitleFont]   = useState('Arial');
+  const [titleFont, setTitleFont]   = useState('Aptos Narrow');
   const [titleSize, setTitleSize]   = useState(11);
   const [titleColor, setTitleColor] = useState('#0f172a');
   const [background, setBackground] = useState('#ffffff');
@@ -761,6 +908,12 @@ function ChartExportDialog({
   // ── Line style ──
   const [seriesColors, setSeriesColors] = useState([...SERIES_COLORS]);
   const [legendFontSize, setLegendFontSize] = useState(10);
+  const [legendOffsetX, setLegendOffsetX] = useState(0);
+  const [legendOffsetY, setLegendOffsetY] = useState(73);
+  const [legendCols, setLegendCols] = useState(3);
+  const [legendColGap, setLegendColGap] = useState(1);
+  const [legendRowGap, setLegendRowGap] = useState(0);
+  const [legendLineLen, setLegendLineLen] = useState(15);
 
   // ── Scatter style ──
   const [baselineColor, setBaselineColor]   = useState('#9CA3AF');
@@ -771,24 +924,26 @@ function ChartExportDialog({
   const [pointLabelSize, setPointLabelSize]   = useState(10);
 
   // ── Axis settings ──
-  const [axisFont, setAxisFont]                     = useState('Arial');
+  const [axisCaptionFont, setAxisCaptionFont] = useState('Aptos Narrow');
+  const [axisValueFont, setAxisValueFont]     = useState('Aptos Narrow');
+  const [legendFont, setLegendFont]           = useState('Aptos Narrow');
   const [axisValueFontSize, setAxisValueFontSize]   = useState(10);
-  const [axisHeaderFontSize, setAxisHeaderFontSize] = useState(11);
-  const [axisColor, setAxisColor]                   = useState('#475569');
+  const [axisHeaderFontSize, setAxisHeaderFontSize] = useState(12);
+  const [axisColor, setAxisColor]                   = useState('#202038');
   const [xAxisLabel, setXAxisLabel] = useState(
     isLine ? (xLabel || '') : 'Undesirable impact on performance parameters (%)'
   );
   const [yAxisLabel, setYAxisLabel] = useState(
     isLine ? (yLabel || '') : 'Change absorption potential (%)'
   );
-  const [xDecimals, setXDecimals]   = useState(isLine ? 3 : 2);
-  const [yDecimals, setYDecimals]   = useState(isLine ? 1 : 2);
-  const [xTickRotation, setXTickRotation] = useState(0);
+  const [xDecimals, setXDecimals]   = useState(0);
+  const [yDecimals, setYDecimals]   = useState(1);
+  const [xTickRotation, setXTickRotation] = useState(90);
   const [useCustomBounds, setUseCustomBounds] = useState(false);
   const [xMin, setXMin] = useState('0');
-  const [xMax, setXMax] = useState(isLine ? '1' : '10');
-  const [yMin, setYMin] = useState(isLine ? '-10' : '0');
-  const [yMax, setYMax] = useState(isLine ? '10' : '50');
+  const [xMax, setXMax] = useState('1');
+  const [yMin, setYMin] = useState('-10');
+  const [yMax, setYMax] = useState('10');
 
   // ── UI state ──
   const [settingsTab, setSettingsTab] = useState('layout');
@@ -798,13 +953,14 @@ function ChartExportDialog({
   // Seed on open
   useEffect(() => {
     if (!open) return;
-    setFilename(defaultName);
-    setXAxisLabel(isLine ? (xLabel || '') : 'Undesirable impact on performance parameters (%)');
-    setYAxisLabel(isLine ? (yLabel || '') : 'Change absorption potential (%)');
+    setFilename(prev => prev || defaultName);
+    setXAxisLabel(prev => (prev && prev.length) ? prev : (isLine ? (xLabel || '') : 'Undesirable impact on performance parameters (%)'));
+    setYAxisLabel(prev => (prev && prev.length) ? prev : (isLine ? (yLabel || '') : 'Change absorption potential (%)'));
   }, [open, defaultName, xLabel, yLabel, isLine]);
 
-  const widthPx  = Math.round(Math.max(200, Math.min(8000, Number(widthVal)  * pxPerUnit(unit, dpi))));
-  const heightPx = Math.round(Math.max(100, Math.min(8000, Number(heightVal) * pxPerUnit(unit, dpi))));
+  const effectiveDpi = format === 'svg' ? 96 : dpi;
+  const widthPx  = Math.round(Math.max(200, Math.min(8000, Number(widthVal)  * pxPerUnit(unit, effectiveDpi))));
+  const heightPx = Math.round(Math.max(100, Math.min(8000, Number(heightVal) * pxPerUnit(unit, effectiveDpi))));
 
   const onWidthChange = v => {
     setWidthVal(v);
@@ -820,11 +976,23 @@ function ChartExportDialog({
   const buildOpts = (w, h) => ({
     dpi: format === 'png' ? dpi : 96,
     padding: clamp(padding, 0, 200),
+    xAxisCaptionPadding: clamp(xAxisCaptionPadding, -400, 400),
+    yAxisCaptionPadding: clamp(yAxisCaptionPadding, -400, 400),
+    labelPadding: clamp(labelPadding, -400, 400),
+    rightEdgePadding: clamp(rightEdgePadding, -400, 400),
+    leftEdgePadding: clamp(leftEdgePadding, -400, 400),
+    xAxisLabelOffsetY: clamp(xAxisLabelOffsetY, -400, 400),
+    xTickOffsetY: clamp(xTickOffsetY, -400, 400),
+    yAxisLabelOffsetX: clamp(yAxisLabelOffsetX, -400, 400),
+    yAxisLabelOffsetY: clamp(yAxisLabelOffsetY, -400, 400),
+    xTickOffsetX: clamp(xTickOffsetX, -400, 400),
+    yTickOffsetX: clamp(yTickOffsetX, -400, 400),
     background,
     showTitle, title, titleFont, titleSize: clamp(titleSize, 6, 60), titleColor,
     showAxes, showGridlines, showAxisLabels,
     showTopBorder, showRightBorder,
-    axisFont, axisValueFontSize: clamp(axisValueFontSize, 6, 40),
+    axisCaptionFont, axisValueFont,
+    axisValueFontSize: clamp(axisValueFontSize, 3, 40),
     axisHeaderFontSize: clamp(axisHeaderFontSize, 6, 60), axisColor,
     xAxisLabel, yAxisLabel,
     xDecimals: clamp(xDecimals, 0, 6), yDecimals: clamp(yDecimals, 0, 6),
@@ -832,6 +1000,8 @@ function ChartExportDialog({
     useCustomBounds, xMin, xMax, yMin, yMax,
     // line-specific
     showLegend, seriesColors, legendFontSize: clamp(legendFontSize, 7, 20),
+    legendFont, legendOffsetX: clamp(legendOffsetX, -400, 400), legendOffsetY: clamp(legendOffsetY, -400, 400),
+    legendCols: clamp(legendCols, 1, 6), legendColGap: clamp(legendColGap, 0, 80), legendRowGap: clamp(legendRowGap, 0, 80), legendLineLen: clamp(legendLineLen, 6, 60),
     // scatter-specific
     showPointLabels, showArrows,
     baselineColor, overlayColor, arrowColor,
@@ -894,26 +1064,26 @@ function ChartExportDialog({
     else        renderScatterCanvas(preview, baselinePoints, overlayPoints, opts);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    open, widthPx, heightPx, padding, background,
+    open, widthPx, heightPx, padding, xAxisCaptionPadding, yAxisCaptionPadding, labelPadding, rightEdgePadding, leftEdgePadding, xAxisLabelOffsetY, xTickOffsetY, yAxisLabelOffsetX, yAxisLabelOffsetY, xTickOffsetX, yTickOffsetX, xTickOffsetX, yTickOffsetX, background,
     showTitle, title, titleFont, titleSize, titleColor,
     showAxes, showGridlines, showAxisLabels, showLegend, showPointLabels, showArrows,
     showTopBorder, showRightBorder,
-    axisFont, axisValueFontSize, axisHeaderFontSize, axisColor,
+    axisCaptionFont, axisValueFont, axisValueFontSize, axisHeaderFontSize, axisColor,
     xAxisLabel, yAxisLabel, xDecimals, yDecimals, xTickRotation,
     useCustomBounds, xMin, xMax, yMin, yMax,
-    seriesColors, legendFontSize,
+    seriesColors, legendFontSize, legendFont, legendOffsetX, legendOffsetY, legendCols, legendColGap, legendRowGap, legendLineLen,
     baselineColor, overlayColor, arrowColor, baselineOpacity, overlayOpacity, pointLabelSize,
   ]);
 
   const handleSaveSettings = () => {
     const s = {
-      filename, format, widthVal, heightVal, unit, dpi, lockAspect, padding,
+      filename, format, widthVal, heightVal, unit, dpi, lockAspect, padding, xAxisCaptionPadding, yAxisCaptionPadding, labelPadding, rightEdgePadding, leftEdgePadding, xAxisLabelOffsetY, xTickOffsetY, yAxisLabelOffsetX, yAxisLabelOffsetY, xTickOffsetX, yTickOffsetX, xTickOffsetX, yTickOffsetX,
       showTitle, title, titleFont, titleSize, titleColor, background,
       showAxes, showGridlines, showAxisLabels, showLegend, showPointLabels, showArrows,
       showTopBorder, showRightBorder,
-      seriesColors, legendFontSize,
+      seriesColors, legendFontSize, legendFont, legendOffsetX, legendOffsetY, legendCols, legendColGap, legendRowGap, legendLineLen,
       baselineColor, overlayColor, arrowColor, baselineOpacity, overlayOpacity, pointLabelSize,
-      axisFont, axisValueFontSize, axisHeaderFontSize, axisColor,
+      axisCaptionFont, axisValueFont, axisValueFontSize, axisHeaderFontSize, axisColor,
       xAxisLabel, yAxisLabel, xDecimals, yDecimals, xTickRotation,
       useCustomBounds, xMin, xMax, yMin, yMax,
     };
@@ -940,6 +1110,18 @@ function ChartExportDialog({
         if (s.dpi !== undefined) setDpi(s.dpi);
         if (s.lockAspect !== undefined) setLockAspect(s.lockAspect);
         if (s.padding !== undefined) setPadding(s.padding);
+        if (s.labelPadding !== undefined) setLabelPadding(s.labelPadding);
+        if (s.rightEdgePadding !== undefined) setRightEdgePadding(s.rightEdgePadding);
+        if (s.leftEdgePadding !== undefined) setLeftEdgePadding(s.leftEdgePadding);
+        if (s.xAxisCaptionPadding !== undefined) setXAxisCaptionPadding(s.xAxisCaptionPadding);
+        if (s.yAxisCaptionPadding !== undefined) setYAxisCaptionPadding(s.yAxisCaptionPadding);
+        if (s.captionPadding !== undefined) { setXAxisCaptionPadding(s.captionPadding); setYAxisCaptionPadding(s.captionPadding); }
+        if (s.xAxisLabelOffsetY !== undefined) setXAxisLabelOffsetY(s.xAxisLabelOffsetY);
+        if (s.xTickOffsetY !== undefined) setXTickOffsetY(s.xTickOffsetY);
+        if (s.yAxisLabelOffsetX !== undefined) setYAxisLabelOffsetX(s.yAxisLabelOffsetX);
+        if (s.yAxisLabelOffsetY !== undefined) setYAxisLabelOffsetY(s.yAxisLabelOffsetY);
+        if (s.xTickOffsetX !== undefined) setXTickOffsetX(s.xTickOffsetX);
+        if (s.yTickOffsetX !== undefined) setYTickOffsetX(s.yTickOffsetX);
         if (s.showTitle !== undefined) setShowTitle(s.showTitle);
         if (s.title !== undefined) setTitle(s.title);
         if (s.titleFont !== undefined) setTitleFont(s.titleFont);
@@ -956,13 +1138,21 @@ function ChartExportDialog({
         if (s.showRightBorder !== undefined) setShowRightBorder(s.showRightBorder);
         if (s.seriesColors !== undefined) setSeriesColors(s.seriesColors);
         if (s.legendFontSize !== undefined) setLegendFontSize(s.legendFontSize);
+        if (s.legendFont !== undefined) setLegendFont(s.legendFont);
+        if (s.legendOffsetX !== undefined) setLegendOffsetX(s.legendOffsetX);
+        if (s.legendOffsetY !== undefined) setLegendOffsetY(s.legendOffsetY);
+        if (s.legendCols !== undefined) setLegendCols(s.legendCols);
+        if (s.legendColGap !== undefined) setLegendColGap(s.legendColGap);
+        if (s.legendRowGap !== undefined) setLegendRowGap(s.legendRowGap);
+        if (s.legendLineLen !== undefined) setLegendLineLen(s.legendLineLen);
         if (s.baselineColor !== undefined) setBaselineColor(s.baselineColor);
         if (s.overlayColor !== undefined) setOverlayColor(s.overlayColor);
         if (s.arrowColor !== undefined) setArrowColor(s.arrowColor);
         if (s.baselineOpacity !== undefined) setBaselineOpacity(s.baselineOpacity);
         if (s.overlayOpacity !== undefined) setOverlayOpacity(s.overlayOpacity);
         if (s.pointLabelSize !== undefined) setPointLabelSize(s.pointLabelSize);
-        if (s.axisFont !== undefined) setAxisFont(s.axisFont);
+        if (s.axisCaptionFont !== undefined) setAxisCaptionFont(s.axisCaptionFont);
+        if (s.axisValueFont !== undefined) setAxisValueFont(s.axisValueFont);
         if (s.axisValueFontSize !== undefined) setAxisValueFontSize(s.axisValueFontSize);
         if (s.axisHeaderFontSize !== undefined) setAxisHeaderFontSize(s.axisHeaderFontSize);
         if (s.axisColor !== undefined) setAxisColor(s.axisColor);
@@ -989,26 +1179,36 @@ function ChartExportDialog({
   const lbl = { fontSize: 11, color: '#64748b', display: 'block', marginBottom: 3 };
   const row = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 };
   const TAB_STYLE = (active) => ({
-    padding: '5px 10px', fontSize: 11, fontWeight: active ? 700 : 500,
-    borderRadius: 5, border: 'none', cursor: 'pointer',
-    background: active ? '#EFF6FF' : 'transparent', color: active ? '#1D4ED8' : '#64748b',
+    padding: '7px 10px',
+    fontSize: 11,
+    fontWeight: active ? 700 : 600,
+    borderTopLeftRadius: 7,
+    borderTopRightRadius: 7,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    border: '1px solid #cbd5e1',
+    borderBottomColor: active ? '#fff' : '#cbd5e1',
+    cursor: 'pointer',
+    background: active ? '#fff' : '#f8fafc',
+    color: active ? '#0f172a' : '#475569',
+    marginBottom: -1,
   });
 
   const TABS = isLine
-    ? [['layout', 'Layout'], ['display', 'Display'], ['lines', 'Lines'], ['axes', 'Axes']]
-    : [['layout', 'Layout'], ['display', 'Display'], ['points', 'Points'], ['axes', 'Axes']];
+    ? [['layout', 'Layout'], ['display', 'Display'], ['plot', 'Plot'], ['axes', 'Axes']]
+    : [['layout', 'Layout'], ['display', 'Display'], ['plot', 'Plot'], ['axes', 'Axes']];
 
   const typeLabel = isLine ? 'Sensitivity Chart' : 'Redesign Plot';
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.52)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 8px 40px rgba(0,0,0,0.22)', width: '95vw', maxWidth: 980, maxHeight: '93vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 8px 40px rgba(0,0,0,0.22)', width: '95vw', maxWidth: 980, height: '90vh', maxHeight: '93vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
         {/* Header */}
         <div style={{ padding: '12px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>Export {typeLabel}</span>
-          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b', padding: 0, lineHeight: 1 }}>×</button>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b', padding: 0, lineHeight: 1 }}>x</button>
         </div>
 
         {/* Body */}
@@ -1017,15 +1217,15 @@ function ChartExportDialog({
           {/* Settings panel */}
           <div style={{ width: 250, borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
             {/* Tabs */}
-            <div style={{ display: 'flex', gap: 2, padding: '8px 10px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 4, padding: '8px 10px 0', borderBottom: '1px solid #cbd5e1', flexWrap: 'nowrap', overflowX: 'auto', background: '#f8fafc' }}>
               {TABS.map(([key, label]) => (
                 <button key={key} type="button" style={TAB_STYLE(settingsTab === key)} onClick={() => setSettingsTab(key)}>{label}</button>
               ))}
             </div>
             {/* Tab content */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '12px 12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-              {/* ── LAYOUT tab ── */}
+              {/* LAYOUT tab */}
               {settingsTab === 'layout' && (<>
                 <div><label style={lbl}>Filename</label><input style={inp} value={filename} onChange={e => setFilename(e.target.value)} /></div>
                 <div><label style={lbl}>Format</label>
@@ -1075,10 +1275,10 @@ function ChartExportDialog({
                     </div>
                   </div>
                 </>)}
-                <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.6 }}>Output: {widthPx} × {heightPx} px{format === 'png' ? ` @ ${dpi} DPI` : ''}</div>
+                <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.6 }}>Output: {widthPx} x {heightPx} px{format === 'png' ? ` @ ${dpi} DPI` : ''}</div>
               </>)}
 
-              {/* ── DISPLAY tab ── */}
+              {/* DISPLAY tab */}
               {settingsTab === 'display' && (<>
                 {[
                   [showAxes, setShowAxes, 'Show axes & tick labels'],
@@ -1097,8 +1297,8 @@ function ChartExportDialog({
                 ))}
               </>)}
 
-              {/* ── LINES tab (line chart only) ── */}
-              {settingsTab === 'lines' && isLine && (<>
+              {/* PLOT tab (line chart only) */}
+              {settingsTab === 'plot' && isLine && (<>
                 <div style={{ fontSize: 11, color: '#475569', marginBottom: 2 }}>Series colours</div>
                 {(series || []).slice(0, 7).map((s, idx) => (
                   <div key={`sc_${idx}`} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1111,13 +1311,31 @@ function ChartExportDialog({
                     <span style={{ fontSize: 10, color: '#64748b', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</span>
                   </div>
                 ))}
+                <div style={{ fontSize: 11, color: '#475569', marginTop: 8, marginBottom: 2 }}>Legend</div>
+                <div><label style={lbl}>Legend font</label>
+                  <select style={inp} value={legendFont} onChange={e => setLegendFont(e.target.value)}>
+                    {SYSTEM_FONTS.map(f => <option key={`leg_${f}`} value={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div style={row}>
+                  <div><label style={lbl}>Legend offset X (px)</label><input style={inp} type="number" value={legendOffsetX} min={-400} max={400} onChange={e => setLegendOffsetX(clamp(e.target.value, -400, 400))} /></div>
+                  <div><label style={lbl}>Legend offset Y (px)</label><input style={inp} type="number" value={legendOffsetY} min={-400} max={400} onChange={e => setLegendOffsetY(clamp(e.target.value, -400, 400))} /></div>
+                </div>
+                <div style={row}>
+                  <div><label style={lbl}>Legend columns</label><input style={inp} type="number" value={legendCols} min={1} max={6} onChange={e => setLegendCols(clamp(e.target.value, 1, 6))} /></div>
+                  <div><label style={lbl}>Column gap (px)</label><input style={inp} type="number" value={legendColGap} min={0} max={80} onChange={e => setLegendColGap(clamp(e.target.value, 0, 80))} /></div>
+                </div>
+                <div style={row}>
+                  <div><label style={lbl}>Row gap (px)</label><input style={inp} type="number" value={legendRowGap} min={0} max={80} onChange={e => setLegendRowGap(clamp(e.target.value, 0, 80))} /></div>
+                  <div><label style={lbl}>Line length (px)</label><input style={inp} type="number" value={legendLineLen} min={6} max={60} onChange={e => setLegendLineLen(clamp(e.target.value, 6, 60))} /></div>
+                </div>
                 <div><label style={lbl}>Legend font size (pt)</label><input style={inp} type="number" value={legendFontSize} min={7} max={20} onChange={e => setLegendFontSize(clamp(e.target.value, 7, 20))} /></div>
                 <button type="button" onClick={() => setSeriesColors([...SERIES_COLORS])}
                   style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer', marginTop: 4 }}>Reset to defaults</button>
               </>)}
 
-              {/* ── POINTS tab (scatter only) ── */}
-              {settingsTab === 'points' && !isLine && (<>
+              {/* PLOT tab (scatter only) */}
+              {settingsTab === 'plot' && !isLine && (<>
                 <div style={{ fontSize: 11, color: '#475569', marginBottom: 2 }}>Baseline (original) points</div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <input type="color" value={baselineColor} onChange={e => setBaselineColor(e.target.value)} style={{ width: 32, height: 26, borderRadius: 4, border: '1px solid #cbd5e1', cursor: 'pointer', padding: 2 }} />
@@ -1144,16 +1362,28 @@ function ChartExportDialog({
                 <div><label style={lbl}>Point label size (pt)</label><input style={inp} type="number" value={pointLabelSize} min={6} max={40} onChange={e => setPointLabelSize(clamp(e.target.value, 6, 40))} /></div>
               </>)}
 
-              {/* ── AXES tab ── */}
+              {/* AXES tab */}
               {settingsTab === 'axes' && (<>
-                <div><label style={lbl}>Font</label>
-                  <select style={inp} value={axisFont} onChange={e => setAxisFont(e.target.value)}>
-                    {SYSTEM_FONTS.map(f => <option key={f} value={f}>{f}</option>)}
+                <div><label style={lbl}>Caption font</label>
+                  <select style={inp} value={axisCaptionFont} onChange={e => setAxisCaptionFont(e.target.value)}>
+                    {SYSTEM_FONTS.map(f => <option key={`cap_${f}`} value={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div><label style={lbl}>Value label font</label>
+                  <select style={inp} value={axisValueFont} onChange={e => setAxisValueFont(e.target.value)}>
+                    {SYSTEM_FONTS.map(f => <option key={`val_${f}`} value={f}>{f}</option>)}
                   </select>
                 </div>
                 <div style={row}>
-                  <div><label style={lbl}>Header size (pt)</label><input style={inp} type="number" value={axisHeaderFontSize} min={6} max={60} onChange={e => setAxisHeaderFontSize(clamp(e.target.value, 6, 60))} /></div>
-                  <div><label style={lbl}>Tick size (pt)</label><input style={inp} type="number" value={axisValueFontSize} min={6} max={40} onChange={e => setAxisValueFontSize(clamp(e.target.value, 6, 40))} /></div>
+                  <div><label style={lbl}>Caption size (pt)</label><input style={inp} type="number" value={axisHeaderFontSize} min={6} max={60} onChange={e => setAxisHeaderFontSize(clamp(e.target.value, 6, 60))} /></div>
+                  <div><label style={lbl}>Label size (pt)</label><input style={inp} type="number" value={axisValueFontSize} min={3} max={40} onChange={e => setAxisValueFontSize(clamp(e.target.value, 3, 40))} /></div>
+                </div>
+                <div><label style={lbl}>X caption padding (px)</label><input style={inp} type="number" value={xAxisCaptionPadding} min={-400} max={400} onChange={e => setXAxisCaptionPadding(clamp(e.target.value, -400, 400))} /></div>
+                <div><label style={lbl}>Y caption padding (px)</label><input style={inp} type="number" value={yAxisCaptionPadding} min={-400} max={400} onChange={e => setYAxisCaptionPadding(clamp(e.target.value, -400, 400))} /></div>
+                <div><label style={lbl}>Label padding (px)</label><input style={inp} type="number" value={labelPadding} min={-400} max={400} onChange={e => setLabelPadding(clamp(e.target.value, -400, 400))} /></div>
+                <div style={row}>
+                  <div><label style={lbl}>Left edge padding (px)</label><input style={inp} type="number" value={leftEdgePadding} min={-400} max={400} onChange={e => setLeftEdgePadding(clamp(e.target.value, -400, 400))} /></div>
+                  <div><label style={lbl}>Right edge padding (px)</label><input style={inp} type="number" value={rightEdgePadding} min={-400} max={400} onChange={e => setRightEdgePadding(clamp(e.target.value, -400, 400))} /></div>
                 </div>
                 <div><label style={lbl}>Colour</label>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -1172,6 +1402,18 @@ function ChartExportDialog({
                     <option value={45}>45°</option>
                     <option value={90}>90° (vertical)</option>
                   </select>
+                </div>
+                <div style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>Axis label offsets (px)</div>
+                <div style={row}>
+                  <div><label style={lbl}>X-axis label (up/down)</label><input style={inp} type="number" value={xAxisLabelOffsetY} min={-400} max={400} onChange={e => setXAxisLabelOffsetY(clamp(e.target.value, -400, 400))} /></div>
+                  <div><label style={lbl}>Y-axis label (left/right)</label><input style={inp} type="number" value={yAxisLabelOffsetX} min={-400} max={400} onChange={e => setYAxisLabelOffsetX(clamp(e.target.value, -400, 400))} /></div>
+                </div>
+                <div><label style={lbl}>Y-axis label (up/down)</label><input style={inp} type="number" value={yAxisLabelOffsetY} min={-400} max={400} onChange={e => setYAxisLabelOffsetY(clamp(e.target.value, -400, 400))} /></div>
+                <div><label style={lbl}>X tick labels (up/down)</label><input style={inp} type="number" value={xTickOffsetY} min={-400} max={400} onChange={e => setXTickOffsetY(clamp(e.target.value, -400, 400))} /></div>
+                <div style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>Tick label offsets (px)</div>
+                <div style={row}>
+                  <div><label style={lbl}>X tick labels (left/right)</label><input style={inp} type="number" value={xTickOffsetX} min={-400} max={400} onChange={e => setXTickOffsetX(clamp(e.target.value, -400, 400))} /></div>
+                  <div><label style={lbl}>Y tick labels (left/right)</label><input style={inp} type="number" value={yTickOffsetX} min={-400} max={400} onChange={e => setYTickOffsetX(clamp(e.target.value, -400, 400))} /></div>
                 </div>
                 <div><label style={lbl}>X-axis label</label><input style={inp} value={xAxisLabel} onChange={e => setXAxisLabel(e.target.value)} /></div>
                 <div><label style={lbl}>Y-axis label</label><input style={inp} value={yAxisLabel} onChange={e => setYAxisLabel(e.target.value)} /></div>
@@ -1207,13 +1449,8 @@ function ChartExportDialog({
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '8px 14px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ padding: '8px 14px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', gap: 8, flexWrap: 'nowrap', minHeight: 48 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b' }}>
-              <span>Zoom</span>
-              <input type="range" min={25} max={200} step={5} value={previewZoom} onChange={e => setPreviewZoom(Number(e.target.value))} style={{ width: 80 }} />
-              <span style={{ minWidth: 34 }}>{previewZoom}%</span>
-            </div>
             <button type="button" onClick={handleSaveSettings}
               style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#475569' }}>
               Save settings
@@ -1223,7 +1460,12 @@ function ChartExportDialog({
               <input type="file" accept=".json" onChange={handleLoadSettings} style={{ display: 'none' }} />
             </label>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#64748b' }}>
+              <span>Zoom</span>
+              <input type="range" min={25} max={200} step={5} value={previewZoom} onChange={e => setPreviewZoom(Number(e.target.value))} style={{ width: 80 }} />
+              <span style={{ minWidth: 34 }}>{previewZoom}%</span>
+            </div>
             <button type="button" onClick={onClose} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>Cancel</button>
             <button type="button" onClick={handleExport} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
               {format === 'svg' ? 'Export SVG' : 'Export PNG'}
@@ -1237,3 +1479,8 @@ function ChartExportDialog({
 }
 
 export default ChartExportDialog;
+
+
+
+
+

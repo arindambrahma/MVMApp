@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { runAnalysis } from '../utils/api';
 import { sanitize } from '../utils/helpers';
-import ChartExportDialog from './ChartExportDialog';
+import ImageExportDialog from './ImageExportDialog';
 
 function pct(v, decimals = 2) {
   return `${((v || 0) * 100).toFixed(decimals)}%`;
@@ -99,12 +99,26 @@ function BubbleMVMPlot({
   axisFontSize = 10,
   xDomain = null,
   yDomain = null,
+  plotData = null,
   exportName = 'redesign_plot',
   onAddToReport = null,
   tables = [],
 }) {
   const svgRef = useRef(null);
-  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showImageExport, setShowImageExport] = useState(false);
+  const [imageExportSrc, setImageExportSrc] = useState('');
+
+  const capturePlotImage = () => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const svgStr = new XMLSerializer().serializeToString(svg);
+    try {
+      return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgStr)));
+    } catch {
+      return null;
+    }
+  };
+
   const all = [...baselinePoints, ...overlayPoints];
   if (!all.length) {
     return <div style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>No plot data.</div>;
@@ -267,21 +281,30 @@ function BubbleMVMPlot({
         )}
         <button
           type="button"
-          onClick={() => setShowExportDialog(true)}
+          onClick={() => {
+            const src = capturePlotImage();
+            if (!src) {
+              window.alert('Could not capture the plot for export. Please try again.');
+              return;
+            }
+            setImageExportSrc(src);
+            setShowImageExport(true);
+          }}
           style={{ border: '1px solid #BBF7D0', background: '#F0FDF4', color: '#166534', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
         >
           ↓ Export image
         </button>
       </div>
-      <ChartExportDialog
-        open={showExportDialog}
-        onClose={() => setShowExportDialog(false)}
-        chartType="scatter"
+      <ImageExportDialog
+        open={showImageExport}
+        onClose={() => setShowImageExport(false)}
+        imageSrc={imageExportSrc}
+        plotData={plotData}
+        plotPoints={baselinePoints}
+        plotOverlayPoints={overlayPoints}
+        forcePlotMode
+        defaultTitle="Redesign Plot"
         defaultName={exportName}
-        baselinePoints={baselinePoints}
-        overlayPoints={overlayPoints}
-        xDomain={xDomain}
-        yDomain={yDomain}
       />
     </div>
   );
@@ -853,6 +876,7 @@ function RedesignAnalysisModule({
               axisFontSize={fontSize}
               xDomain={null}
               yDomain={null}
+              plotData={result}
               exportName="redesign_baseline_plot"
               onAddToReport={onAddChartToReport}
               tables={buildMatrixTableData('Baseline', marginKeys, result.impact_matrix, result.absorption_matrix, result.utilisation_matrix, baselineInputs)}
@@ -890,6 +914,7 @@ function RedesignAnalysisModule({
                 axisFontSize={fontSize}
                 xDomain={lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
                 yDomain={lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
+                plotData={result}
                 exportName="redesign_baseline_plot"
                 onAddToReport={onAddChartToReport}
                 tables={buildMatrixTableData('Baseline', marginKeys, result.impact_matrix, result.absorption_matrix, result.utilisation_matrix, baselineInputs)}
@@ -925,6 +950,7 @@ function RedesignAnalysisModule({
                 axisFontSize={fontSize}
                 xDomain={lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
                 yDomain={lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
+                plotData={result}
                 exportName="redesign_recalculated_plot"
                 onAddToReport={onAddChartToReport}
                 tables={buildMatrixTableData('Recalculated', marginKeys, recalculatedResult?.impact_matrix, recalculatedResult?.absorption_matrix, recalculatedResult?.utilisation_matrix, recalculatedInputs)}
