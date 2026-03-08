@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { runAnalysis } from '../utils/api';
 import { sanitize } from '../utils/helpers';
+import ChartExportDialog from './ChartExportDialog';
 
 function pct(v, decimals = 2) {
   return `${((v || 0) * 100).toFixed(decimals)}%`;
@@ -103,6 +104,7 @@ function BubbleMVMPlot({
   tables = [],
 }) {
   const svgRef = useRef(null);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const all = [...baselinePoints, ...overlayPoints];
   if (!all.length) {
     return <div style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>No plot data.</div>;
@@ -247,8 +249,8 @@ function BubbleMVMPlot({
           Redesigned points
         </div>
       </div>
-      {onAddToReport && (
-        <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        {onAddToReport && (
           <button
             type="button"
             onClick={() => {
@@ -262,8 +264,25 @@ function BubbleMVMPlot({
           >
             📋 Add to report
           </button>
-        </div>
-      )}
+        )}
+        <button
+          type="button"
+          onClick={() => setShowExportDialog(true)}
+          style={{ border: '1px solid #BBF7D0', background: '#F0FDF4', color: '#166534', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+        >
+          ↓ Export image
+        </button>
+      </div>
+      <ChartExportDialog
+        open={showExportDialog}
+        onClose={() => setShowExportDialog(false)}
+        chartType="scatter"
+        defaultName={exportName}
+        baselinePoints={baselinePoints}
+        overlayPoints={overlayPoints}
+        xDomain={xDomain}
+        yDomain={yDomain}
+      />
     </div>
   );
 }

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: mvmapp
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: |
+      pip install -r backend/requirements.txt
+      cd man-diagram-tool && npm ci && npm run build
+    startCommand: gunicorn --chdir backend app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: NODE_VERSION
+        value: 20.19.0
