@@ -282,14 +282,14 @@ function MarginLineChart({
       <ChartExportDialog
         open={showExportDialog}
         onClose={() => setShowExportDialog(false)}
-        svgRef={svgRef}
         chartType="line"
         defaultName={exportName}
-        legendItems={series.map((s, idx) => ({
-          label: s.label,
-          color: colors[idx % colors.length],
-          dashed: String(s.key || '').startsWith('perf_'),
-        }))}
+        series={series}
+        extraLines={extraLines}
+        xLabel={xLabel}
+        yLabel={yLabel}
+        xDomain={xDomain}
+        yDomain={yDomain}
       />
     </div>
   );

@@ -276,9 +276,12 @@ function BubbleMVMPlot({
       <ChartExportDialog
         open={showExportDialog}
         onClose={() => setShowExportDialog(false)}
-        svgRef={svgRef}
         chartType="scatter"
         defaultName={exportName}
+        baselinePoints={baselinePoints}
+        overlayPoints={overlayPoints}
+        xDomain={xDomain}
+        yDomain={yDomain}
       />
     </div>
   );
