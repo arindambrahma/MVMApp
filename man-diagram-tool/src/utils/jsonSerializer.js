@@ -75,6 +75,22 @@ export function importJSON(raw) {
     return { ...e, edgeType };
   });
 
+  // Ensure calcHierarchical nodes have required fields (migration for older files)
+  const finalNodes = migratedNodes.map(n => {
+    if (n?.type !== 'calcHierarchical') return n;
+    return {
+      ports: { inputs: ['in'], outputs: ['out'] },
+      subGraph: { nodes: [], edges: [] },
+      ...n,
+    };
+  });
+
+  // Warn if any node labels contain Greek letters (sanitized names have changed)
+  const hasGreek = finalNodes.some(n => /[α-ωΑ-Ω]/u.test(n?.label || ''));
+  if (hasGreek) {
+    console.warn('Greek labels detected: sanitized variable names now transliterate Greek (e.g. η → eta). Please verify formula references.');
+  }
+
   const clusters = Array.isArray(data.clusters) ? data.clusters : [];
-  return { nodes: migratedNodes, edges, clusters };
+  return { nodes: finalNodes, edges, clusters };
 }

@@ -10,11 +10,16 @@ const MATH_FUNCTIONS = [
   'Math.sqrt', 'Math.abs', 'Math.pow', 'Math.log', 'Math.log10',
   'Math.exp', 'Math.sin', 'Math.cos', 'Math.tan', 'Math.PI', 'Math.E',
   'Math.ceil', 'Math.floor', 'Math.round', 'Math.min', 'Math.max',
-  'sqrt', 'abs', 'pow', 'log', 'exp', 'sin', 'cos', 'tan', 'pi',
+  'sqrt', 'abs', 'pow', 'log', 'log10', 'exp',
+  'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2',
+  'ceil', 'floor', 'round', 'min', 'max',
+  'pi', 'e',
+  // Python ternary keywords allowed in expressions (e.g. a if b > 0 else c)
+  'if', 'else', 'and', 'or', 'not',
 ];
 
 // Token patterns
-const TOKEN_REGEX = /([a-zA-Z_][a-zA-Z0-9_.]*)|(\d+\.?\d*(?:[eE][+-]?\d+)?)|([+\-*/^%(),])|(\*\*)|(\s+)/g;
+const TOKEN_REGEX = /([a-zA-Z_][a-zA-Z0-9_.]*)|(\d+\.?\d*(?:[eE][+-]?\d+)?)|([+\-*/^%(),<>!])|(\*\*)|(\s+)/g;
 
 export function validateFormula(formula, availableVarNames) {
   if (!formula || !formula.trim()) {

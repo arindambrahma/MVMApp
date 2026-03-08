@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import InputDiamond from './InputDiamond';
 import CalcCircle from './CalcCircle';
 import CalcFunctionBox from './CalcFunctionBox';
+import CalcHierarchicalBox from './CalcHierarchicalBox';
+import HierarchicalPortNode from './HierarchicalPortNode';
 import ProbeRect from './ProbeRect';
 import DecisionDiamond from './DecisionDiamond';
 import MarginHexagon from './MarginHexagon';
@@ -11,6 +13,9 @@ const SHAPE_MAP = {
   input: InputDiamond,
   calc: CalcCircle,
   calcFunction: CalcFunctionBox,
+  calcHierarchical: CalcHierarchicalBox,
+  hierarchicalInput: HierarchicalPortNode,
+  hierarchicalOutput: HierarchicalPortNode,
   probe: ProbeRect,
   decision: DecisionDiamond,
   margin: MarginHexagon,
@@ -28,6 +33,7 @@ function NodeRenderer({
   connecting,
   onMouseDown,
   onClick,
+  onDoubleClick,
   onStartConnect,
 }) {
   const [hovered, setHovered] = useState(false);
@@ -40,6 +46,10 @@ function NodeRenderer({
       style={{ cursor: connecting ? 'crosshair' : 'grab' }}
       onMouseDown={onMouseDown}
       onClick={onClick}
+      onDoubleClick={node.type === 'calcHierarchical' && onDoubleClick
+        ? (e) => { e.stopPropagation(); onDoubleClick(node.id); }
+        : undefined
+      }
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -72,8 +82,8 @@ function NodeRenderer({
         }}
       />
 
-      {/* Small connect button - appears only on hover */}
-      {!connecting && hovered && node.type !== 'calcFunction' && (
+      {/* Small connect button - appears only on hover (not for box-style nodes with their own port connectors) */}
+      {!connecting && hovered && node.type !== 'calcFunction' && node.type !== 'calcHierarchical' && (
         <g transform="translate(0, -24)">
           <circle
             cx={0}

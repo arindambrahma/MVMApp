@@ -2,7 +2,7 @@ import React from 'react';
 import { NODE_TYPES, NODE_META } from '../constants/nodeTypes';
 
 // Small SVG icon previews for each node type
-function PaletteIcon({ type }) {
+export function PaletteIcon({ type }) {
   const size = 40;
   const cx = size / 2;
   const cy = size / 2;
@@ -34,6 +34,14 @@ function PaletteIcon({ type }) {
         <svg width={size} height={size}>
           <rect x={6} y={9} width={28} height={22} rx={4} fill="#FFFBEB" stroke="#92400E" strokeWidth={1.5} />
           <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={10} fontWeight={700} fill="#92400E">f()</text>
+        </svg>
+      );
+    }
+    case 'calcHierarchical': {
+      return (
+        <svg width={size} height={size}>
+          <rect x={6} y={9} width={28} height={22} rx={4} fill="#EFF6FF" stroke="#1D4ED8" strokeWidth={1.5} />
+          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={9} fontWeight={700} fill="#1D4ED8">⊕</text>
         </svg>
       );
     }
@@ -83,6 +91,24 @@ function PaletteIcon({ type }) {
         </svg>
       );
     }
+    case 'hierarchicalInput': {
+      const pts = `${cx - 12},${cy - 9} ${cx + 6},${cy - 9} ${cx + 14},${cy} ${cx + 6},${cy + 9} ${cx - 12},${cy + 9}`;
+      return (
+        <svg width={size} height={size}>
+          <polygon points={pts} fill="#DBEAFE" stroke="#1D4ED8" strokeWidth={1.5} />
+          <text x={cx - 3} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={7} fontWeight={700} fill="#1D4ED8">IN</text>
+        </svg>
+      );
+    }
+    case 'hierarchicalOutput': {
+      const pts = `${cx - 12},${cy - 9} ${cx + 6},${cy - 9} ${cx + 14},${cy} ${cx + 6},${cy + 9} ${cx - 12},${cy + 9}`;
+      return (
+        <svg width={size} height={size}>
+          <polygon points={pts} fill="#DCFCE7" stroke="#15803D" strokeWidth={1.5} />
+          <text x={cx - 3} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={7} fontWeight={700} fill="#15803D">OUT</text>
+        </svg>
+      );
+    }
     case 'cluster': {
       return (
         <svg width={size} height={size}>
@@ -107,7 +133,7 @@ function PaletteIcon({ type }) {
   }
 }
 
-function WorkspaceIcon({ type, routePreference }) {
+export function WorkspaceIcon({ type, routePreference }) {
   const size = 24;
   if (type === 'autoArrange') {
     return (
@@ -163,6 +189,7 @@ function Palette({
     NODE_TYPES.INPUT,
     NODE_TYPES.CALC,
     NODE_TYPES.CALC_FUNCTION,
+    NODE_TYPES.CALC_HIERARCHICAL,
     NODE_TYPES.PROBE,
     NODE_TYPES.DECISION,
     NODE_TYPES.MARGIN,

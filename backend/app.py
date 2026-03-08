@@ -41,11 +41,27 @@ CORS(app)
 # Helpers
 # ---------------------------------------------------------------------------
 
+_GREEK_TRANSLITERATION = {
+    'α':'alpha','β':'beta','γ':'gamma','δ':'delta','ε':'epsilon',
+    'ζ':'zeta','η':'eta','θ':'theta','ι':'iota','κ':'kappa',
+    'λ':'lambda','μ':'mu','ν':'nu','ξ':'xi','ο':'omicron',
+    'π':'pi','ρ':'rho','σ':'sigma','τ':'tau','υ':'upsilon',
+    'φ':'phi','χ':'chi','ψ':'psi','ω':'omega',
+    'Α':'Alpha','Β':'Beta','Γ':'Gamma','Δ':'Delta','Ε':'Epsilon',
+    'Ζ':'Zeta','Η':'Eta','Θ':'Theta','Ι':'Iota','Κ':'Kappa',
+    'Λ':'Lambda','Μ':'Mu','Ν':'Nu','Ξ':'Xi','Ο':'Omicron',
+    'Π':'Pi','Ρ':'Rho','Σ':'Sigma','Τ':'Tau','Υ':'Upsilon',
+    'Φ':'Phi','Χ':'Chi','Ψ':'Psi','Ω':'Omega',
+}
+
 def sanitize(label):
-    """Convert a node label to a valid Python variable name."""
+    """Convert a node label to a valid Python variable name.
+    Greek letters are transliterated (α→alpha, η→eta, etc.)
+    before replacing remaining special characters with underscores."""
     if not label:
         return 'unnamed'
-    s = re.sub(r'[^a-zA-Z0-9_]', '_', label)
+    s = ''.join(_GREEK_TRANSLITERATION.get(ch, ch) for ch in str(label))
+    s = re.sub(r'[^a-zA-Z0-9_]', '_', s)
     s = re.sub(r'^[0-9]+', '', s)
     s = re.sub(r'_+', '_', s)
     s = s.strip('_')
@@ -489,6 +505,135 @@ def apply_input_aliases(formula_str, alias_to_runtime):
     return out
 
 
+def flatten_hierarchical_nodes(nodes, edges, _depth=0):
+    """
+    Recursively flatten calcHierarchical nodes into the top-level graph.
+    Sub-node IDs are namespaced as '{parentId}__{subNodeId}' to avoid collisions.
+    hierarchicalInput boundary nodes become pass-through calc nodes.
+    hierarchicalOutput boundary nodes become pass-through calc nodes.
+    Returns (flattened_nodes, flattened_edges).
+    """
+    if _depth > 10:
+        raise ValueError("Hierarchical node nesting exceeds maximum depth (10)")
+
+    hierarchical = [n for n in nodes if n.get('type') == 'calcHierarchical']
+    if not hierarchical:
+        return nodes, edges
+
+    node_by_id = {n['id']: n for n in nodes}
+    hierarchical_ids = {n['id'] for n in hierarchical}
+
+    result_nodes = [n for n in nodes if n['id'] not in hierarchical_ids]
+    result_edges = list(edges)
+
+    for parent in hierarchical:
+        pid = parent['id']
+        sg = parent.get('subGraph') or {}
+        sub_nodes = list(sg.get('nodes') or [])
+        sub_edges = list(sg.get('edges') or [])
+
+        if not sub_nodes:
+            # Empty sub-graph: remove the parent and all its boundary edges
+            result_edges = [e for e in result_edges
+                            if e.get('from') != pid and e.get('to') != pid]
+            continue
+
+        def ns(sub_id, _pid=pid):
+            return f"{_pid}__{sub_id}"
+
+        sub_by_id = {sn['id']: sn for sn in sub_nodes}
+
+        # Parent's incoming edges (from external nodes into the hierarchical node)
+        parent_in_edges = [e for e in result_edges if e.get('to') == pid]
+        # Parent's outgoing edges (from the hierarchical node to external nodes)
+        parent_out_edges = [e for e in result_edges if e.get('from') == pid]
+
+        # Map: portName -> (edge, external_var_name) for inputs
+        port_in_map = {}
+        for e in parent_in_edges:
+            port = e.get('toPort') or ''
+            src = node_by_id.get(e.get('from', ''))
+            if src:
+                var = sanitize(e.get('fromPort') or src.get('label', ''))
+                port_in_map[port] = (e, var)
+
+        # Map: portName -> [outgoing edges] for outputs
+        port_out_map = {}
+        for e in parent_out_edges:
+            port = e.get('fromPort') or ''
+            port_out_map.setdefault(port, []).append(e)
+
+        # Remove parent's boundary edges from result
+        boundary_ids = {e['id'] for e in parent_in_edges + parent_out_edges}
+        result_edges = [e for e in result_edges if e['id'] not in boundary_ids]
+
+        # Pre-compute hierarchicalOutput pass-through equations
+        hi_out_eq = {}
+        for sn in sub_nodes:
+            if sn.get('type') != 'hierarchicalOutput':
+                continue
+            sn_in_edges = [se for se in sub_edges if se.get('to') == sn['id']]
+            if sn_in_edges:
+                src_sn = sub_by_id.get(sn_in_edges[0].get('from', ''))
+                if src_sn:
+                    eq = sanitize(sn_in_edges[0].get('fromPort') or src_sn.get('label', ''))
+                    hi_out_eq[sn['id']] = eq
+
+        # Flatten each sub-node
+        for sn in sub_nodes:
+            new_node = dict(sn)
+            new_node['id'] = ns(sn['id'])
+            sn_type = sn.get('type', '')
+
+            if sn_type == 'hierarchicalInput':
+                port_name = sn.get('portName') or sn.get('label') or ''
+                in_pair = port_in_map.get(port_name) or port_in_map.get('')
+                if in_pair:
+                    orig_edge, ext_var = in_pair
+                    new_node['type'] = 'calc'
+                    new_node['equation'] = ext_var
+                    # Redirect the parent's incoming edge to the namespaced input node
+                    redir = dict(orig_edge)
+                    redir['id'] = f"{orig_edge['id']}__h{ns(sn['id'])}"
+                    redir['to'] = ns(sn['id'])
+                    redir['toPort'] = None
+                    result_edges.append(redir)
+                else:
+                    # No external edge found: treat as zero-value input
+                    new_node['type'] = 'input'
+                    new_node['value'] = 0
+
+            elif sn_type == 'hierarchicalOutput':
+                eq = hi_out_eq.get(sn['id'])
+                if eq:
+                    new_node['type'] = 'calc'
+                    new_node['equation'] = eq
+                else:
+                    # No internal source: treat as zero-value input
+                    new_node['type'] = 'input'
+                    new_node['value'] = 0
+                # Redirect parent's outgoing edges to originate from this node
+                port_name = sn.get('portName') or sn.get('label') or ''
+                out_edges = port_out_map.get(port_name) or port_out_map.get('') or []
+                for orig_out in out_edges:
+                    redir = dict(orig_out)
+                    redir['from'] = ns(sn['id'])
+                    result_edges.append(redir)
+
+            result_nodes.append(new_node)
+
+        # Namespace all sub-edges (including those into hierarchicalOutput — needed for input_names)
+        for se in sub_edges:
+            new_se = dict(se)
+            new_se['id'] = f"{pid}__{se['id']}"
+            new_se['from'] = ns(se.get('from', ''))
+            new_se['to'] = ns(se.get('to', ''))
+            result_edges.append(new_se)
+
+    # Recurse until no calcHierarchical nodes remain
+    return flatten_hierarchical_nodes(result_nodes, result_edges, _depth + 1)
+
+
 def topo_sort(nodes, edges):
     """
     Topological sort of nodes based on edges.
@@ -618,6 +763,9 @@ def analyse():
         gui_edges = data['edges']
         raw_perf_weights = data.get('perfWeights') or data.get('perf_weights') or {}
         raw_input_weights = data.get('inputWeights') or data.get('input_weights') or {}
+
+        # Flatten any calcHierarchical nodes before analysis
+        gui_nodes, gui_edges = flatten_hierarchical_nodes(gui_nodes, gui_edges)
 
         # Build lookup: node_id -> node data
         node_by_id = {n['id']: n for n in gui_nodes}

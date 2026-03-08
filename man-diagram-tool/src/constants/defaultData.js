@@ -4,8 +4,8 @@ let _idCounter = 0;
 
 export function createNode(type, x, y, overrides = {}) {
   _idCounter++;
-  const meta = NODE_META[type];
-  return {
+  const meta = NODE_META[type] || NODE_META['calc'];
+  const base = {
     id: overrides.id || `node_${Date.now()}_${_idCounter}`,
     type,
     x,
@@ -25,4 +25,17 @@ export function createNode(type, x, y, overrides = {}) {
     stepNumber: overrides.stepNumber || null,
     autoLabel: overrides.autoLabel || null,
   };
+
+  // Hierarchical calculation node — carries ports and embedded sub-graph
+  if (type === 'calcHierarchical') {
+    base.ports = overrides.ports || { inputs: ['in'], outputs: ['out'] };
+    base.subGraph = overrides.subGraph || { nodes: [], edges: [] };
+  }
+
+  // Boundary port nodes inside sub-graphs
+  if (type === 'hierarchicalInput' || type === 'hierarchicalOutput') {
+    base.portName = overrides.portName || overrides.label || '';
+  }
+
+  return base;
 }
