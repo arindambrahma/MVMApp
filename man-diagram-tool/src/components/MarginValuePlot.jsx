@@ -68,7 +68,90 @@ function MatrixTable({ rowKeys, colKeys, data, rowLabel, emptyMsg, colorMode = '
   );
 }
 
-function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes = [] }) {
+
+// ─── Probabilistic MVM scatter (used in model tab when prob result available) ─
+function ProbMVMPlotSmall({ statistics }) {
+  if (!statistics?.margins) return null;
+  const marginNames = Object.keys(statistics.margins);
+  if (!marginNames.length) return null;
+
+  const W = 280, H = 220, PAD = { top: 16, right: 16, bottom: 40, left: 44 };
+  const plotW = W - PAD.left - PAD.right, plotH = H - PAD.top - PAD.bottom;
+
+  const xVals = marginNames.map(m => statistics.margins[m].weighted_impact?.mean ?? 0);
+  const yVals = marginNames.map(m => statistics.margins[m].weighted_absorption?.mean ?? 0);
+  const xP5s  = marginNames.map(m => statistics.margins[m].weighted_impact?.p5  ?? 0);
+  const xP95s = marginNames.map(m => statistics.margins[m].weighted_impact?.p95 ?? 0);
+  const yP5s  = marginNames.map(m => statistics.margins[m].weighted_absorption?.p5  ?? 0);
+  const yP95s = marginNames.map(m => statistics.margins[m].weighted_absorption?.p95 ?? 0);
+
+  const xMin = Math.min(0, ...xVals, ...xP5s), xMax = Math.max(0.001, ...xVals, ...xP95s);
+  const yMin = Math.min(0, ...yVals, ...yP5s), yMax = Math.max(0.001, ...yVals, ...yP95s);
+  const xRange = xMax - xMin || 1, yRange = yMax - yMin || 1;
+
+  const px = v => PAD.left + ((v - xMin) / xRange) * plotW;
+  const py = v => PAD.top + plotH - ((v - yMin) / yRange) * plotH;
+  const colors = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#06B6D4','#84CC16'];
+
+  return (
+    <svg width={W} height={H} style={{ display: 'block', overflow: 'visible' }}>
+      {/* Grid */}
+      {[0.5].map(t => (
+        <g key={t}>
+          <line x1={PAD.left} y1={PAD.top + t*plotH} x2={PAD.left+plotW} y2={PAD.top + t*plotH} stroke="#E5E7EB" strokeWidth={1}/>
+          <line x1={PAD.left + t*plotW} y1={PAD.top} x2={PAD.left + t*plotW} y2={PAD.top+plotH} stroke="#E5E7EB" strokeWidth={1}/>
+        </g>
+      ))}
+      {/* Quadrant dividers */}
+      <line x1={PAD.left+plotW/2} y1={PAD.top} x2={PAD.left+plotW/2} y2={PAD.top+plotH} stroke="#9CA3AF" strokeWidth={1} strokeDasharray="3,2"/>
+      <line x1={PAD.left} y1={PAD.top+plotH/2} x2={PAD.left+plotW} y2={PAD.top+plotH/2} stroke="#9CA3AF" strokeWidth={1} strokeDasharray="3,2"/>
+      {/* Margins */}
+      {marginNames.map((m, i) => {
+        const s = statistics.margins[m];
+        const cx = px(s.weighted_impact?.mean ?? 0), cy = py(s.weighted_absorption?.mean ?? 0);
+        const exLo = px(s.weighted_impact?.p5 ?? s.weighted_impact?.mean ?? 0);
+        const exHi = px(s.weighted_impact?.p95 ?? s.weighted_impact?.mean ?? 0);
+        const eyLo = py(s.weighted_absorption?.p5 ?? s.weighted_absorption?.mean ?? 0);
+        const eyHi = py(s.weighted_absorption?.p95 ?? s.weighted_absorption?.mean ?? 0);
+        const col = colors[i % colors.length];
+        const r = Math.max(6, Math.min(14, Math.abs(s.excess?.mean ?? 0) * 200));
+        return (
+          <g key={m}>
+            <line x1={exLo} y1={cy} x2={exHi} y2={cy} stroke={col} strokeWidth={1.5} opacity={0.5}/>
+            <line x1={exLo} y1={cy-3} x2={exLo} y2={cy+3} stroke={col} strokeWidth={1.5} opacity={0.5}/>
+            <line x1={exHi} y1={cy-3} x2={exHi} y2={cy+3} stroke={col} strokeWidth={1.5} opacity={0.5}/>
+            <line x1={cx} y1={eyLo} x2={cx} y2={eyHi} stroke={col} strokeWidth={1.5} opacity={0.5}/>
+            <line x1={cx-3} y1={eyLo} x2={cx+3} y2={eyLo} stroke={col} strokeWidth={1.5} opacity={0.5}/>
+            <line x1={cx-3} y1={eyHi} x2={cx+3} y2={eyHi} stroke={col} strokeWidth={1.5} opacity={0.5}/>
+            <circle cx={cx} cy={cy} r={r} fill={col} opacity={0.75} stroke="#1F2937" strokeWidth={0.8}/>
+            <text x={cx+r+3} y={cy+3} fontSize={8} fontWeight={700} fill="#1F2937">{m.replace('E_','E')}</text>
+          </g>
+        );
+      })}
+      {/* Axes */}
+      <line x1={PAD.left} y1={PAD.top+plotH} x2={PAD.left+plotW} y2={PAD.top+plotH} stroke="#1F2937" strokeWidth={1.5}/>
+      <line x1={PAD.left} y1={PAD.top} x2={PAD.left} y2={PAD.top+plotH} stroke="#1F2937" strokeWidth={1.5}/>
+      {/* Ticks */}
+      {[0, 0.5, 1].map(t => (
+        <g key={t}>
+          <line x1={PAD.left+t*plotW} y1={PAD.top+plotH} x2={PAD.left+t*plotW} y2={PAD.top+plotH+3} stroke="#6B7280" strokeWidth={1}/>
+          <text x={PAD.left+t*plotW} y={PAD.top+plotH+11} fontSize={7} fill="#6B7280" textAnchor="middle">
+            {((xMin+t*xRange)*100).toFixed(1)}%
+          </text>
+          <line x1={PAD.left-3} y1={PAD.top+plotH-t*plotH} x2={PAD.left} y2={PAD.top+plotH-t*plotH} stroke="#6B7280" strokeWidth={1}/>
+          <text x={PAD.left-5} y={PAD.top+plotH-t*plotH+3} fontSize={7} fill="#6B7280" textAnchor="end">
+            {((yMin+t*yRange)*100).toFixed(1)}%
+          </text>
+        </g>
+      ))}
+      {/* Axis labels */}
+      <text x={PAD.left+plotW/2} y={H-4} fontSize={8} fontWeight={600} fill="#374151" textAnchor="middle">Impact on Performance (%)</text>
+      <text transform={`translate(9,${PAD.top+plotH/2}) rotate(-90)`} fontSize={8} fontWeight={600} fill="#374151" textAnchor="middle">Absorption Potential (%)</text>
+    </svg>
+  );
+}
+
+function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes = [], probabilisticResult = null }) {
   const [activeTab, setActiveTab] = useState('plot');
   const [showExportDialog, setShowExportDialog] = useState(false);
 
@@ -153,7 +236,17 @@ function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes 
               {' '}Wj: {Object.keys(appliedWeights?.perfWeights || {}).length}
               {' '}| Li: {Object.keys(appliedWeights?.inputWeights || {}).length}
             </div>
-            {plot && (
+            {probabilisticResult?.statistics && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 9, fontWeight: 600, color: '#7C3AED', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                  Probabilistic MVM Plot — error bars = 5th–95th pct
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <ProbMVMPlotSmall statistics={probabilisticResult.statistics} />
+                </div>
+              </div>
+            )}
+            {!probabilisticResult?.statistics && plot && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
                   <button

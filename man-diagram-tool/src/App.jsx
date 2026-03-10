@@ -10,6 +10,7 @@ import MarginValuePlot from './components/MarginValuePlot';
 import SensitivityStudyModule from './components/SensitivityStudyModule';
 import RedesignAnalysisModule from './components/RedesignAnalysisModule';
 import ProbabilisticAnalysisModule from './components/ProbabilisticAnalysisModule';
+import DsmAnalysisModule from './components/DsmAnalysisModule';
 import ReportingModule from './components/ReportingModule';
 import ExportModal from './components/ExportModal';
 import PreAnalysisModal from './components/PreAnalysisModal';
@@ -255,6 +256,7 @@ function App() {
       setWorkspaceTabs((prev) => {
         const next = [...prev];
         if (!next.includes('sensitivity')) next.push('sensitivity');
+        if (!next.includes('dsm')) next.push('dsm');
         if (!next.includes('redesign')) next.push('redesign');
         if (!next.includes('reporting')) next.push('reporting');
         return next;
@@ -305,8 +307,19 @@ function App() {
     };
   }, []);
 
+
+  // Auto-switch to probabilistic mode when any node has uncertainty enabled
+  useEffect(() => {
+    const hasUncertainty = state.nodes.some(
+      n => n.uncertainty?.enabled && (n.type === 'input' || n.type === 'decision')
+    );
+    if (hasUncertainty) {
+      setMcSettings(prev => prev.mode === 'probabilistic' ? prev : { ...prev, mode: 'probabilistic' });
+    }
+  }, [state.nodes]);
+
   const openWorkspaceTab = useCallback((tabId) => {
-    if (tabId !== 'sensitivity' && tabId !== 'redesign' && tabId !== 'reporting' && tabId !== 'probabilistic') return;
+    if (tabId !== 'sensitivity' && tabId !== 'dsm' && tabId !== 'redesign' && tabId !== 'reporting' && tabId !== 'probabilistic') return;
     if (!analysisResult) {
       setAnalysisError('Run analysis first to open analysis modules.');
       return;
@@ -337,6 +350,7 @@ function App() {
     if (tabId === 'redesign') return 'Redesign';
     if (tabId === 'reporting') return 'Reporting';
     if (tabId === 'probabilistic') return 'Probabilistic';
+    if (tabId === 'dsm') return 'DSM';
     if (tabId.startsWith('subCanvas_')) {
       const nodeId = tabId.slice('subCanvas_'.length);
       const node = state.nodes.find(n => n.id === nodeId);
@@ -391,6 +405,7 @@ function App() {
         onRunAnalysis={handleRunAnalysis}
         onOpenModel={() => setActiveTab('model')}
         onOpenSensitivity={() => openWorkspaceTab('sensitivity')}
+        onOpenDsm={() => openWorkspaceTab('dsm')}
         onOpenReporting={() => openWorkspaceTab('reporting')}
         analysisReady={Boolean(analysisResult)}
         analysisLoading={analysisLoading}
@@ -501,6 +516,7 @@ function App() {
               analysisError={analysisError}
               appliedWeights={effectiveWeights}
               nodes={state.nodes}
+              probabilisticResult={probabilisticResult}
             />
           </div>
         </div>
@@ -513,6 +529,14 @@ function App() {
             edges={state.edges}
             appliedWeights={effectiveWeights}
             onAddChartToReport={handleAddChartToReport}
+          />
+        </div>
+      ) : activeTab === 'dsm' ? (
+        <div className="analysis-workspace">
+          <DsmAnalysisModule
+            nodes={state.nodes}
+            edges={state.edges}
+            analysisResult={analysisResult}
           />
         </div>
       ) : activeTab === 'redesign' ? (
@@ -607,3 +631,9 @@ function App() {
 }
 
 export default App;
+
+
+
+
+
+
