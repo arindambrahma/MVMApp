@@ -152,3 +152,39 @@ export async function validateFunction(functionCode, inputs, rootSelectionPolicy
 
   return data.outputs;
 }
+
+export async function runProbabilisticAnalysis(nodes, edges, options = {}) {
+  const { perfWeights = {}, inputWeights = {}, nSamples = 1000, seed = null } = options;
+  const compatNodes = toLegacyCompatibleNodes(nodes, edges);
+  const res = await fetch('/api/analyse-probabilistic', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      nodes: compatNodes,
+      edges,
+      perfWeights,
+      inputWeights,
+      nSamples,
+      seed: (seed !== '' && seed !== null && seed !== undefined) ? Number(seed) : null,
+    }),
+  });
+
+  const rawText = await res.text();
+  let data = null;
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = null;
+    }
+  }
+
+  if (!res.ok || !data?.success) {
+    const fallback = res.status === 500 && !rawText
+      ? 'Backend unreachable via dev proxy. Ensure backend is running on 127.0.0.1:5001.'
+      : `Server error: ${res.status}`;
+    throw new Error(data?.error || fallback);
+  }
+
+  return data;
+}

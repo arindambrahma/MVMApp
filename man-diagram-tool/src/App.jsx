@@ -9,12 +9,13 @@ import HierarchicalSubCanvas from './components/HierarchicalSubCanvas';
 import MarginValuePlot from './components/MarginValuePlot';
 import SensitivityStudyModule from './components/SensitivityStudyModule';
 import RedesignAnalysisModule from './components/RedesignAnalysisModule';
+import ProbabilisticAnalysisModule from './components/ProbabilisticAnalysisModule';
 import ReportingModule from './components/ReportingModule';
 import ExportModal from './components/ExportModal';
 import PreAnalysisModal from './components/PreAnalysisModal';
 import ImageExportDialog from './components/ImageExportDialog';
 import { importJSON } from './utils/jsonSerializer';
-import { runAnalysis, fetchHealth } from './utils/api';
+import { runAnalysis, runProbabilisticAnalysis, fetchHealth } from './utils/api';
 import { validateGraph } from './utils/graphValidation';
 import { buildPreviewParamValues } from './utils/preAnalysisPreview';
 import { autoArrangeNodes } from './utils/autoLayout';
@@ -46,6 +47,8 @@ function App() {
   const [analysisProgress, setAnalysisProgress] = useState(null);
   const [analysisError, setAnalysisError] = useState(null);
   const [analysisWeights, setAnalysisWeights] = useState({ perf: {}, input: {} });
+  const [mcSettings, setMcSettings] = useState({ mode: 'deterministic', nSamples: 1000, seed: '' });
+  const [probabilisticResult, setProbabilisticResult] = useState(null);
   const [reportCharts, setReportCharts] = useState([]);
   const [backendVersion, setBackendVersion] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
@@ -117,6 +120,7 @@ function App() {
       loadGraph(data);
       setFitViewRequest((v) => v + 1);
       setAnalysisResult(null);
+      setProbabilisticResult(null);
       setAnalysisError(null);
       setReportCharts([]);
       setWorkspaceTabs(['model']);
@@ -255,9 +259,32 @@ function App() {
         if (!next.includes('reporting')) next.push('reporting');
         return next;
       });
+
+      // Probabilistic analysis (if mode is set)
+      if (mcSettings.mode !== 'probabilistic') {
+        // Clear any stale probabilistic results when running deterministically
+        setProbabilisticResult(null);
+        setWorkspaceTabs((prev) => prev.filter(t => t !== 'probabilistic'));
+        if (activeTab === 'probabilistic') setActiveTab('sensitivity');
+      } else if (mcSettings.mode === 'probabilistic') {
+        const probData = await runProbabilisticAnalysis(state.nodes, state.edges, {
+          perfWeights: effectiveWeights.perfWeights,
+          inputWeights: effectiveWeights.inputWeights,
+          nSamples: mcSettings.nSamples || 1000,
+          seed: mcSettings.seed,
+        });
+        setProbabilisticResult(probData);
+        setWorkspaceTabs((prev) => {
+          const next = [...prev];
+          if (!next.includes('probabilistic')) next.push('probabilistic');
+          return next;
+        });
+        setAnalysisProgress(100);
+      }
     } catch (e) {
       setAnalysisError(e.message);
       setAnalysisResult(null);
+      setProbabilisticResult(null);
     } finally {
       if (analysisProgressTimerRef.current) {
         clearInterval(analysisProgressTimerRef.current);
@@ -267,7 +294,7 @@ function App() {
       setAnalysisLoading(false);
       setTimeout(() => setAnalysisProgress(null), 180);
     }
-  }, [state.nodes, state.edges, graphValidation, effectiveWeights]);
+  }, [state.nodes, state.edges, graphValidation, effectiveWeights, mcSettings, activeTab]);
 
   useEffect(() => {
     return () => {
@@ -279,7 +306,7 @@ function App() {
   }, []);
 
   const openWorkspaceTab = useCallback((tabId) => {
-    if (tabId !== 'sensitivity' && tabId !== 'redesign' && tabId !== 'reporting') return;
+    if (tabId !== 'sensitivity' && tabId !== 'redesign' && tabId !== 'reporting' && tabId !== 'probabilistic') return;
     if (!analysisResult) {
       setAnalysisError('Run analysis first to open analysis modules.');
       return;
@@ -309,6 +336,7 @@ function App() {
     if (tabId === 'model') return 'Model';
     if (tabId === 'redesign') return 'Redesign';
     if (tabId === 'reporting') return 'Reporting';
+    if (tabId === 'probabilistic') return 'Probabilistic';
     if (tabId.startsWith('subCanvas_')) {
       const nodeId = tabId.slice('subCanvas_'.length);
       const node = state.nodes.find(n => n.id === nodeId);
@@ -509,6 +537,14 @@ function App() {
             reportCharts={reportCharts}
           />
         </div>
+      ) : activeTab === 'probabilistic' ? (
+        <div className="analysis-workspace">
+          <ProbabilisticAnalysisModule
+            result={probabilisticResult}
+            baseline={analysisResult}
+            nodes={state.nodes}
+          />
+        </div>
       ) : activeTab.startsWith('subCanvas_') ? (() => {
         const nodeId = activeTab.slice('subCanvas_'.length);
         const parentNode = state.nodes.find(n => n.id === nodeId);
@@ -550,6 +586,8 @@ function App() {
           onToggleInterest={toggleInterest}
           analysisWeights={analysisWeights}
           onChangeWeights={setAnalysisWeights}
+          mcSettings={mcSettings}
+          onChangeMcSettings={setMcSettings}
           onClose={() => setShowPreAnalysis(false)}
         />
       )}
