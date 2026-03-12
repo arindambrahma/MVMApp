@@ -239,28 +239,36 @@ function MarginLineChart({
 
         {series.map((s, idx) => {
           const path = (s.points || []).map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.x)} ${yScale(p.y)}`).join(' ');
-          const c = colors[idx % colors.length];
+          const c = s.color || colors[idx % colors.length];
           const isPerformance = String(s.key || '').startsWith('perf_');
+          const isUtilisation = s.isUtilisation === true;
           return (
             <g key={s.key}>
-              <path d={path} fill="none" stroke={c} strokeWidth="2.2" strokeDasharray={isPerformance ? '6 4' : undefined} />
+              <path d={path} fill="none" stroke={c} strokeWidth={isUtilisation ? 1.6 : 2.2} strokeDasharray={isUtilisation ? '3 3' : isPerformance ? '6 4' : undefined} strokeOpacity={isUtilisation ? 0.8 : 1} />
             </g>
           );
         })}
       </svg>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 8 }}>
-        {series.map((s, idx) => (
-          <div key={`legend_${s.key}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#334155' }}>
-            <span style={{
-              width: 18,
-              height: 0,
-              borderTop: `2.5px solid ${colors[idx % colors.length]}`,
-              display: 'inline-block',
-            }} />
-            <span>{s.label}</span>
-          </div>
-        ))}
+        {series.map((s, idx) => {
+          const c = s.color || colors[idx % colors.length];
+          const isPerformance = String(s.key || '').startsWith('perf_');
+          const isUtilisation = s.isUtilisation === true;
+          const borderStyle = isUtilisation ? 'dotted' : isPerformance ? 'dashed' : 'solid';
+          return (
+            <div key={`legend_${s.key}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#334155' }}>
+              <span style={{
+                width: 18,
+                height: 0,
+                borderTop: `2.5px ${borderStyle} ${c}`,
+                display: 'inline-block',
+                opacity: isUtilisation ? 0.8 : 1,
+              }} />
+              <span>{s.label}</span>
+            </div>
+          );
+        })}
       </div>
       <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         {onAddToReport && (
@@ -316,6 +324,7 @@ function SensitivityStudyModule({
   const [selectedInputId, setSelectedInputId] = useState('');
   const [selectedMargin, setSelectedMargin] = useState('');
   const [selectedMargins, setSelectedMargins] = useState([]);
+  const [utilisationMargins, setUtilisationMargins] = useState(new Set());
   const [selectedPerformances, setSelectedPerformances] = useState([]);
   const [chartHeight, setChartHeight] = useState(340);
   const [lockXAxisScale, setLockXAxisScale] = useState(false);
@@ -578,6 +587,13 @@ function SensitivityStudyModule({
     }
   }, [marginKeys, selectedMargins]);
 
+  // Seed utilisationMargins with all margin keys on first load.
+  useEffect(() => {
+    if (marginKeys.length && utilisationMargins.size === 0) {
+      setUtilisationMargins(new Set(marginKeys));
+    }
+  }, [marginKeys]);
+
   useEffect(() => {
     if (!selectedMargin && marginKeys.length) {
       setSelectedMargin(marginKeys[0]);
@@ -674,11 +690,14 @@ function SensitivityStudyModule({
           t,
           x: variedValue,
           margins: {},
+          utilisations: {},
           performances: {},
         };
         for (const m of recordedMargins) {
           const excess = Number(subRes?.result?.excess?.[m] || 0);
           rec.margins[m] = excess;
+          const util = subRes?.result?.utilisation_matrix?.[m]?.[selectedRuntimeInput];
+          rec.utilisations[m] = util !== undefined ? Number(util) : NaN;
         }
         for (const p of activePerformances) {
           const baselineP = analysisResult?.paramValues?.[p];
@@ -724,6 +743,7 @@ function SensitivityStudyModule({
             t: prev.t + (last.t - prev.t) * clamp,
             x: prev.x + (last.x - prev.x) * clamp,
             margins: {},
+            utilisations: {},
             performances: {},
           };
           for (const m of activeMargins) {
@@ -732,6 +752,11 @@ function SensitivityStudyModule({
             interp.margins[m] = Number.isFinite(av) && Number.isFinite(bv)
               ? av + (bv - av) * clamp
               : 0;
+            const au = Number(prev.utilisations?.[m] ?? NaN);
+            const bu = Number(last.utilisations?.[m] ?? NaN);
+            interp.utilisations[m] = Number.isFinite(au) && Number.isFinite(bu)
+              ? au + (bu - au) * clamp
+              : NaN;
           }
           interp.margins[crossedMargin] = 0;
 
@@ -936,12 +961,31 @@ function SensitivityStudyModule({
   const summaryUtilisationRows = rankedEntries(result.utilisation_matrix?.[summaryMargin] || {})
     .map(([k, v]) => [buildInputLabel(k), v]);
 
+  const MARGIN_COLORS = ['#2563EB', '#DC2626', '#0891B2', '#D97706', '#059669', '#7C3AED', '#DB2777'];
   const buildSeriesForRows = (rows = []) => ([
-    ...displayedMargins.map((m) => ({
-      key: m,
-      label: `M: ${m.replace('E_', 'E')} (local excess)`,
-      points: rows.map((row) => ({ x: row.x, y: row.margins[m] })),
-    })),
+    ...displayedMargins.flatMap((m, i) => {
+      const color = MARGIN_COLORS[i % MARGIN_COLORS.length];
+      const excessSeries = {
+        key: m,
+        label: `M: ${m.replace('E_', 'E')} (excess)`,
+        color,
+        points: rows.map((row) => ({ x: row.x, y: row.margins[m] })),
+      };
+      const hasUtil = utilisationMargins.has(m) && rows.some((row) => Number.isFinite(row.utilisations?.[m]));
+      if (!hasUtil) return [excessSeries];
+      return [
+        excessSeries,
+        {
+          key: `util_${m}`,
+          label: `M: ${m.replace('E_', 'E')} (utilisation)`,
+          color,
+          isUtilisation: true,
+          points: rows
+            .filter((row) => Number.isFinite(row.utilisations?.[m]))
+            .map((row) => ({ x: row.x, y: row.utilisations[m] })),
+        },
+      ];
+    }),
     ...activePerformances.map((p) => {
       const perfNode = performanceNodes.find((n) => sanitize(n.label || '') === p);
       return {
@@ -1394,14 +1438,22 @@ function SensitivityStudyModule({
             <div style={{ marginTop: 10, fontSize: 11, fontWeight: 600, color: '#64748B' }}>
               Margins to record
             </div>
-            <div style={{ marginTop: 6, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', padding: 8, maxHeight: 170, overflowY: 'auto' }}>
+            <div style={{ marginTop: 6, border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff', padding: '6px 8px', maxHeight: 170, overflowY: 'auto' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: '2px 6px', marginBottom: 4 }}>
+                <span style={{ fontSize: 10, color: '#94A3B8' }} />
+                <span style={{ fontSize: 10, color: '#94A3B8', textAlign: 'center' }}>Excess</span>
+                <span style={{ fontSize: 10, color: '#94A3B8', textAlign: 'center' }}>Util.</span>
+              </div>
               {marginKeys.map((m) => {
                 const checked = activeMargins.includes(m);
+                const utilChecked = utilisationMargins.has(m);
                 return (
-                  <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', marginBottom: 5, cursor: 'pointer' }}>
+                  <div key={m} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: '2px 6px', marginBottom: 5 }}>
+                    <span style={{ fontSize: 11, color: '#334155' }}>{m.replace('E_', 'E')}</span>
                     <input
                       type="checkbox"
                       checked={checked}
+                      title="Show excess line"
                       onChange={(e) => {
                         setSelectedMargins((prev) => {
                           const cur = (prev || []).filter(x => marginKeys.includes(x));
@@ -1410,8 +1462,20 @@ function SensitivityStudyModule({
                         });
                       }}
                     />
-                    <span>{m.replace('E_', 'E')}</span>
-                  </label>
+                    <input
+                      type="checkbox"
+                      checked={utilChecked}
+                      title="Show utilisation line (dotted)"
+                      disabled={!checked}
+                      onChange={(e) => {
+                        setUtilisationMargins((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(m); else next.delete(m);
+                          return next;
+                        });
+                      }}
+                    />
+                  </div>
                 );
               })}
             </div>
@@ -1867,6 +1931,82 @@ function SensitivityStudyModule({
                 labelCol="Input Parameter"
                 valueLabel="Utilisation"
               />
+              {(() => {
+                const utilMatrix = result.utilisation_matrix || {};
+                const heatMargins = marginKeys;
+                const heatInputs = Array.from(
+                  new Set(heatMargins.flatMap((m) => Object.keys(utilMatrix[m] || {})))
+                );
+                if (!heatMargins.length || !heatInputs.length) return null;
+                // Find global max for colour scaling
+                let globalMax = 0;
+                heatMargins.forEach((m) => heatInputs.forEach((inp) => {
+                  const v = Number(utilMatrix[m]?.[inp] ?? 0);
+                  if (v > globalMax) globalMax = v;
+                }));
+                const cellColor = (v) => {
+                  if (!Number.isFinite(v) || v <= 0) return '#F8FAFC';
+                  const frac = Math.min(1, v / Math.max(globalMax, 1e-9));
+                  // white → amber → red
+                  if (frac < 0.5) {
+                    const t = frac / 0.5;
+                    const r = Math.round(255);
+                    const g = Math.round(255 - t * (255 - 159));
+                    const b = Math.round(255 - t * 255);
+                    return `rgb(${r},${g},${b})`;
+                  }
+                  const t = (frac - 0.5) / 0.5;
+                  const r = 255;
+                  const g = Math.round(159 - t * 159);
+                  const b = 0;
+                  return `rgb(${r},${g},${b})`;
+                };
+                const textColor = (v) => {
+                  const frac = Number.isFinite(v) ? Math.min(1, v / Math.max(globalMax, 1e-9)) : 0;
+                  return frac > 0.6 ? '#FFFFFF' : '#0F172A';
+                };
+                return (
+                  <div style={{ marginTop: 12, border: '1px solid #E2E8F0', borderRadius: 6, background: '#FFFFFF', overflow: 'hidden' }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', padding: '8px 10px', borderBottom: '1px solid #E2E8F0' }}>
+                      Utilisation Heatmap
+                    </div>
+                    <div style={{ fontSize: 10, color: '#64748B', padding: '4px 10px 6px', borderBottom: '1px solid #F1F5F9' }}>
+                      Fraction of each margin consumed by each input change. Darker = higher utilisation.
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ borderCollapse: 'collapse', fontSize: 10, whiteSpace: 'nowrap' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ textAlign: 'left', padding: '5px 8px', color: '#64748B', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', position: 'sticky', left: 0 }}>Margin</th>
+                            {heatInputs.map((inp) => (
+                              <th key={inp} style={{ textAlign: 'right', padding: '5px 8px', color: '#64748B', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>{inp}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {heatMargins.map((m) => (
+                            <tr key={m} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                              <td style={{ padding: '5px 8px', fontWeight: 600, color: '#334155', background: '#F8FAFC', position: 'sticky', left: 0 }}>
+                                {m.replace('E_', 'E')}
+                              </td>
+                              {heatInputs.map((inp) => {
+                                const v = Number(utilMatrix[m]?.[inp] ?? NaN);
+                                const bg = Number.isFinite(v) ? cellColor(v) : '#F8FAFC';
+                                const fg = Number.isFinite(v) ? textColor(v) : '#94A3B8';
+                                return (
+                                  <td key={inp} style={{ textAlign: 'right', padding: '5px 8px', background: bg, color: fg, fontWeight: v >= 0.99 ? 700 : undefined }}>
+                                    {Number.isFinite(v) ? `${(v * 100).toFixed(1)}%` : '—'}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         ) : (

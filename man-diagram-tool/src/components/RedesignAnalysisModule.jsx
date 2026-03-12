@@ -134,9 +134,9 @@ function BubbleMVMPlot({
   const maxYRaw = Math.max(...ys);
   const xPad = Math.max(0.002, (maxXRaw - minXRaw) * 0.1);
   const yPad = Math.max(0.002, (maxYRaw - minYRaw) * 0.1);
-  const autoMinX = Math.max(0, minXRaw - xPad);
+  const autoMinX = minXRaw - xPad;
   const autoMaxX = maxXRaw + xPad;
-  const autoMinY = Math.max(0, minYRaw - yPad);
+  const autoMinY = minYRaw - yPad;
   const autoMaxY = maxYRaw + yPad;
   const minX = Number.isFinite(xDomain?.min) ? xDomain.min : autoMinX;
   const maxX = Number.isFinite(xDomain?.max) ? xDomain.max : autoMaxX;
@@ -201,6 +201,10 @@ function BubbleMVMPlot({
 
         <line x1={left} y1={top} x2={left} y2={top + h} stroke="#475569" strokeWidth="1.2" />
         <line x1={left} y1={top + h} x2={left + w} y2={top + h} stroke="#475569" strokeWidth="1.2" />
+        {/* y=0 reference line — always draw so zero is always identifiable */}
+        {minY < 0 && (
+          <line x1={left} y1={yScale(0)} x2={left + w} y2={yScale(0)} stroke="#94A3B8" strokeWidth="1.2" strokeDasharray="4,3" />
+        )}
 
         {baselinePoints.map((p) => (
           <g key={`base_${p.key}`}>
@@ -231,20 +235,23 @@ function BubbleMVMPlot({
           />
         ))}
 
-        {overlayPoints.map((p) => (
-          <g key={`overlay_${p.key}`}>
-            <circle
-              cx={xScale(p.x)}
-              cy={yScale(p.y)}
-              r={Math.max(3, Math.min(26, Number(p.r || 6)))}
-              fill="#F59E0B"
-              fillOpacity="0.32"
-              stroke="#B45309"
-              strokeWidth="1.4"
-            />
-            <text x={xScale(p.x)} y={yScale(p.y) - 8} textAnchor="middle" fontSize={pointFontSize} fill="#9A3412" fontWeight="700">{p.label}</text>
-          </g>
-        ))}
+        {overlayPoints.map((p) => {
+          const isViolating = Number.isFinite(p.excess) && p.excess <= 1e-8;
+          return (
+            <g key={`overlay_${p.key}`}>
+              <circle
+                cx={xScale(p.x)}
+                cy={yScale(p.y)}
+                r={Math.max(3, Math.min(26, Number(p.r || 6)))}
+                fill={isViolating ? '#EF4444' : '#F59E0B'}
+                fillOpacity="0.45"
+                stroke={isViolating ? '#B91C1C' : '#B45309'}
+                strokeWidth={isViolating ? 2 : 1.4}
+              />
+              <text x={xScale(p.x)} y={yScale(p.y) - 8} textAnchor="middle" fontSize={pointFontSize} fill={isViolating ? '#B91C1C' : '#9A3412'} fontWeight="700">{p.label}</text>
+            </g>
+          );
+        })}
 
         <text x={left + w / 2} y={height - 8} textAnchor="middle" fontSize={axisLabelFontSize} fill="#475569">
           Undesirable impact on performance parameters (Impactm in %)
@@ -253,14 +260,18 @@ function BubbleMVMPlot({
           Change absorption potential (Absorptionm in %)
         </text>
       </svg>
-      <div style={{ display: 'flex', gap: 14, marginTop: 6, fontSize: 10, color: '#334155' }}>
+      <div style={{ display: 'flex', gap: 14, marginTop: 6, fontSize: 10, color: '#334155', flexWrap: 'wrap' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 10, height: 10, borderRadius: 99, background: '#9CA3AF', opacity: 0.6, border: '1px solid #6B7280' }} />
-          Baseline points
+          Baseline
         </div>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 10, height: 10, borderRadius: 99, background: '#F59E0B', opacity: 0.6, border: '1px solid #B45309' }} />
-          Redesigned points
+          Redesigned
+        </div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 10, height: 10, borderRadius: 99, background: '#EF4444', opacity: 0.6, border: '2px solid #B91C1C' }} />
+          Negative/zero excess
         </div>
       </div>
       <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
@@ -339,8 +350,10 @@ function RedesignAnalysisModule({
 }) {
   const containerStyle = { flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' };
   const [selectedMargin, setSelectedMargin] = useState('');
-  const [scenario, setScenario] = useState('incremental');
+  const [scenario, setScenario] = useState('reduce_to_limit');
   const [incrementPercent, setIncrementPercent] = useState('2');
+  const [reduceByMode, setReduceByMode] = useState('percent');
+  const [reduceByPercent, setReduceByPercent] = useState('50');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [run, setRun] = useState(null);
@@ -474,7 +487,56 @@ function RedesignAnalysisModule({
         const violatingMargins = Object.entries(excessMap)
           .filter(([, ex]) => Number.isFinite(Number(ex)) && Number(ex) < -1e-8)
           .map(([name]) => name);
-        return { subRes, decidedVal, violatingMargins };
+        return { subRes, decidedVal, violatingMargins, excessMap };
+      };
+
+      // Shared helper: run the incremental sweep loop.
+      // stopAtMargin: how much margin to leave at the end (0 = go to threshold, >0 = stop early).
+      const runIncrementalLoop = async ({ stopOnViolation, stopAtMargin = 0 }) => {
+        const incFrac = Number(incrementPercent) / 100;
+        if (!Number.isFinite(incFrac) || incFrac <= 0) {
+          setError('Increment must be a positive percentage.');
+          return null;
+        }
+        const sweepRange = maxMargin - stopAtMargin;
+        if (sweepRange <= 1e-12) {
+          setError('Target is at or above the current decided value — no reduction to perform.');
+          return null;
+        }
+        let inc = Math.max(1e-6, Math.abs(marginDiff) * incFrac);
+        const maxIncrementalSteps = 250;
+        if (Math.ceil(sweepRange / inc) > maxIncrementalSteps) {
+          inc = sweepRange / maxIncrementalSteps;
+        }
+        let currentMargin = maxMargin;
+        let steps = 0;
+        const maxSteps = Math.ceil(sweepRange / inc) + 4;
+        let lastFeasible = null;
+        let firstViolation = null;
+        const history = [];
+        while (currentMargin >= stopAtMargin - 1e-12 && steps < maxSteps) {
+          const marginValue = Math.max(stopAtMargin, currentMargin);
+          const decidedVal = thresholdValue + sign * marginValue;
+          const evaluated = await evaluateDecidedValue(decidedVal);
+          history.push({
+            step: steps + 1,
+            decidedValue: decidedVal,
+            remainingMargin: marginValue,
+            removedShare: maxMargin > 1e-12 ? (1 - (marginValue / maxMargin)) : 0,
+            violatingMargins: [...(evaluated.violatingMargins || [])],
+            excessMap: { ...evaluated.excessMap },
+          });
+          setRunProgress(Math.round(((steps + 1) / Math.max(1, maxSteps)) * 100));
+          if (evaluated.violatingMargins.length) {
+            firstViolation = evaluated;
+            if (stopOnViolation) break;
+          }
+          if (!evaluated.violatingMargins.length) lastFeasible = evaluated;
+          if (marginValue <= stopAtMargin + 1e-12) break;
+          currentMargin -= inc;
+          steps += 1;
+        }
+        return { inc, history, lastFeasible, firstViolation };
       };
 
       let localInc = null;
@@ -486,64 +548,76 @@ function RedesignAnalysisModule({
       let stepHistory = [];
 
       if (scenario === 'remove_once') {
-        const scanSteps = 40;
-        let bestFeasible = await evaluateDecidedValue(decidedValue);
-        setRunProgress(Math.round((1 / (scanSteps + 1)) * 100));
-        let firstViolation = null;
-        for (let i = 1; i <= scanSteps; i += 1) {
-          const frac = i / scanSteps;
-          const candidateDecided = decidedValue + (thresholdValue - decidedValue) * frac;
-          const candidate = await evaluateDecidedValue(candidateDecided);
-          setRunProgress(Math.round(((i + 1) / (scanSteps + 1)) * 100));
-          if (candidate.violatingMargins.length) {
-            firstViolation = candidate;
-            break;
-          }
-          bestFeasible = candidate;
-        }
+        // Completely remove the margin: evaluate at the threshold directly.
+        // Other margins may go negative — this is intentional and shown in the chart.
+        setRunProgress(50);
+        const finalEval = await evaluateDecidedValue(thresholdValue);
+        setRunProgress(100);
         requestedDecided = thresholdValue;
-        appliedDecided = bestFeasible.decidedVal;
+        appliedDecided = thresholdValue;
+        removableShare = 1.0;
+        limitingMargins = finalEval.violatingMargins;
+        recalculatedResult = finalEval.subRes?.result || null;
+      } else if (scenario === 'reduce_to_limit') {
+        // Incremental sweep that stops as soon as another margin hits 0.
+        const sweep = await runIncrementalLoop({ stopOnViolation: true });
+        if (!sweep) return;
+        localInc = sweep.inc;
+        stepHistory = sweep.history;
+        const lastFeasible = sweep.lastFeasible;
+        const firstViolation = sweep.firstViolation;
+        requestedDecided = thresholdValue;
+        appliedDecided = lastFeasible?.decidedVal ?? decidedValue;
         const totalRemovable = Math.abs(decidedValue - thresholdValue);
         const actualRemovable = Math.abs(decidedValue - appliedDecided);
         removableShare = totalRemovable > 1e-12 ? (actualRemovable / totalRemovable) : 0;
         limitingMargins = firstViolation?.violatingMargins || [];
-        recalculatedResult = bestFeasible.subRes?.result || null;
+        recalculatedResult = lastFeasible?.subRes?.result || null;
+      } else if (scenario === 'reduce_to_value') {
+        // Incremental sweep to a user-defined target decided value.
+        let targetDecided;
+        if (reduceByMode === 'max_utilisation') {
+          const maxUtil = marginUtilisationStats.max.value;
+          if (!Number.isFinite(maxUtil)) {
+            setError('Max utilisation data not available for this margin.');
+            return;
+          }
+          if (maxUtil >= 1 - 1e-9) {
+            setError('Max utilisation ≥ 100% — no reduction is possible without violating another margin.');
+            return;
+          }
+          targetDecided = thresholdValue + maxUtil * (decidedValue - thresholdValue);
+        } else {
+          const pctVal = Number(reduceByPercent) / 100;
+          if (!Number.isFinite(pctVal) || pctVal <= 0 || pctVal > 100) {
+            setError('Enter a valid percentage between 0 and 100.');
+            return;
+          }
+          targetDecided = decidedValue - pctVal * (decidedValue - thresholdValue);
+        }
+        // stopAtMargin = the remaining margin at the target point
+        const targetMargin = Math.abs(targetDecided - thresholdValue);
+        const sweep = await runIncrementalLoop({ stopOnViolation: false, stopAtMargin: targetMargin });
+        if (!sweep) return;
+        localInc = sweep.inc;
+        stepHistory = sweep.history;
+        requestedDecided = targetDecided;
+        const lastStep = sweep.history[sweep.history.length - 1];
+        appliedDecided = lastStep?.decidedValue ?? targetDecided;
+        const totalRange = Math.abs(decidedValue - thresholdValue);
+        removableShare = totalRange > 1e-12 ? Math.abs(decidedValue - appliedDecided) / totalRange : 0;
+        limitingMargins = sweep.firstViolation?.violatingMargins || [];
+        recalculatedResult = (sweep.lastFeasible ?? sweep.firstViolation)?.subRes?.result || null;
       } else {
-        const incFrac = Number(incrementPercent) / 100;
-        if (!Number.isFinite(incFrac) || incFrac <= 0) {
-          setError('Increment must be a positive percentage.');
-          return;
-        }
-        localInc = Math.max(1e-6, Math.abs(marginDiff) * incFrac);
-        const maxIncrementalSteps = 250;
-        const estimatedSteps = Math.ceil(maxMargin / localInc);
-        // Prevent very small user increments from creating thousands of backend runs.
-        if (Number.isFinite(estimatedSteps) && estimatedSteps > maxIncrementalSteps) {
-          localInc = Math.max(localInc, maxMargin / maxIncrementalSteps);
-        }
-        let currentMargin = maxMargin;
-        let steps = 0;
-        const maxSteps = Math.ceil(maxMargin / localInc) + 4;
-        let lastEvaluated = null;
-        while (currentMargin >= -1e-12 && steps < maxSteps) {
-          const marginValue = Math.max(0, currentMargin);
-          const decidedVal = thresholdValue + sign * marginValue;
-          lastEvaluated = await evaluateDecidedValue(decidedVal);
-          stepHistory.push({
-            step: steps + 1,
-            decidedValue: decidedVal,
-            remainingMargin: marginValue,
-            removedShare: maxMargin > 1e-12 ? (1 - (marginValue / maxMargin)) : 0,
-            violatingMargins: [...(lastEvaluated?.violatingMargins || [])],
-          });
-          setRunProgress(Math.round(((steps + 1) / Math.max(1, maxSteps)) * 100));
-          if (marginValue <= 1e-12) break;
-          currentMargin -= localInc;
-          steps += 1;
-        }
+        // Full incremental sweep to threshold (no early stop).
+        const sweep = await runIncrementalLoop({ stopOnViolation: false });
+        if (!sweep) return;
+        localInc = sweep.inc;
+        stepHistory = sweep.history;
         requestedDecided = thresholdValue;
-        appliedDecided = lastEvaluated?.decidedVal;
-        recalculatedResult = lastEvaluated?.subRes?.result || null;
+        const lastStep = sweep.history[sweep.history.length - 1];
+        appliedDecided = lastStep?.decidedValue ?? thresholdValue;
+        recalculatedResult = (sweep.lastFeasible ?? sweep.firstViolation)?.subRes?.result || null;
       }
 
       const redesignedPoints = marginKeys.map((m) => ({
@@ -552,6 +626,7 @@ function RedesignAnalysisModule({
         x: Number(recalculatedResult?.weighted_impact?.[m] || 0),
         y: Number(recalculatedResult?.weighted_absorption?.[m] || 0),
         r: 5 + Math.min(20, Math.abs(Number(recalculatedResult?.excess?.[m] || 0)) * 70),
+        excess: Number(recalculatedResult?.excess?.[m] ?? NaN),
       })).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
 
       setRun({
@@ -592,8 +667,8 @@ function RedesignAnalysisModule({
     const xPad = Math.max(0.002, (maxXRaw - minXRaw) * 0.1);
     const yPad = Math.max(0.002, (maxYRaw - minYRaw) * 0.1);
     return {
-      x: { min: Math.max(0, minXRaw - xPad), max: maxXRaw + xPad },
-      y: { min: Math.max(0, minYRaw - yPad), max: maxYRaw + yPad },
+      x: { min: minXRaw - xPad, max: maxXRaw + xPad },
+      y: { min: minYRaw - yPad, max: maxYRaw + yPad },
     };
   }, [baselinePoints, run]);
 
@@ -695,16 +770,61 @@ function RedesignAnalysisModule({
           <div style={{ border: '1px solid #CBD5E1', borderRadius: 6, background: '#FFFFFF', padding: '6px 8px' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#0F172A', marginBottom: 6, cursor: 'pointer' }}>
               <input type="radio" name="redesign-scenario" checked={scenario === 'remove_once'} onChange={() => setScenario('remove_once')} />
-              <span>Remove selected margin at once</span>
+              <span>Remove selected margin completely</span>
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#0F172A', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#0F172A', marginBottom: 6, cursor: 'pointer' }}>
+              <input type="radio" name="redesign-scenario" checked={scenario === 'reduce_to_limit'} onChange={() => setScenario('reduce_to_limit')} />
+              <span>Reduce until another margin hits 0</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#0F172A', marginBottom: 6, cursor: 'pointer' }}>
               <input type="radio" name="redesign-scenario" checked={scenario === 'incremental'} onChange={() => setScenario('incremental')} />
               <span>Reduce selected margin incrementally</span>
             </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#0F172A', cursor: 'pointer' }}>
+              <input type="radio" name="redesign-scenario" checked={scenario === 'reduce_to_value'} onChange={() => setScenario('reduce_to_value')} />
+              <span>Reduce to specific point</span>
+            </label>
+            {scenario === 'reduce_to_value' && (
+              <div style={{ marginTop: 8, marginLeft: 20, paddingLeft: 8, borderLeft: '2px solid #BFDBFE' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#0F172A', marginBottom: 6, cursor: 'pointer' }}>
+                  <input type="radio" name="reduce-by-mode" checked={reduceByMode === 'percent'} onChange={() => setReduceByMode('percent')} />
+                  <span>By % of excess</span>
+                </label>
+                {reduceByMode === 'percent' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, marginLeft: 20 }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={reduceByPercent}
+                      onChange={(e) => setReduceByPercent(e.target.value)}
+                      style={{ width: 70, border: '1px solid #CBD5E1', borderRadius: 6, padding: '4px 6px', fontSize: 12, color: '#0F172A', background: '#FFFFFF' }}
+                    />
+                    <span style={{ fontSize: 12, color: '#64748B' }}>% of excess removed</span>
+                  </div>
+                )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#0F172A', cursor: 'pointer' }}>
+                  <input type="radio" name="reduce-by-mode" checked={reduceByMode === 'max_utilisation'} onChange={() => setReduceByMode('max_utilisation')} />
+                  <span>To max utilisation point</span>
+                </label>
+                {reduceByMode === 'max_utilisation' && (
+                  <div style={{ marginLeft: 20, marginTop: 4, fontSize: 11, color: '#64748B' }}>
+                    {Number.isFinite(marginUtilisationStats.max.value) && Number.isFinite(marginDecidedValue) && Number.isFinite(marginThresholdValue)
+                      ? (() => {
+                          const maxUtil = marginUtilisationStats.max.value;
+                          const threshNew = marginThresholdValue + maxUtil * (marginDecidedValue - marginThresholdValue);
+                          return `Max util = ${pct(maxUtil, 2)} (${marginUtilisationStats.max.responsible.join(', ') || 'n/a'}) → threshold_new = ${num(threshNew, 4)} → target decided = ${num(threshNew, 4)}`;
+                        })()
+                      : 'Max utilisation not available — run analysis first.'}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </label>
 
-        {scenario === 'incremental' && (
+        {(scenario === 'incremental' || scenario === 'reduce_to_limit' || scenario === 'reduce_to_value') && (
           <label style={{ display: 'block', marginTop: 10 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: '#64748B', display: 'block', marginBottom: 4 }}>Increment in selected E</span>
             <input
@@ -823,9 +943,26 @@ function RedesignAnalysisModule({
             <div style={{ fontSize: 11, color: '#64748B', marginTop: 16 }}>
               {run.scenario === 'remove_once' ? (
                 <>
-                  One-shot redesign for {(run.marginLabel || '').replace('E_', 'E')}: requested {num(run.requestedDecided, 4)},
-                  applied {num(run.appliedDecided, 4)}. Removable share {Number.isFinite(run.removableShare) ? pct(run.removableShare, 2) : 'n/a'}
-                  {run.limitingMargins?.length ? ` (blocked by: ${run.limitingMargins.map((m) => m.replace('E_', 'E')).join(', ')})` : ''}
+                  Complete removal of {(run.marginLabel || '').replace('E_', 'E')}: decided value set to threshold ({num(run.appliedDecided, 4)}).
+                  {run.limitingMargins?.length
+                    ? ` Note: ${run.limitingMargins.map((m) => m.replace('E_', 'E')).join(', ')} went negative.`
+                    : ' No other margins were violated.'}
+                </>
+              ) : run.scenario === 'reduce_to_limit' ? (
+                <>
+                  Reduced {(run.marginLabel || '').replace('E_', 'E')} until another margin reached 0:
+                  decided value {num(run.appliedDecided, 4)} ({Number.isFinite(run.removableShare) ? pct(run.removableShare, 2) : 'n/a'} of margin removed).
+                  {run.limitingMargins?.length
+                    ? ` Limiting margin(s): ${run.limitingMargins.map((m) => m.replace('E_', 'E')).join(', ')}.`
+                    : ' Margin was fully removable without violating others.'}
+                </>
+              ) : run.scenario === 'reduce_to_value' ? (
+                <>
+                  Reduced {(run.marginLabel || '').replace('E_', 'E')} to specific point:
+                  decided value {num(run.appliedDecided, 4)} ({Number.isFinite(run.removableShare) ? pct(run.removableShare, 2) : 'n/a'} of margin removed).
+                  {run.limitingMargins?.length
+                    ? ` Note: ${run.limitingMargins.map((m) => m.replace('E_', 'E')).join(', ')} went negative.`
+                    : ' No other margins were violated.'}
                 </>
               ) : (
                 <>
@@ -834,53 +971,100 @@ function RedesignAnalysisModule({
                 </>
               )}
             </div>
-            {run.scenario === 'incremental' && Array.isArray(run.stepHistory) && run.stepHistory.length > 0 && (
-              <div style={{ marginTop: 10, border: '1px solid #E2E8F0', borderRadius: 8, background: '#FFFFFF', overflow: 'hidden' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', padding: '8px 10px', borderBottom: '1px solid #E2E8F0' }}>
-                  Incremental Steps
-                </div>
-                <div style={{ maxHeight: 190, overflowY: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
-                        <th style={{ textAlign: 'right', padding: '5px 8px', color: '#64748B' }}>Step</th>
-                        <th style={{ textAlign: 'right', padding: '5px 8px', color: '#64748B' }}>Decided value</th>
-                        <th style={{ textAlign: 'right', padding: '5px 8px', color: '#64748B' }}>Remaining margin</th>
-                        <th style={{ textAlign: 'right', padding: '5px 8px', color: '#64748B' }}>Removed (%)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {run.stepHistory.map((s) => (
-                        <tr key={`step_${s.step}`} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                          <td style={{ textAlign: 'right', padding: '5px 8px', color: '#334155', fontWeight: 600 }}>{s.step}</td>
-                          <td style={{ textAlign: 'right', padding: '5px 8px', color: '#334155' }}>{num(s.decidedValue, 4)}</td>
-                          <td style={{ textAlign: 'right', padding: '5px 8px', color: '#334155' }}>{num(s.remainingMargin, 4)}</td>
-                          <td style={{ textAlign: 'right', padding: '5px 8px', color: '#334155' }}>{pct(s.removedShare, 2)}</td>
+            {(run.scenario === 'incremental' || run.scenario === 'reduce_to_limit' || run.scenario === 'reduce_to_value') && Array.isArray(run.stepHistory) && run.stepHistory.length > 0 && (() => {
+              // Collect all margin keys present in the step history excess maps.
+              const stepMarginKeys = Array.from(
+                new Set(run.stepHistory.flatMap((s) => Object.keys(s.excessMap || {})))
+              );
+              return (
+                <div style={{ marginTop: 10, border: '1px solid #E2E8F0', borderRadius: 8, background: '#FFFFFF', overflow: 'hidden' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', padding: '8px 10px', borderBottom: '1px solid #E2E8F0' }}>
+                    {run.scenario === 'reduce_to_limit' ? 'Steps — Reduce to Limit' : run.scenario === 'reduce_to_value' ? 'Steps — Reduce to Specific Point' : 'Incremental Steps'}
+                  </div>
+                  <div style={{ maxHeight: 240, overflowY: 'auto', overflowX: 'auto' }}>
+                    <table style={{ borderCollapse: 'collapse', fontSize: 10, whiteSpace: 'nowrap' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #E2E8F0' }}>
+                          <th style={{ textAlign: 'right', padding: '5px 8px', color: '#64748B', position: 'sticky', left: 0, background: '#FFFFFF' }}>Step</th>
+                          <th style={{ textAlign: 'right', padding: '5px 8px', color: '#64748B' }}>Decided value</th>
+                          <th style={{ textAlign: 'right', padding: '5px 8px', color: '#64748B' }}>Removed (%)</th>
+                          {stepMarginKeys.map((mk) => (
+                            <th key={`th_${mk}`} style={{ textAlign: 'right', padding: '5px 8px', color: '#64748B' }}>
+                              {mk.replace('E_', 'E')} excess
+                            </th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {run.stepHistory.map((s) => {
+                          const isLimitStep = run.scenario === 'reduce_to_limit' && s.violatingMargins?.length > 0;
+                          return (
+                            <tr key={`step_${s.step}`} style={{ borderBottom: '1px solid #F1F5F9', background: isLimitStep ? '#FEF2F2' : (s.violatingMargins?.length ? '#FFF7ED' : undefined) }}>
+                              <td style={{ textAlign: 'right', padding: '5px 8px', color: isLimitStep ? '#B91C1C' : '#334155', fontWeight: 600, position: 'sticky', left: 0, background: isLimitStep ? '#FEF2F2' : '#FFFFFF' }}>
+                                {s.step}{isLimitStep ? ' ✕' : ''}
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '5px 8px', color: '#334155' }}>{num(s.decidedValue, 4)}</td>
+                              <td style={{ textAlign: 'right', padding: '5px 8px', color: '#334155' }}>{pct(s.removedShare, 2)}</td>
+                              {stepMarginKeys.map((mk) => {
+                                const ex = Number(s.excessMap?.[mk] ?? NaN);
+                                const isNeg = Number.isFinite(ex) && ex <= 1e-8;
+                                return (
+                                  <td key={`cell_${s.step}_${mk}`} style={{ textAlign: 'right', padding: '5px 8px', color: isNeg ? '#B91C1C' : '#334155', fontWeight: isNeg ? 700 : undefined, background: isNeg ? '#FEF2F2' : undefined }}>
+                                    {Number.isFinite(ex) ? pct(ex, 2) : '—'}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </>
         )}
 
-        {!run ? (
-          <div style={{ width: chartWidth, maxWidth: '100%' }}>
+        {/* Charts row — always on top */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ flex: `0 1 ${chartWidth}px`, width: chartWidth, maxWidth: '100%', minWidth: 0 }}>
             <BubbleMVMPlot
               baselinePoints={baselinePoints}
               overlayPoints={[]}
               width={chartWidth}
               height={chartHeight}
               axisFontSize={fontSize}
-              xDomain={null}
-              yDomain={null}
+              xDomain={run && lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
+              yDomain={run && lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
               plotData={result}
               exportName="redesign_baseline_plot"
               onAddToReport={onAddChartToReport}
               tables={buildMatrixTableData('Baseline', marginKeys, result.impact_matrix, result.absorption_matrix, result.utilisation_matrix, baselineInputs)}
             />
+          </div>
+          {run && (
+            <div style={{ flex: `0 1 ${chartWidth}px`, width: chartWidth, maxWidth: '100%', minWidth: 0 }}>
+              <BubbleMVMPlot
+                baselinePoints={baselinePoints}
+                overlayPoints={run.redesignedPoints || []}
+                width={chartWidth}
+                height={chartHeight}
+                axisFontSize={fontSize}
+                xDomain={lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
+                yDomain={lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
+                plotData={result}
+                exportName="redesign_recalculated_plot"
+                onAddToReport={onAddChartToReport}
+                tables={buildMatrixTableData('Recalculated', marginKeys, recalculatedResult?.impact_matrix, recalculatedResult?.absorption_matrix, recalculatedResult?.utilisation_matrix, recalculatedInputs)}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Tables row — below charts */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap', marginTop: 12 }}>
+          <div style={{ flex: `0 1 ${chartWidth}px`, width: chartWidth, maxWidth: '100%', minWidth: 0 }}>
             <MatrixTable
               title="Impact Matrix (Baseline)"
               rowKeys={marginKeys}
@@ -903,58 +1087,8 @@ function RedesignAnalysisModule({
               rowLabel="Margin"
             />
           </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          {run && (
             <div style={{ flex: `0 1 ${chartWidth}px`, width: chartWidth, maxWidth: '100%', minWidth: 0 }}>
-              <BubbleMVMPlot
-                baselinePoints={baselinePoints}
-                overlayPoints={[]}
-                width={chartWidth}
-                height={chartHeight}
-                axisFontSize={fontSize}
-                xDomain={lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
-                yDomain={lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
-                plotData={result}
-                exportName="redesign_baseline_plot"
-                onAddToReport={onAddChartToReport}
-                tables={buildMatrixTableData('Baseline', marginKeys, result.impact_matrix, result.absorption_matrix, result.utilisation_matrix, baselineInputs)}
-              />
-              <MatrixTable
-                title="Impact Matrix (Baseline)"
-                rowKeys={marginKeys}
-                colKeys={Object.keys(result.impact_matrix?.[marginKeys[0]] || {})}
-                data={result.impact_matrix || {}}
-                rowLabel="Margin"
-              />
-              <MatrixTable
-                title="Absorption Matrix (Baseline)"
-                rowKeys={marginKeys}
-                colKeys={Object.keys(result.absorption_matrix?.[marginKeys[0]] || {})}
-                data={result.absorption_matrix || {}}
-                rowLabel="Margin"
-              />
-              <MatrixTable
-                title="Utilisation Matrix (Baseline)"
-                rowKeys={marginKeys}
-                colKeys={baselineInputs}
-                data={result.utilisation_matrix || {}}
-                rowLabel="Margin"
-              />
-            </div>
-            <div style={{ flex: `0 1 ${chartWidth}px`, width: chartWidth, maxWidth: '100%', minWidth: 0 }}>
-              <BubbleMVMPlot
-                baselinePoints={baselinePoints}
-                overlayPoints={run.redesignedPoints || []}
-                width={chartWidth}
-                height={chartHeight}
-                axisFontSize={fontSize}
-                xDomain={lockXAxisScale ? (sharedBubbleDomain?.x || null) : null}
-                yDomain={lockYAxisScale ? (sharedBubbleDomain?.y || null) : null}
-                plotData={result}
-                exportName="redesign_recalculated_plot"
-                onAddToReport={onAddChartToReport}
-                tables={buildMatrixTableData('Recalculated', marginKeys, recalculatedResult?.impact_matrix, recalculatedResult?.absorption_matrix, recalculatedResult?.utilisation_matrix, recalculatedInputs)}
-              />
               <MatrixTable
                 title="Impact Matrix (Recalculated)"
                 rowKeys={marginKeys}
@@ -977,8 +1111,8 @@ function RedesignAnalysisModule({
                 rowLabel="Margin"
               />
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
