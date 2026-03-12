@@ -260,6 +260,7 @@ function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes 
                       padding: '5px 10px',
                       fontSize: 11,
                       fontWeight: 700,
+                      cursor: 'pointer',
                     }}
                   >
                     Export Graph
@@ -442,5 +443,7 @@ function MarginValuePlot({ analysisResult, analysisError, appliedWeights, nodes 
 }
 
 export default MarginValuePlot;
+
+
 
 

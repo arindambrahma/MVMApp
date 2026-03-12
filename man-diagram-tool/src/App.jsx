@@ -256,8 +256,8 @@ function App() {
       setWorkspaceTabs((prev) => {
         const next = [...prev];
         if (!next.includes('sensitivity')) next.push('sensitivity');
-        if (!next.includes('dsm')) next.push('dsm');
         if (!next.includes('redesign')) next.push('redesign');
+        if (!next.includes('dsm')) next.push('dsm');
         if (!next.includes('reporting')) next.push('reporting');
         return next;
       });
@@ -631,6 +631,8 @@ function App() {
 }
 
 export default App;
+
+
 
 
 
