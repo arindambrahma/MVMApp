@@ -219,13 +219,19 @@ function Canvas({
     });
   }, [visualNodes, clusters, onSetZoom, onSetPan]);
 
+  // Keep a ref to the latest fitToView so the effect below doesn't need it
+  // as a dependency — otherwise every node change recreates fitToView and
+  // re-triggers the effect even when fitViewRequest hasn't changed.
+  const fitToViewRef = useRef(fitToView);
+  useEffect(() => { fitToViewRef.current = fitToView; }, [fitToView]);
+
   useEffect(() => {
     if (!fitViewRequest) return;
     const id = window.requestAnimationFrame(() => {
-      fitToView();
+      fitToViewRef.current();
     });
     return () => window.cancelAnimationFrame(id);
-  }, [fitViewRequest, fitToView]);
+  }, [fitViewRequest]); // intentionally excludes fitToView — use ref above
 
   const captureDiagramImage = useCallback(() => {
     const svg = svgRef.current;
