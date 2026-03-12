@@ -152,7 +152,7 @@ function MenuBar({
           <circle cx="25" cy="7.5" r="4.5" fill="#1D4ED8" stroke="#60A5FA" strokeWidth="0.8"/>
           <rect x="11.5" y="20.5" width="9" height="6.5" rx="2" fill="#059669" stroke="#34D399" strokeWidth="0.8"/>
         </svg>
-        MAVEN
+        MARVIN
       </div>
 
       <div className="menu-group">

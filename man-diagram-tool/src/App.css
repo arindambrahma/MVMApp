@@ -225,12 +225,26 @@
 .app-footer {
   flex-shrink: 0;
   width: 100%;
-  padding: 4px 16px;
+  padding: 6px 16px;
   background: #F8FAFC;
   border-top: 1px solid #E2E8F0;
-  font-size: 9px;
+  font-size: 11px;
   color: #94A3B8;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.app-footer-title {
+  font-weight: 600;
+  color: #64748B;
+  white-space: nowrap;
+}
+
+.app-footer-copy {
+  color: #94A3B8;
+  white-space: nowrap;
 }
 
 .app-footer a {

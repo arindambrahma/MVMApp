@@ -617,14 +617,17 @@ function App() {
       )}
 
       <div className="app-footer">
-        Based on the Margin Value Method &nbsp;·&nbsp;{' '}
-        <a
-          href="https://link.springer.com/article/10.1007/s00163-020-00335-8"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Res. Eng. Design (2021)
-        </a>
+        <span className="app-footer-title">MARVIN &mdash; Margin Analysis &amp; Reasoning Visual Interface</span>
+        <span className="app-footer-copy">
+          &copy; {new Date().getFullYear()} Arindam Brahma &nbsp;&middot;&nbsp; Based on the Margin Value Method &nbsp;&middot;&nbsp;{' '}
+          <a
+            href="https://link.springer.com/article/10.1007/s00163-020-00335-8"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Res. Eng. Design (2021)
+          </a>
+        </span>
       </div>
     </div>
   );
