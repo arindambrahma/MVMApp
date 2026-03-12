@@ -1077,7 +1077,7 @@ function ChartExportDialog({
 
   const handleSaveSettings = () => {
     const s = {
-      filename, format, widthVal, heightVal, unit, dpi, lockAspect, padding, xAxisCaptionPadding, yAxisCaptionPadding, labelPadding, rightEdgePadding, leftEdgePadding, xAxisLabelOffsetY, xTickOffsetY, yAxisLabelOffsetX, yAxisLabelOffsetY, xTickOffsetX, yTickOffsetX, xTickOffsetX, yTickOffsetX,
+      filename, format, widthVal, heightVal, unit, dpi, lockAspect, padding, xAxisCaptionPadding, yAxisCaptionPadding, labelPadding, rightEdgePadding, leftEdgePadding, xAxisLabelOffsetY, xTickOffsetY, yAxisLabelOffsetX, yAxisLabelOffsetY, xTickOffsetX, yTickOffsetX,
       showTitle, title, titleFont, titleSize, titleColor, background,
       showAxes, showGridlines, showAxisLabels, showLegend, showPointLabels, showArrows,
       showTopBorder, showRightBorder,

@@ -236,7 +236,7 @@ export default function DsmAnalysisModule({ nodes, edges, analysisResult }) {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 10, color: '#475569' }}>
-          Legend: symbol shows edge type. Tooltip shows full details (e.g., 1 o • -> t).
+          Legend: symbol shows edge type. Tooltip shows full details (e.g., 1 o • {'->'} t).
           Symbols: o plain, ^ threshold, x decided, ? other
         </div>
         <button
