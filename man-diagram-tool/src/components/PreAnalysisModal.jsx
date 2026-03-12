@@ -7,6 +7,8 @@ function PreAnalysisModal({
   onClose,
   analysisWeights,
   onChangeWeights,
+  mcSettings,
+  onChangeMcSettings,
 }) {
   const inputNodes = nodes.filter(n => n.type === 'input');
   const performanceNodes = nodes.filter(n => n.type === 'performance');
@@ -123,6 +125,61 @@ function PreAnalysisModal({
 
         {/* Settings + input list */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 20px' }}>
+
+          {/* Analysis Mode */}
+          <div style={{ marginBottom: 12, padding: '10px 12px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Analysis Mode</div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              {['deterministic', 'probabilistic'].map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => onChangeMcSettings({ ...(mcSettings || {}), mode })}
+                  style={{
+                    flex: 1, padding: '6px 0', border: '1px solid',
+                    borderColor: (mcSettings?.mode || 'deterministic') === mode ? '#1D4ED8' : '#CBD5E1',
+                    borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    background: (mcSettings?.mode || 'deterministic') === mode ? '#EFF6FF' : '#fff',
+                    color: (mcSettings?.mode || 'deterministic') === mode ? '#1D4ED8' : '#64748B',
+                  }}
+                >
+                  {mode === 'deterministic' ? 'Deterministic' : 'Probabilistic'}
+                </button>
+              ))}
+            </div>
+            {(mcSettings?.mode || 'deterministic') === 'probabilistic' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 3 }}>
+                    Samples (100–5000)
+                  </label>
+                  <input
+                    type="number" min="100" max="5000" step="100"
+                    value={mcSettings?.nSamples ?? 1000}
+                    onChange={e => onChangeMcSettings({ ...(mcSettings || {}), nSamples: Number(e.target.value) })}
+                    style={{ width: '100%', padding: '5px 7px', border: '1px solid #D1D5DB', borderRadius: 5, fontSize: 12, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 3 }}>
+                    Random seed (optional)
+                  </label>
+                  <input
+                    type="number" min="0" step="1"
+                    value={mcSettings?.seed ?? ''}
+                    placeholder="blank = random"
+                    onChange={e => onChangeMcSettings({ ...(mcSettings || {}), seed: e.target.value === '' ? '' : Number(e.target.value) })}
+                    style={{ width: '100%', padding: '5px 7px', border: '1px solid #D1D5DB', borderRadius: 5, fontSize: 12, boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+            )}
+            {(mcSettings?.mode || 'deterministic') === 'probabilistic' && (
+              <div style={{ fontSize: 10, color: '#64748B', marginTop: 6, lineHeight: 1.4 }}>
+                Assign uncertainty to input/decision nodes via the Property Panel, then run analysis.
+              </div>
+            )}
+          </div>
+
           <div style={sectionTitleStyle}>
             <span>Performance Weights (Wj)</span>
             <div style={{ display: 'flex', gap: 6 }}>

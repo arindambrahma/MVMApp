@@ -1030,6 +1030,92 @@ function PropertyPanel({
         </>
       )}
 
+      {/* Uncertainty settings (input and decision nodes) */}
+      {(node.type === 'input' || node.type === 'decision') && (() => {
+        const unc = node.uncertainty || {};
+        const updateUnc = (field, val) => update('uncertainty', { ...unc, [field]: val });
+        return (
+          <div style={{ marginBottom: 12, border: '1px solid #E2E8F0', borderRadius: 6, overflow: 'hidden' }}>
+            <label style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '7px 10px', background: '#F8FAFC', cursor: 'pointer',
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Uncertainty
+              </span>
+              <input
+                type="checkbox"
+                checked={unc.enabled || false}
+                onChange={e => updateUnc('enabled', e.target.checked)}
+                style={{ width: 14, height: 14, cursor: 'pointer' }}
+              />
+            </label>
+            {unc.enabled && (
+              <div style={{ padding: '8px 10px', borderTop: '1px solid #E2E8F0' }}>
+                <div style={{ fontSize: 10, color: '#64748B', marginBottom: 6, lineHeight: 1.4 }}>
+                  {node.type === 'input' ? 'Distribution applied to the nominal value.' : 'Distribution applied to the decided/catalogue value.'}
+                </div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#64748B', display: 'block', marginBottom: 3 }}>Distribution</label>
+                <select
+                  value={unc.distribution || 'normal'}
+                  onChange={e => updateUnc('distribution', e.target.value)}
+                  style={{ width: '100%', padding: '5px 8px', border: '1px solid #D1D5DB', borderRadius: 5, fontSize: 12, marginBottom: 8, boxSizing: 'border-box' }}
+                >
+                  <option value="normal">Normal</option>
+                  <option value="uniform">Uniform</option>
+                </select>
+                {(unc.distribution || 'normal') === 'normal' && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 4 }}>
+                      <div>
+                        <label style={{ fontSize: 10, color: '#64748B', display: 'block', marginBottom: 2 }}>Std dev (absolute)</label>
+                        <input type="number" min="0" step="any" value={unc.std || ''} placeholder="e.g. 2.5"
+                          onChange={e => updateUnc('std', e.target.value)}
+                          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D1D5DB', borderRadius: 5, fontSize: 12, boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: '#64748B', display: 'block', marginBottom: 2 }}>CoV (%)</label>
+                        <input type="number" min="0" step="any" value={unc.cov || ''} placeholder="e.g. 5"
+                          onChange={e => updateUnc('cov', e.target.value)}
+                          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D1D5DB', borderRadius: 5, fontSize: 12, boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 10, color: '#94A3B8', lineHeight: 1.4 }}>
+                      CoV% overrides Std dev if both are set. Mean = nominal value.
+                    </div>
+                  </>
+                )}
+                {(unc.distribution || 'normal') === 'uniform' && (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 4 }}>
+                      <div>
+                        <label style={{ fontSize: 10, color: '#64748B', display: 'block', marginBottom: 2 }}>Lower bound</label>
+                        <input type="number" step="any" value={unc.lower || ''} placeholder="—"
+                          onChange={e => updateUnc('lower', e.target.value)}
+                          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D1D5DB', borderRadius: 5, fontSize: 12, boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, color: '#64748B', display: 'block', marginBottom: 2 }}>Upper bound</label>
+                        <input type="number" step="any" value={unc.upper || ''} placeholder="—"
+                          onChange={e => updateUnc('upper', e.target.value)}
+                          style={{ width: '100%', padding: '4px 6px', border: '1px solid #D1D5DB', borderRadius: 5, fontSize: 12, boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 10, color: '#94A3B8', lineHeight: 1.4 }}>
+                      Value sampled uniformly between lower and upper bounds.
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Input of interest toggle */}
       {node.type === 'input' && (
         <label style={{

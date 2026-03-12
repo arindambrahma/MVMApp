@@ -24,6 +24,14 @@ export function createNode(type, x, y, overrides = {}) {
     isOfInterest: overrides.isOfInterest || false,
     stepNumber: overrides.stepNumber || null,
     autoLabel: overrides.autoLabel || null,
+    uncertainty: overrides.uncertainty || {
+      enabled: false,
+      distribution: 'normal',
+      std: '',
+      cov: '',
+      lower: '',
+      upper: '',
+    },
   };
 
   // Hierarchical calculation node — carries ports and embedded sub-graph

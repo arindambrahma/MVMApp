@@ -1143,6 +1143,373 @@ def analyse():
         }), 400
 
 
+
+def _run_analysis(gui_nodes, gui_edges, raw_perf_weights, raw_input_weights):
+    """Run one deterministic MVM pass. Returns (MVMResult, MANEngine, param_values)."""
+    flat_nodes, flat_edges = flatten_hierarchical_nodes(gui_nodes, gui_edges)
+    node_by_id = {n["id"]: n for n in flat_nodes}
+    norm_edges = []
+    for e in flat_edges:
+        ne = dict(e)
+        ne["edgeType"] = normalize_edge_type(e, node_by_id)
+        norm_edges.append(ne)
+
+    sorted_nodes = topo_sort(flat_nodes, norm_edges)
+    engine = MANEngine()
+
+    node_output_name = {}
+    edges_by_source = defaultdict(list)
+    for e in norm_edges:
+        edges_by_source[e["from"]].append(e)
+    edge_runtime_name = {}
+    all_input_param_names = []
+    param_values = {}
+
+    for node in sorted_nodes:
+        nid = node["id"]
+        var_name = sanitize(node["label"])
+        node_output_name[nid] = var_name
+        for e in edges_by_source.get(nid, []):
+            rn = e.get("fromPort") or var_name
+            edge_runtime_name[e["id"]] = sanitize(rn)
+
+        if node["type"] == "input":
+            val = float(node.get("value", 0) or 0)
+            engine.set_param(var_name, val)
+            param_values[var_name] = val
+            all_input_param_names.append(var_name)
+            if node.get("isOfInterest"):
+                engine.mark_input(var_name)
+
+        elif node["type"] == "performance":
+            in_edges = [e for e in norm_edges if e["to"] == nid]
+            input_names, input_aliases = [], {}
+            for e in in_edges:
+                sn = edge_runtime_name.get(e["id"]) or node_output_name.get(e["from"])
+                if sn:
+                    input_names.append(sn)
+                    src = node_by_id.get(e["from"])
+                    if src:
+                        input_aliases[sanitize(src.get("label", ""))] = sn
+            formula = (node.get("equation") or "").strip()
+            if formula:
+                formula = apply_input_aliases(formula, input_aliases)
+                fn = build_lambda(formula, input_names)
+                engine.add_calc(CalculationNode(name=var_name, func=fn, input_names=input_names, output_name=var_name))
+            elif len(input_names) == 1:
+                engine.add_calc(CalculationNode(name=var_name, func=lambda x: x, input_names=input_names, output_name=var_name))
+            elif str(node.get("value", "")).strip():
+                v = float(node.get("value", 0) or 0)
+                engine.set_param(var_name, v)
+                param_values[var_name] = v
+            else:
+                if len(input_names) > 1:
+                    raise ValueError(f"Performance node {node['label']!r} has multiple inputs but no equation.")
+                engine.set_param(var_name, 0.0)
+                param_values[var_name] = 0.0
+            engine.mark_performance(var_name)
+
+        elif node["type"] in {"calc", "calcFunction"}:
+            in_edges = [e for e in norm_edges if e["to"] == nid]
+            input_names, input_aliases = [], {}
+            for e in in_edges:
+                sn = edge_runtime_name.get(e["id"]) or node_output_name.get(e["from"])
+                if sn:
+                    input_names.append(sn)
+                    tp = sanitize(e.get("toPort") or "")
+                    if node["type"] == "calcFunction" and tp:
+                        input_aliases[tp] = sn
+                    src = node_by_id.get(e["from"])
+                    if src:
+                        input_aliases[sanitize(src.get("label", ""))] = sn
+
+            if node["type"] == "calcFunction":
+                function_code = node.get("functionCode", "")
+                if not str(function_code or "").strip():
+                    raise ValueError(f"Calculation Function node {node['label']!r} has no function code")
+                root_policy = normalize_root_policy(node.get("rootSelectionPolicy", "min"))
+                fn, ordered_input_names = build_calc_function(
+                    function_code=function_code, input_aliases=input_aliases,
+                    available_runtime_inputs=set(input_names), root_selection_policy=root_policy)
+                input_names = ordered_input_names
+                _, return_expr = parse_function_definition(function_code)
+                raw_out_names = infer_outputs_from_expr(return_expr)
+                out_names = [sanitize(o) for o in raw_out_names if sanitize(o)] or [var_name]
+                engine.add_calc(CalculationNode(name=var_name, func=fn, input_names=input_names, output_name=var_name))
+
+                def make_extractor(idx, out_key, policy):
+                    def _extract(bundle):
+                        if isinstance(bundle, dict):
+                            if out_key in bundle:
+                                return choose_root_like_value(bundle[out_key], policy)
+                            for k, v in bundle.items():
+                                if sanitize(str(k)) == out_key:
+                                    return choose_root_like_value(v, policy)
+                            raise ValueError(f"Output key {out_key!r} not found.")
+                        if isinstance(bundle, (list, tuple, np.ndarray)):
+                            if idx < len(bundle):
+                                return choose_root_like_value(bundle[idx], policy)
+                            raise ValueError(f"Index {idx} out of range for {out_key!r}.")
+                        if idx == 0:
+                            return choose_root_like_value(bundle, policy)
+                        raise ValueError(f"Cannot map {out_key!r} from scalar output.")
+                    return _extract
+
+                for idx, out_key in enumerate(out_names):
+                    if out_key == var_name:
+                        continue
+                    engine.add_calc(CalculationNode(
+                        name=f"{var_name}__{out_key}",
+                        func=make_extractor(idx, out_key, root_policy),
+                        input_names=[var_name], output_name=out_key))
+                continue
+            else:
+                formula = node.get("equation", "")
+                if not formula:
+                    raise ValueError(f"Calc node {node['label']!r} has no formula")
+                formula = apply_input_aliases(formula, input_aliases)
+                fn = build_lambda(formula, input_names)
+            engine.add_calc(CalculationNode(name=var_name, func=fn, input_names=input_names, output_name=var_name))
+
+        elif node["type"] == "decision":
+            decided_name = f"{var_name}_D"
+            in_edges = [e for e in norm_edges if e["to"] == nid]
+            input_names, input_aliases = [], {}
+            for e in in_edges:
+                sn = edge_runtime_name.get(e["id"]) or node_output_name.get(e["from"])
+                if sn:
+                    input_names.append(sn)
+                    src = node_by_id.get(e["from"])
+                    if src:
+                        input_aliases[sanitize(src.get("label", ""))] = sn
+            if str(node.get("decidedValue", "")).strip():
+                decided_val = float(node.get("decidedValue", 0) or 0)
+                engine.add_calc(CalculationNode(name=decided_name, func=lambda _v=decided_val: _v, input_names=[], output_name=decided_name))
+            else:
+                formula = (node.get("equation") or "").strip()
+                if not formula:
+                    raise ValueError(f"Decision node {node['label']!r} needs a decided value or legacy equation.")
+                formula = apply_input_aliases(formula, input_aliases)
+                fn = build_lambda(formula, input_names)
+                engine.add_calc(CalculationNode(name=decided_name, func=fn, input_names=input_names, output_name=decided_name))
+            node_output_name[nid] = decided_name
+            for e in edges_by_source.get(nid, []):
+                if not e.get("fromPort"):
+                    edge_runtime_name[e["id"]] = sanitize(decided_name)
+
+        elif node["type"] == "margin":
+            in_edges = [e for e in norm_edges if e["to"] == nid]
+            decided_name = threshold_name = None
+            for e in in_edges:
+                sn = edge_runtime_name.get(e["id"]) or node_output_name.get(e["from"])
+                if not sn:
+                    continue
+                if e.get("edgeType") == "decided":
+                    decided_name = sn
+                elif e.get("edgeType") == "threshold":
+                    threshold_name = sn
+            if not decided_name or not threshold_name:
+                for e in in_edges:
+                    sn = edge_runtime_name.get(e["id"]) or node_output_name.get(e["from"])
+                    if not sn:
+                        continue
+                    src_node = node_by_id.get(e["from"], {})
+                    if src_node.get("type") == "decision":
+                        decided_name = decided_name or sn
+                    else:
+                        threshold_name = threshold_name or sn
+            if not decided_name or not threshold_name:
+                raise ValueError(
+                    f"Margin node {node['label']!r} needs decided and threshold edges. "
+                    f"Got decided={decided_name}, threshold={threshold_name}.")
+            from mvm_core import MarginNode as _MN
+            engine.add_margin(_MN(name=var_name, decided_name=decided_name, threshold_name=threshold_name))
+            node_output_name[nid] = decided_name
+            for e in edges_by_source.get(nid, []):
+                if not e.get("fromPort"):
+                    edge_runtime_name[e["id"]] = sanitize(decided_name)
+
+    if not engine._input_param_names and all_input_param_names:
+        engine.mark_input(*all_input_param_names)
+
+    perf_weights = {}
+    if isinstance(raw_perf_weights, dict):
+        for k, v in raw_perf_weights.items():
+            kk = sanitize(k)
+            try:
+                vv = float(v)
+            except (TypeError, ValueError):
+                continue
+            if vv >= 0:
+                perf_weights[kk] = vv
+
+    input_weights = {}
+    if isinstance(raw_input_weights, dict):
+        for k, v in raw_input_weights.items():
+            kk = sanitize(k)
+            try:
+                vv = float(v)
+            except (TypeError, ValueError):
+                continue
+            if vv >= 0:
+                input_weights[kk] = vv
+
+    result = engine.analyse(
+        perf_weights=perf_weights or None,
+        input_weights=input_weights or None,
+        stop_on_performance_change=True,
+    )
+
+    baseline = engine._baseline()
+    param_values.update(baseline)
+    for mn in engine._margin_nodes:
+        mk = sanitize(mn.name)
+        param_values[mk + "_decided"] = float(baseline.get(mn.decided_name, 0.0))
+        param_values[mk + "_threshold"] = float(baseline.get(mn.threshold_name, 0.0))
+
+    return result, engine, param_values
+
+
+@app.route("/api/analyse-probabilistic", methods=["POST"])
+def analyse_probabilistic():
+    try:
+        data = request.json
+        gui_nodes = data["nodes"]
+        gui_edges = data["edges"]
+        raw_perf_weights = data.get("perfWeights") or data.get("perf_weights") or {}
+        raw_input_weights = data.get("inputWeights") or data.get("input_weights") or {}
+        n_samples = max(100, min(5000, int(data.get("nSamples", 1000))))
+        seed = data.get("seed", None)
+
+        if seed is not None:
+            try:
+                np.random.seed(int(seed))
+            except (ValueError, TypeError):
+                pass
+
+        baseline_result, baseline_engine, baseline_params = _run_analysis(
+            gui_nodes, gui_edges, raw_perf_weights, raw_input_weights)
+        perf_names = set(baseline_engine._perf_param_names)
+
+        def perturb_nodes(nodes):
+            out = []
+            for n in nodes:
+                unc = n.get("uncertainty") or {}
+                if not unc.get("enabled"):
+                    out.append(n)
+                    continue
+                if n["type"] == "input":
+                    nom_str = str(n.get("value") or 0)
+                    field = "value"
+                elif n["type"] == "decision":
+                    nom_str = str(n.get("decidedValue") or 0)
+                    field = "decidedValue"
+                else:
+                    out.append(n)
+                    continue
+                try:
+                    nominal = float(nom_str)
+                except (ValueError, TypeError):
+                    out.append(n)
+                    continue
+
+                dist = unc.get("distribution", "normal")
+                sampled = nominal
+                if dist == "normal":
+                    cov_s = str(unc.get("cov") or "").strip()
+                    std_s = str(unc.get("std") or "").strip()
+                    if cov_s and cov_s not in ("null", "undefined", ""):
+                        try:
+                            sampled = float(np.random.normal(nominal, abs(nominal * float(cov_s) / 100.0)))
+                        except (ValueError, TypeError):
+                            pass
+                    elif std_s and std_s not in ("null", "undefined", ""):
+                        try:
+                            sampled = float(np.random.normal(nominal, abs(float(std_s))))
+                        except (ValueError, TypeError):
+                            pass
+                elif dist == "uniform":
+                    lo_s = str(unc.get("lower") or "").strip()
+                    hi_s = str(unc.get("upper") or "").strip()
+                    if lo_s and hi_s and lo_s not in ("null",) and hi_s not in ("null",):
+                        try:
+                            sampled = float(np.random.uniform(float(lo_s), float(hi_s)))
+                        except (ValueError, TypeError):
+                            pass
+                n2 = dict(n)
+                n2[field] = str(sampled)
+                out.append(n2)
+            return out
+
+        samples = {"excess": {}, "weighted_impact": {}, "weighted_absorption": {}, "performance": {}}
+        n_failed = 0
+
+        for _ in range(n_samples):
+            perturbed = perturb_nodes(gui_nodes)
+            try:
+                res, _eng, pvals = _run_analysis(perturbed, gui_edges, raw_perf_weights, raw_input_weights)
+                for m, v in res.excess.items():
+                    samples["excess"].setdefault(m, []).append(float(v))
+                for m, v in res.weighted_impact.items():
+                    samples["weighted_impact"].setdefault(m, []).append(float(v))
+                for m, v in res.weighted_absorption.items():
+                    samples["weighted_absorption"].setdefault(m, []).append(float(v))
+                for p in perf_names:
+                    if p in pvals:
+                        samples["performance"].setdefault(p, []).append(float(pvals[p]))
+            except Exception:
+                n_failed += 1
+
+        def stats_of(arr):
+            a = np.array(arr, dtype=float)
+            if len(a) == 0:
+                return {k: None for k in ("mean", "std", "p5", "p25", "p50", "p75", "p95", "prob_positive")}
+            return {
+                "mean": float(np.mean(a)),
+                "std": float(np.std(a)),
+                "p5": float(np.percentile(a, 5)),
+                "p25": float(np.percentile(a, 25)),
+                "p50": float(np.percentile(a, 50)),
+                "p75": float(np.percentile(a, 75)),
+                "p95": float(np.percentile(a, 95)),
+                "prob_positive": float(np.mean(a > 0)),
+            }
+
+        all_margin_names = list(samples["excess"].keys()) or list(baseline_result.excess.keys())
+        statistics = {
+            "margins": {
+                m: {
+                    "excess": stats_of(samples["excess"].get(m, [])),
+                    "weighted_impact": stats_of(samples["weighted_impact"].get(m, [])),
+                    "weighted_absorption": stats_of(samples["weighted_absorption"].get(m, [])),
+                }
+                for m in all_margin_names
+            },
+            "performance": {p: stats_of(samples["performance"].get(p, [])) for p in perf_names},
+        }
+
+        return jsonify({
+            "success": True,
+            "mode": "probabilistic",
+            "n_samples": n_samples - n_failed,
+            "n_failed": n_failed,
+            "baseline": {
+                "result": {
+                    "excess": baseline_result.excess,
+                    "weighted_impact": baseline_result.weighted_impact,
+                    "weighted_absorption": baseline_result.weighted_absorption,
+                },
+                "paramValues": {k: float(v) for k, v in baseline_params.items() if isinstance(v, (int, float))},
+            },
+            "statistics": statistics,
+            "samples": {k: dict(v) for k, v in samples.items()},
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @app.route('/api/health', methods=['GET'])
 def health():
     # Expose the server workspace root path so clients can confirm
