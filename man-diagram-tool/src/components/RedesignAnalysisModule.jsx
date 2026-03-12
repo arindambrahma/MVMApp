@@ -94,6 +94,9 @@ function MatrixTable({ title, rowKeys = [], colKeys = [], data = {}, rowLabel = 
 function BubbleMVMPlot({
   baselinePoints = [],
   overlayPoints = [],
+  stepTrailPoints = [],   // array of arrays: one array per incremental step
+  plotMode = 'bubble',    // 'bubble' | 'point'
+  visibleMargins = null,  // null = show all; Set of margin keys to show
   width = 980,
   height = 380,
   axisFontSize = 10,
@@ -119,7 +122,13 @@ function BubbleMVMPlot({
     }
   };
 
-  const all = [...baselinePoints, ...overlayPoints];
+  // Apply margin visibility filter
+  const visFilter = (p) => !visibleMargins || visibleMargins.has(p.marginKey || p.label?.replace('E', 'E_') || p.label);
+  const filteredBaseline = baselinePoints.filter(visFilter);
+  const filteredOverlay = overlayPoints.filter(visFilter);
+  const filteredTrail = stepTrailPoints.map((stepPts) => stepPts.filter(visFilter));
+
+  const all = [...filteredBaseline, ...filteredOverlay, ...filteredTrail.flat()];
   if (!all.length) {
     return <div style={{ fontSize: 11, color: '#94A3B8', fontStyle: 'italic' }}>No plot data.</div>;
   }
@@ -159,8 +168,8 @@ function BubbleMVMPlot({
   const tickFontSize = Math.max(8, axisFontSize);
   const pointFontSize = Math.max(8, axisFontSize - 1);
   const axisLabelFontSize = Math.max(10, axisFontSize + 1);
-  const baselineByLabel = new Map(baselinePoints.map((p) => [p.label, p]));
-  const movedArrows = overlayPoints
+  const baselineByLabel = new Map(filteredBaseline.map((p) => [p.label, p]));
+  const movedArrows = filteredOverlay
     .map((p) => {
       const base = baselineByLabel.get(p.label);
       if (!base) return null;
@@ -171,6 +180,7 @@ function BubbleMVMPlot({
       return { from: base, to: p };
     })
     .filter(Boolean);
+  const pointR = plotMode === 'point' ? 4 : null; // null = use p.r (sized bubble)
 
   return (
     <div style={{ marginTop: 8, border: '1px solid #E2E8F0', borderRadius: 8, background: '#fff', padding: 8, width: `${width}px`, maxWidth: '100%', boxSizing: 'border-box' }}>
@@ -206,12 +216,12 @@ function BubbleMVMPlot({
           <line x1={left} y1={yScale(0)} x2={left + w} y2={yScale(0)} stroke="#94A3B8" strokeWidth="1.2" strokeDasharray="4,3" />
         )}
 
-        {baselinePoints.map((p) => (
+        {filteredBaseline.map((p) => (
           <g key={`base_${p.key}`}>
             <circle
               cx={xScale(p.x)}
               cy={yScale(p.y)}
-              r={Math.max(3, Math.min(26, Number(p.r || 6)))}
+              r={pointR !== null ? pointR : Math.max(3, Math.min(26, Number(p.r || 6)))}
               fill="#9CA3AF"
               fillOpacity="0.35"
               stroke="#6B7280"
@@ -220,6 +230,24 @@ function BubbleMVMPlot({
             <text x={xScale(p.x)} y={yScale(p.y) - 8} textAnchor="middle" fontSize={pointFontSize} fill="#334155">{p.label}</text>
           </g>
         ))}
+
+        {/* Step trail — intermediate incremental positions, faded */}
+        {filteredTrail.map((stepPts, si) => {
+          const opacity = 0.08 + 0.22 * (si / Math.max(1, filteredTrail.length - 1));
+          return stepPts.map((p) => (
+            <circle
+              key={`trail_${si}_${p.key}`}
+              cx={xScale(p.x)}
+              cy={yScale(p.y)}
+              r={3}
+              fill="#F59E0B"
+              fillOpacity={opacity}
+              stroke="#B45309"
+              strokeOpacity={opacity * 1.5}
+              strokeWidth="0.8"
+            />
+          ));
+        })}
 
         {movedArrows.map((a) => (
           <line
@@ -235,14 +263,15 @@ function BubbleMVMPlot({
           />
         ))}
 
-        {overlayPoints.map((p) => {
+        {filteredOverlay.map((p) => {
           const isViolating = Number.isFinite(p.excess) && p.excess <= 1e-8;
+          const r = pointR !== null ? pointR : Math.max(3, Math.min(26, Number(p.r || 6)));
           return (
             <g key={`overlay_${p.key}`}>
               <circle
                 cx={xScale(p.x)}
                 cy={yScale(p.y)}
-                r={Math.max(3, Math.min(26, Number(p.r || 6)))}
+                r={r}
                 fill={isViolating ? '#EF4444' : '#F59E0B'}
                 fillOpacity="0.45"
                 stroke={isViolating ? '#B91C1C' : '#B45309'}
@@ -363,6 +392,9 @@ function RedesignAnalysisModule({
   const [fontSize, setFontSize] = useState(10);
   const [lockXAxisScale, setLockXAxisScale] = useState(false);
   const [lockYAxisScale, setLockYAxisScale] = useState(false);
+  const [plotMode, setPlotMode] = useState('bubble');       // 'bubble' | 'point'
+  const [showAllSteps, setShowAllSteps] = useState(false);  // show incremental trail
+  const [hiddenMargins, setHiddenMargins] = useState(new Set()); // per-margin visibility
   const chartWidthMin = 520;
   const chartWidthMax = 1200;
   const chartHeightMin = 280;
@@ -525,6 +557,8 @@ function RedesignAnalysisModule({
             removedShare: maxMargin > 1e-12 ? (1 - (marginValue / maxMargin)) : 0,
             violatingMargins: [...(evaluated.violatingMargins || [])],
             excessMap: { ...evaluated.excessMap },
+            impactMap: { ...(evaluated.subRes?.result?.weighted_impact || {}) },
+            absorptionMap: { ...(evaluated.subRes?.result?.weighted_absorption || {}) },
           });
           setRunProgress(Math.round(((steps + 1) / Math.max(1, maxSteps)) * 100));
           if (evaluated.violatingMargins.length) {
@@ -653,9 +687,35 @@ function RedesignAnalysisModule({
   };
 
   const recalculatedResult = run?.recalculated || null;
+
+  // Build step trail points for the redesigned chart (all incremental steps except the final one).
+  const stepTrailPoints = useMemo(() => {
+    if (!showAllSteps || !run?.stepHistory?.length) return [];
+    const steps = run.stepHistory.slice(0, -1); // last step = redesignedPoints already shown
+    return steps.map((s) =>
+      marginKeys
+        .map((m) => ({
+          key: `step_${s.step}_${m}`,
+          label: m.replace('E_', 'E'),
+          marginKey: m,
+          x: Number(s.impactMap?.[m] ?? NaN),
+          y: Number(s.absorptionMap?.[m] ?? NaN),
+          excess: Number(s.excessMap?.[m] ?? NaN),
+        }))
+        .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+    );
+  }, [showAllSteps, run, marginKeys]);
+
+  // Visible margins filter applied to chart points.
+  const visibleMarginsSet = useMemo(() => {
+    if (hiddenMargins.size === 0) return null; // null = show all (no filtering needed)
+    return new Set(marginKeys.filter((m) => !hiddenMargins.has(m)));
+  }, [hiddenMargins, marginKeys]);
+
   const sharedBubbleDomain = useMemo(() => {
     const redesignedPoints = run?.redesignedPoints || [];
-    const all = [...baselinePoints, ...redesignedPoints];
+    const trailFlat = showAllSteps ? stepTrailPoints.flat() : [];
+    const all = [...baselinePoints, ...redesignedPoints, ...trailFlat];
     if (!all.length) return null;
     const xs = all.map((p) => Number(p.x)).filter(Number.isFinite);
     const ys = all.map((p) => Number(p.y)).filter(Number.isFinite);
@@ -670,7 +730,7 @@ function RedesignAnalysisModule({
       x: { min: minXRaw - xPad, max: maxXRaw + xPad },
       y: { min: minYRaw - yPad, max: maxYRaw + yPad },
     };
-  }, [baselinePoints, run]);
+  }, [baselinePoints, run, showAllSteps, stepTrailPoints]);
 
   const recalculatedInputs = useMemo(() => {
     const set = new Set();
@@ -924,7 +984,72 @@ function RedesignAnalysisModule({
               <span>Use same vertical axis (Y)</span>
             </label>
           </div>
+
+          {/* Plot mode toggle */}
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748B', marginBottom: 5 }}>Plot mode</div>
+            <div style={{ display: 'flex', gap: 0, borderRadius: 6, overflow: 'hidden', border: '1px solid #CBD5E1' }}>
+              {[['bubble', 'Bubble'], ['point', 'Point']].map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setPlotMode(val)}
+                  style={{
+                    flex: 1, padding: '5px 0', fontSize: 11, fontWeight: plotMode === val ? 700 : 400,
+                    background: plotMode === val ? '#EFF6FF' : '#fff',
+                    color: plotMode === val ? '#1E3A8A' : '#64748B',
+                    border: 'none', borderRight: val === 'bubble' ? '1px solid #CBD5E1' : 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
+
+        {/* Redesigned chart visualisation controls — shown after a run with step history */}
+        {run && (
+          <div style={{ marginTop: 10, border: '1px solid #E2E8F0', borderRadius: 6, background: '#FFFFFF', padding: '8px 9px' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: 8 }}>
+              Redesigned Chart
+            </div>
+
+            {/* Show all steps */}
+            {Array.isArray(run.stepHistory) && run.stepHistory.length > 1 && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', cursor: 'pointer', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={showAllSteps}
+                  onChange={(e) => setShowAllSteps(e.target.checked)}
+                />
+                <span>Show incremental trail</span>
+              </label>
+            )}
+
+            {/* Per-margin visibility */}
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#64748B', marginBottom: 5 }}>Margin visibility</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {marginKeys.map((m) => (
+                <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#334155', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!hiddenMargins.has(m)}
+                    onChange={(e) => {
+                      setHiddenMargins((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.delete(m); else next.add(m);
+                        return next;
+                      });
+                    }}
+                  />
+                  <span>{m.replace('E_', 'E')}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ flex: 1, background: '#F9FAFB', overflowY: 'auto', padding: 14 }}>
@@ -1048,6 +1173,9 @@ function RedesignAnalysisModule({
               <BubbleMVMPlot
                 baselinePoints={baselinePoints}
                 overlayPoints={run.redesignedPoints || []}
+                stepTrailPoints={stepTrailPoints}
+                plotMode={plotMode}
+                visibleMargins={visibleMarginsSet}
                 width={chartWidth}
                 height={chartHeight}
                 axisFontSize={fontSize}
