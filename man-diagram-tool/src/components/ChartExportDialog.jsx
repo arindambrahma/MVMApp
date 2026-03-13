@@ -223,6 +223,7 @@ function buildLineSvg(W, H, series, extraLines, opts) {
     seriesColors = SERIES_COLORS, legendFontSize = 10,
     legendOffsetX = 0, legendOffsetY = 0,
     legendCols = 3, legendColGap = 12, legendRowGap = 6, legendLineLen = 18,
+    legendLabels = [],
     xDomainProp = null, yDomainProp = null,
     xAxisCaptionPadding = 0, yAxisCaptionPadding = 0, labelPadding = 0, rightEdgePadding = 0, leftEdgePadding = 0,
     xAxisLabelOffsetY = 0, xTickOffsetY = 0, yAxisLabelOffsetX = 0, yAxisLabelOffsetY = 0, xTickOffsetX = 0, yTickOffsetX = 0,
@@ -352,7 +353,8 @@ function buildLineSvg(W, H, series, extraLines, opts) {
       const color = esc(seriesColors[idx] || SERIES_COLORS[idx % SERIES_COLORS.length]);
       const isPerf = String(s.key || '').startsWith('perf_');
       svg.push(`<line x1="${lx}" y1="${ly + legPx * 0.5}" x2="${lx + legendLineLen}" y2="${ly + legPx * 0.5}" stroke="${color}" stroke-width="2.5" ${isPerf ? 'stroke-dasharray="6 4"' : ''}/>`);
-      svg.push(`<text x="${lx + legendLineLen + 4}" y="${ly + legPx * 0.85}" font-size="${legPx}" font-family="${legendFontFace}" fill="#334155">${esc(String(s.label || '').replace(/\(local excess\)/gi, '').trim())}</text>`);
+      const legendLabel = legendLabels[idx] ?? s.label;
+      svg.push(`<text x="${lx + legendLineLen + 4}" y="${ly + legPx * 0.85}" font-size="${legPx}" font-family="${legendFontFace}" fill="#334155">${esc(String(legendLabel || '').replace(/\(local excess\)/gi, '').trim())}</text>`);
     });
   }
 
@@ -530,6 +532,7 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
     seriesColors = SERIES_COLORS, legendFontSize = 10,
     legendOffsetX = 0, legendOffsetY = 0,
     legendCols = 3, legendColGap = 12, legendRowGap = 6, legendLineLen = 18,
+    legendLabels = [],
     xDomainProp = null, yDomainProp = null,
     xAxisCaptionPadding = 0, yAxisCaptionPadding = 0, labelPadding = 0, rightEdgePadding = 0, leftEdgePadding = 0,
     xAxisLabelOffsetY = 0, xTickOffsetY = 0, yAxisLabelOffsetX = 0, yAxisLabelOffsetY = 0, xTickOffsetX = 0, yTickOffsetX = 0,
@@ -679,7 +682,8 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
       ctx.restore();
       ctx.font = `${legPx}px ${legendFontStr}`; ctx.fillStyle = '#334155';
       ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-      ctx.fillText(String(s.label || '').replace(/\(local excess\)/gi, '').trim(), lx + legendLineLen + 4, ly);
+      const legendLabel = legendLabels[idx] ?? s.label;
+      ctx.fillText(String(legendLabel || '').replace(/\(local excess\)/gi, '').trim(), lx + legendLineLen + 4, ly);
     });
   }
 }
@@ -927,6 +931,7 @@ function ChartExportDialog({
   const [legendColGap, setLegendColGap] = useState(1);
   const [legendRowGap, setLegendRowGap] = useState(0);
   const [legendLineLen, setLegendLineLen] = useState(15);
+  const [legendLabels, setLegendLabels] = useState(() => (series || []).map(s => String(s?.label ?? '')));
 
   // ── Scatter style ──
   const [baselineColor, setBaselineColor]   = useState('#9CA3AF');
@@ -969,7 +974,17 @@ function ChartExportDialog({
     setFilename(prev => prev || defaultName);
     setXAxisLabel(prev => (prev && prev.length) ? prev : (isLine ? (xLabel || '') : 'Undesirable impact on performance parameters (%)'));
     setYAxisLabel(prev => (prev && prev.length) ? prev : (isLine ? (yLabel || '') : 'Change absorption potential (%)'));
-  }, [open, defaultName, xLabel, yLabel, isLine]);
+    if (isLine) {
+      setLegendLabels(prev => {
+        const next = [...(prev || [])];
+        const needed = (series || []).length;
+        for (let i = 0; i < needed; i += 1) {
+          if (next[i] === undefined) next[i] = String(series?.[i]?.label ?? '');
+        }
+        return next.slice(0, needed);
+      });
+    }
+  }, [open, defaultName, xLabel, yLabel, isLine, series]);
 
   const effectiveDpi = format === 'svg' ? 96 : dpi;
   const widthPx  = Math.round(Math.max(200, Math.min(8000, Number(widthVal)  * pxPerUnit(unit, effectiveDpi))));
@@ -1016,6 +1031,7 @@ function ChartExportDialog({
     showLegend, seriesColors, legendFontSize: clamp(legendFontSize, 7, 20),
     legendFont, legendOffsetX: clamp(legendOffsetX, -400, 400), legendOffsetY: clamp(legendOffsetY, -400, 400),
     legendCols: clamp(legendCols, 1, 6), legendColGap: clamp(legendColGap, 0, 80), legendRowGap: clamp(legendRowGap, 0, 80), legendLineLen: clamp(legendLineLen, 6, 60),
+    legendLabels,
     // scatter-specific
     showPointLabels, showArrows,
     baselineColor, overlayColor, arrowColor,
@@ -1085,7 +1101,7 @@ function ChartExportDialog({
     axisCaptionFont, axisValueFont, axisValueFontSize, axisHeaderFontSize, axisColor,
     xAxisLabel, yAxisLabel, xDecimals, yDecimals, xTickRotation,
     useCustomBounds, xMin, xMax, yMin, yMax,
-    seriesColors, legendFontSize, legendFont, legendOffsetX, legendOffsetY, legendCols, legendColGap, legendRowGap, legendLineLen,
+    seriesColors, legendFontSize, legendFont, legendOffsetX, legendOffsetY, legendCols, legendColGap, legendRowGap, legendLineLen, legendLabels,
     baselineColor, overlayColor, arrowColor, baselineOpacity, overlayOpacity, pointLabelSize,
   ]);
 
@@ -1095,7 +1111,7 @@ function ChartExportDialog({
       showTitle, title, titleFont, titleSize, titleColor, background, transparentBackground,
       showAxes, showGridlines, showAxisLabels, showLegend, showPointLabels, showArrows,
       showTopBorder, showRightBorder,
-      seriesColors, legendFontSize, legendFont, legendOffsetX, legendOffsetY, legendCols, legendColGap, legendRowGap, legendLineLen,
+      seriesColors, legendFontSize, legendFont, legendOffsetX, legendOffsetY, legendCols, legendColGap, legendRowGap, legendLineLen, legendLabels,
       baselineColor, overlayColor, arrowColor, baselineOpacity, overlayOpacity, pointLabelSize,
       axisCaptionFont, axisValueFont, axisValueFontSize, axisHeaderFontSize, axisColor,
       xAxisLabel, yAxisLabel, xDecimals, yDecimals, xTickRotation,
@@ -1160,6 +1176,7 @@ function ChartExportDialog({
         if (s.legendColGap !== undefined) setLegendColGap(s.legendColGap);
         if (s.legendRowGap !== undefined) setLegendRowGap(s.legendRowGap);
         if (s.legendLineLen !== undefined) setLegendLineLen(s.legendLineLen);
+        if (s.legendLabels !== undefined) setLegendLabels(s.legendLabels);
         if (s.baselineColor !== undefined) setBaselineColor(s.baselineColor);
         if (s.overlayColor !== undefined) setOverlayColor(s.overlayColor);
         if (s.arrowColor !== undefined) setArrowColor(s.arrowColor);
@@ -1328,6 +1345,19 @@ function ChartExportDialog({
                       value={seriesColors[idx] || SERIES_COLORS[idx % SERIES_COLORS.length]}
                       onChange={e => { const c = [...seriesColors]; c[idx] = e.target.value; setSeriesColors(c); }} />
                     <span style={{ fontSize: 10, color: '#64748b', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</span>
+                  </div>
+                ))}
+                <div style={{ fontSize: 11, color: '#475569', marginTop: 8, marginBottom: 2 }}>Legend labels</div>
+                {(series || []).slice(0, 7).map((s, idx) => (
+                  <div key={`ll_${idx}`} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input style={{ ...inp, flex: 1, minWidth: 0 }}
+                      value={legendLabels[idx] ?? String(s?.label ?? '')}
+                      onChange={e => {
+                        const next = [...(legendLabels || [])];
+                        next[idx] = e.target.value;
+                        setLegendLabels(next);
+                      }} />
+                    <span style={{ fontSize: 10, color: '#64748b', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Series {idx + 1}</span>
                   </div>
                 ))}
                 <div style={{ fontSize: 11, color: '#475569', marginTop: 8, marginBottom: 2 }}>Legend</div>
