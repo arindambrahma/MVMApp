@@ -188,3 +188,31 @@ export async function runProbabilisticAnalysis(nodes, edges, options = {}) {
 
   return data;
 }
+
+export async function runCpmRisk(likelihood, impact, labels, options = {}) {
+  const { instigator = 'column', depth = 4 } = options;
+  const res = await fetch('/api/cpm-risk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ likelihood, impact, labels, instigator, depth }),
+  });
+
+  const rawText = await res.text();
+  let data = null;
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = null;
+    }
+  }
+
+  if (!res.ok || !data?.success) {
+    const fallback = res.status === 500 && !rawText
+      ? 'Server error while computing CPM risk.'
+      : `Server error: ${res.status}`;
+    throw new Error(data?.error || fallback);
+  }
+
+  return data;
+}

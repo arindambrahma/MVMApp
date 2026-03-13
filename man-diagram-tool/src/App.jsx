@@ -549,6 +549,7 @@ function App() {
             nodes={state.nodes}
             edges={state.edges}
             analysisResult={analysisResult}
+            probabilisticResult={probabilisticResult}
           />
         </div>
       ) : activeTab === 'redesign' ? (

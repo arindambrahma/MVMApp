@@ -26,10 +26,13 @@ def _get_runtime_root():
 RUNTIME_ROOT = _get_runtime_root()
 FRONTEND_DIST_DIR = os.path.join(RUNTIME_ROOT, 'man-diagram-tool', 'dist')
 EXAMPLES_DIR = os.path.join(RUNTIME_ROOT, 'examples')
+VENDOR_DIR = os.path.join(RUNTIME_ROOT, 'backend', 'vendor')
 
 # Add project root so we can import mvm_core and mvm_plot
 if RUNTIME_ROOT not in sys.path:
     sys.path.insert(0, RUNTIME_ROOT)
+if os.path.isdir(VENDOR_DIR) and VENDOR_DIR not in sys.path:
+    sys.path.insert(0, VENDOR_DIR)
 from mvm_core import MANEngine, CalculationNode, DecisionNode
 from mvm_plot import plot_margin_value
 
@@ -1441,13 +1444,16 @@ def analyse_probabilistic():
                 out.append(n2)
             return out
 
-        samples = {"excess": {}, "weighted_impact": {}, "weighted_absorption": {}, "performance": {}}
+        samples = {"excess": {}, "weighted_impact": {}, "weighted_absorption": {}, "performance": {}, "params": {}}
         n_failed = 0
 
         for _ in range(n_samples):
             perturbed = perturb_nodes(gui_nodes)
             try:
                 res, _eng, pvals = _run_analysis(perturbed, gui_edges, raw_perf_weights, raw_input_weights)
+                for k, v in pvals.items():
+                    if isinstance(v, (int, float, np.integer, np.floating)):
+                        samples["params"].setdefault(k, []).append(float(v))
                 for m, v in res.excess.items():
                     samples["excess"].setdefault(m, []).append(float(v))
                 for m, v in res.weighted_impact.items():
@@ -1508,6 +1514,54 @@ def analyse_probabilistic():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route('/api/cpm-risk', methods=['POST'])
+def cpm_risk():
+    try:
+        data = request.json or {}
+        likelihood = data.get('likelihood')
+        impact = data.get('impact')
+        labels = data.get('labels')
+        instigator = data.get('instigator', 'column')
+        depth = int(data.get('depth', 4))
+
+        if not isinstance(likelihood, list) or not isinstance(impact, list) or not isinstance(labels, list):
+            raise ValueError('Likelihood, impact, and labels must be lists.')
+
+        from cpm.models import DSM, ChangePropagationTree
+
+        dsm_l = DSM(likelihood, labels, instigator=instigator)
+        dsm_i = DSM(impact, labels, instigator=instigator)
+
+        n = len(labels)
+        risk = [[0.0 for _ in range(n)] for _ in range(n)]
+        probability = [[0.0 for _ in range(n)] for _ in range(n)]
+
+        for col in range(n):
+            for row in range(n):
+                if row == col:
+                    continue
+                tree = ChangePropagationTree(
+                    start_index=col,
+                    target_index=row,
+                    dsm_impact=dsm_i,
+                    dsm_likelihood=dsm_l,
+                ).propagate(search_depth=depth)
+                risk[row][col] = float(tree.get_risk())
+                probability[row][col] = float(tree.get_probability())
+
+        return jsonify({
+            'success': True,
+            'risk': risk,
+            'probability': probability,
+            'labels': labels,
+            'instigator': instigator,
+            'depth': depth,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 
 @app.route('/api/health', methods=['GET'])

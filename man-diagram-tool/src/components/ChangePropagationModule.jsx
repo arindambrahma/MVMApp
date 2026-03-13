@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { buildGraphData, computeReachability, computeEdgeBetweenness } from '../utils/changePropagation';
+import { sanitize } from '../utils/helpers';
+import { runCpmRisk } from '../utils/api';
 
 function formatNumber(value, decimals = 2) {
   const num = Number(value);
@@ -50,8 +52,27 @@ function SimpleTable({ headers, rows }) {
   );
 }
 
-export default function ChangePropagationModule({ nodes, edges, analysisResult }) {
+function toPercent(value, decimals = 1) {
+  const v = Number(value);
+  if (!Number.isFinite(v)) return 'n/a';
+  return `${(v * 100).toFixed(decimals)}%`;
+}
+
+function buildCsv(headers, rows) {
+  const lines = [headers, ...rows].map((row) => row
+    .map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`)
+    .join(',')
+  );
+  return lines.join('\n');
+}
+
+export default function ChangePropagationModule({ nodes, edges, analysisResult, probabilisticResult }) {
   const [propMode, setPropMode] = useState('pass');
+  const [cpmThreshold, setCpmThreshold] = useState(0.01);
+  const [cpmDepth, setCpmDepth] = useState(4);
+  const [cpmRiskResult, setCpmRiskResult] = useState(null);
+  const [cpmRiskError, setCpmRiskError] = useState(null);
+  const [cpmRiskLoading, setCpmRiskLoading] = useState(false);
 
   const { nodeById, filteredNodes, filteredEdges } = useMemo(() => {
     const { nodes: filtered, edges: filteredEdgeList, nodeById: byId } = buildGraphData(nodes, edges);
@@ -142,6 +163,143 @@ export default function ChangePropagationModule({ nodes, edges, analysisResult }
   const nodeCount = filteredNodes.length;
   const edgeCount = filteredEdges.length;
 
+  const cpmData = useMemo(() => {
+    const prob = probabilisticResult;
+    if (!prob?.samples) return null;
+    const samples = prob.samples || {};
+    const baseline = prob.baseline?.paramValues || analysisResult?.paramValues || {};
+    const baselineExcess = prob.baseline?.result?.excess || analysisResult?.result?.excess || {};
+    const tau = Math.max(0, Number(cpmThreshold) || 0);
+
+    const nodeKey = (node) => {
+      if (!node) return null;
+      const base = sanitize(node.label || node.autoLabel || node.id || '');
+      if (!base) return null;
+      if (node.type === 'decision') return `${base}_D`;
+      return base;
+    };
+
+    const sampleForNode = (node) => {
+      if (!node) return null;
+      if (node.type === 'margin') {
+        const key = sanitize(node.label || node.autoLabel || node.id || '');
+        return samples.excess?.[key] || null;
+      }
+      const key = nodeKey(node);
+      return samples.params?.[key] || null;
+    };
+
+    const baselineForNode = (node) => {
+      if (!node) return 0;
+      if (node.type === 'margin') {
+        const key = sanitize(node.label || node.autoLabel || node.id || '');
+        const v = baselineExcess[key];
+        return Number.isFinite(Number(v)) ? Number(v) : 0;
+      }
+      const key = nodeKey(node);
+      const v = baseline?.[key];
+      return Number.isFinite(Number(v)) ? Number(v) : 0;
+    };
+
+    const orderedNodes = filteredNodes;
+    const nodeIndex = new Map(orderedNodes.map((n, i) => [n.id, i]));
+    const size = orderedNodes.length;
+    const L = Array.from({ length: size }, () => Array(size).fill(0));
+    const I = Array.from({ length: size }, () => Array(size).fill(0));
+
+    for (const e of filteredEdges) {
+      const src = nodeById[e.from];
+      const tgt = nodeById[e.to];
+      if (!src || !tgt) continue;
+
+      const srcSamples = sampleForNode(src);
+      const tgtSamples = sampleForNode(tgt);
+      if (!srcSamples || !tgtSamples) continue;
+
+      const n = Math.min(srcSamples.length, tgtSamples.length);
+      if (!n) continue;
+
+      const bSrc = baselineForNode(src);
+      const bTgt = baselineForNode(tgt);
+      const denomSrc = Math.max(Math.abs(bSrc), 1e-9);
+      const denomTgt = Math.max(Math.abs(bTgt), 1e-9);
+
+      let aCount = 0;
+      let bCount = 0;
+      let impactSum = 0;
+
+      for (let i = 0; i < n; i += 1) {
+        const ds = (srcSamples[i] - bSrc) / denomSrc;
+        const dt = (tgtSamples[i] - bTgt) / denomTgt;
+        const aChanged = Math.abs(ds) >= tau;
+        if (!aChanged) continue;
+        aCount += 1;
+        const bChanged = Math.abs(dt) >= tau;
+        if (!bChanged) continue;
+        bCount += 1;
+        impactSum += Math.abs(dt);
+      }
+
+      const iFrom = nodeIndex.get(src.id);
+      const iTo = nodeIndex.get(tgt.id);
+      if (iFrom === undefined || iTo === undefined) continue;
+      L[iTo][iFrom] = aCount > 0 ? bCount / aCount : 0;
+      I[iTo][iFrom] = bCount > 0 ? impactSum / bCount : 0;
+    }
+
+    return { orderedNodes, L, I };
+  }, [probabilisticResult, analysisResult, filteredNodes, filteredEdges, nodeById, cpmThreshold]);
+
+  const handleExportCpmCsv = (matrix, name) => {
+    if (!cpmData) return;
+    const headers = ['RowLabel', ...cpmData.orderedNodes.map((n) => n.label || n.autoLabel || n.id)];
+    const rows = cpmData.orderedNodes.map((rowNode, rIdx) => {
+      const rowLabel = rowNode.label || rowNode.autoLabel || rowNode.id;
+      const values = matrix[rIdx] || [];
+      return [rowLabel, ...values.map((v) => formatNumber(v, 4))];
+    });
+    const csv = buildCsv(headers, rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleComputeRisk = async () => {
+    if (!cpmData) return;
+    setCpmRiskLoading(true);
+    setCpmRiskError(null);
+    try {
+      const res = await runCpmRisk(cpmData.L, cpmData.I, cpmData.orderedNodes.map((n) => n.label || n.autoLabel || n.id), {
+        instigator: 'column',
+        depth: cpmDepth,
+      });
+      setCpmRiskResult(res);
+    } catch (err) {
+      setCpmRiskError(err?.message || 'Failed to compute CPM risk.');
+    } finally {
+      setCpmRiskLoading(false);
+    }
+  };
+
+  const topRiskRows = useMemo(() => {
+    if (!cpmRiskResult?.risk || !cpmRiskResult?.labels) return [];
+    const labels = cpmRiskResult.labels;
+    const rows = [];
+    for (let r = 0; r < cpmRiskResult.risk.length; r += 1) {
+      for (let c = 0; c < cpmRiskResult.risk[r].length; c += 1) {
+        if (r === c) continue;
+        rows.push([labels[r], labels[c], cpmRiskResult.risk[r][c], cpmRiskResult.probability?.[r]?.[c]]);
+      }
+    }
+    return topEntries(rows, 12, (row) => row[2]);
+  }, [cpmRiskResult]);
+
   return (
     <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
@@ -210,6 +368,158 @@ export default function ChangePropagationModule({ nodes, edges, analysisResult }
           headers={['Margin', 'Top Performance Effects', 'Top Input Absorption', 'Local Excess']}
           rows={marginPropagationRows.length ? marginPropagationRows : [['n/a', 'n/a', 'n/a', 'n/a']]}
         />
+      </Section>
+
+      <Section
+        title="CPM DSMs From Probabilistic Runs"
+        subtitle="Direct likelihood and impact matrices derived from Monte Carlo samples. Rows are receivers, columns are instigators."
+      >
+        {!probabilisticResult ? (
+          <div style={{ fontSize: 12, color: '#64748B' }}>
+            Run analysis in probabilistic mode to generate CPM likelihood and impact DSMs.
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginBottom: 10 }}>
+              <label style={{ fontSize: 12, color: '#334155', display: 'flex', alignItems: 'center', gap: 8 }}>
+                Change threshold (relative)
+                <input
+                  type="number"
+                  min="0"
+                  step="0.005"
+                  value={cpmThreshold}
+                  onChange={(e) => setCpmThreshold(e.target.value)}
+                  style={{ width: 90, fontSize: 12, padding: '4px 6px', borderRadius: 6, border: '1px solid #CBD5F5' }}
+                />
+              </label>
+              <label style={{ fontSize: 12, color: '#334155', display: 'flex', alignItems: 'center', gap: 8 }}>
+                Propagation depth
+                <input
+                  type="number"
+                  min="1"
+                  max="8"
+                  step="1"
+                  value={cpmDepth}
+                  onChange={(e) => setCpmDepth(Number(e.target.value) || 1)}
+                  style={{ width: 70, fontSize: 12, padding: '4px 6px', borderRadius: 6, border: '1px solid #CBD5F5' }}
+                />
+              </label>
+              <div style={{ fontSize: 11, color: '#64748B' }}>
+                Interpretation: propagation occurs when |Δ| / |baseline| ≥ {toPercent(cpmThreshold, 1)}.
+              </div>
+              <button
+                type="button"
+                onClick={() => handleExportCpmCsv(cpmData?.L || [], 'cpm_likelihood.csv')}
+                style={{
+                  border: '1px solid #93C5FD',
+                  borderRadius: 6,
+                  background: '#EFF6FF',
+                  color: '#1E3A8A',
+                  padding: '5px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Export Likelihood DSM
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExportCpmCsv(cpmData?.I || [], 'cpm_impact.csv')}
+                style={{
+                  border: '1px solid #93C5FD',
+                  borderRadius: 6,
+                  background: '#EFF6FF',
+                  color: '#1E3A8A',
+                  padding: '5px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Export Impact DSM
+              </button>
+              <button
+                type="button"
+                onClick={handleComputeRisk}
+                disabled={cpmRiskLoading}
+                style={{
+                  border: '1px solid #86EFAC',
+                  borderRadius: 6,
+                  background: cpmRiskLoading ? '#E2E8F0' : '#ECFDF5',
+                  color: '#166534',
+                  padding: '5px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: cpmRiskLoading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {cpmRiskLoading ? 'Computing CPM Risk...' : 'Compute CPM Risk Matrix'}
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: '#334155', lineHeight: 1.5 }}>
+              <strong>Likelihood</strong> is estimated as P(target changes | source changes) from Monte Carlo samples.
+              <strong> Impact</strong> is the average magnitude of target change given propagation.
+              This matches Clarksonâ€™s l/i DSM definition but uses the parametric network to estimate values.
+            </div>
+            {cpmRiskError && (
+              <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 6, background: '#FEE2E2', color: '#991B1B', fontSize: 12 }}>
+                {cpmRiskError}
+              </div>
+            )}
+            {cpmRiskResult && (
+              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: 12, color: '#475569' }}>
+                  CPM combined risk computed using cpmlib with depth {cpmRiskResult.depth}. Higher values indicate
+                  higher expected downstream redesign effort.
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleExportCpmCsv(cpmRiskResult.risk, 'cpm_risk.csv')}
+                    style={{
+                      border: '1px solid #93C5FD',
+                      borderRadius: 6,
+                      background: '#EFF6FF',
+                      color: '#1E3A8A',
+                      padding: '5px 10px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Export Risk DSM
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExportCpmCsv(cpmRiskResult.probability, 'cpm_probability.csv')}
+                    style={{
+                      border: '1px solid #93C5FD',
+                      borderRadius: 6,
+                      background: '#EFF6FF',
+                      color: '#1E3A8A',
+                      padding: '5px 10px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Export Combined Likelihood DSM
+                  </button>
+                </div>
+                <SimpleTable
+                  headers={['Receiver', 'Instigator', 'Risk', 'Likelihood']}
+                  rows={topRiskRows.map(([recv, inst, risk, prob]) => [
+                    recv,
+                    inst,
+                    formatNumber(risk, 4),
+                    formatNumber(prob, 4),
+                  ])}
+                />
+              </div>
+            )}
+          </>
+        )}
       </Section>
 
       <Section
