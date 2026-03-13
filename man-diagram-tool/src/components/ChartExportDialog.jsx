@@ -211,7 +211,7 @@ function getScatterScales(baselinePoints, overlayPoints, xDomainProp, yDomainPro
 
 function buildLineSvg(W, H, series, extraLines, opts) {
   const {
-    dpi = 300, padding = 20, background = '#ffffff',
+    dpi = 300, padding = 20, background = '#ffffff', transparentBackground = false,
     showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Aptos Narrow', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true, showLegend = true,
     showTopBorder = false, showRightBorder = false,
@@ -268,7 +268,9 @@ function buildLineSvg(W, H, series, extraLines, opts) {
   const svg = [];
   svg.push(`<?xml version="1.0" encoding="UTF-8"?>`);
   svg.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
-  svg.push(`<rect width="${W}" height="${H}" fill="${esc(background)}"/>`);
+  if (!transparentBackground) {
+    svg.push(`<rect width="${W}" height="${H}" fill="${esc(background)}"/>`);
+  }
 
   if (showTitle && title) {
     svg.push(`<text x="${padding}" y="${padding + titlePx * 0.85}" font-family="${titleFontFace}" font-size="${titlePx}" font-weight="700" fill="${esc(titleColor)}">${esc(title)}</text>`);
@@ -362,7 +364,7 @@ function buildLineSvg(W, H, series, extraLines, opts) {
 
 function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
   const {
-    dpi = 300, padding = 20, background = '#ffffff',
+    dpi = 300, padding = 20, background = '#ffffff', transparentBackground = false,
     showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Aptos Narrow', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true,
     showPointLabels = true, showArrows = true,
@@ -425,7 +427,9 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
   svg.push(`<?xml version="1.0" encoding="UTF-8"?>`);
   svg.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
   svg.push(`<defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="${esc(arrowColor)}" opacity="0.6"/></marker></defs>`);
-  svg.push(`<rect width="${W}" height="${H}" fill="${esc(background)}"/>`);
+  if (!transparentBackground) {
+    svg.push(`<rect width="${W}" height="${H}" fill="${esc(background)}"/>`);
+  }
 
   if (showTitle && title) {
     svg.push(`<text x="${padding}" y="${padding + titlePx * 0.85}" font-family="${titleFontFace}" font-size="${titlePx}" font-weight="700" fill="${esc(titleColor)}">${esc(title)}</text>`);
@@ -514,7 +518,7 @@ function buildScatterSvg(W, H, baselinePoints, overlayPoints, opts) {
 function renderLineCanvas(canvas, series, extraLines, opts) {
   const W = canvas.width, H = canvas.height;
   const {
-    dpi = 96, padding = 20, background = '#ffffff',
+    dpi = 96, padding = 20, background = '#ffffff', transparentBackground = false,
     showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Aptos Narrow', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true, showLegend = true,
     showTopBorder = false, showRightBorder = false,
@@ -567,8 +571,12 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
   const legOffY = Number(legendOffsetY) || 0;
 
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, W, H);
+  if (!transparentBackground) {
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.clearRect(0, 0, W, H);
+  }
 
   if (showTitle && title) {
     ctx.font = `700 ${titlePx}px ${titleFont}, Arial, sans-serif`;
@@ -681,7 +689,7 @@ function renderLineCanvas(canvas, series, extraLines, opts) {
 function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
   const W = canvas.width, H = canvas.height;
   const {
-    dpi = 96, padding = 20, background = '#ffffff',
+    dpi = 96, padding = 20, background = '#ffffff', transparentBackground = false,
     showTitle = false, title = '', titleColor = '#0f172a', titleFont = 'Aptos Narrow', titleSize = 11,
     showAxes = true, showGridlines = true, showAxisLabels = true,
     showPointLabels = true, showArrows = true,
@@ -738,8 +746,12 @@ function renderScatterCanvas(canvas, baselinePoints, overlayPoints, opts) {
   const labelFontPx = fontPx(pointLabelSize, dpi);
 
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, W, H);
+  if (!transparentBackground) {
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.clearRect(0, 0, W, H);
+  }
 
   if (showTitle && title) {
     ctx.font = `700 ${titlePx}px ${titleFont}, Arial, sans-serif`;
@@ -894,6 +906,7 @@ function ChartExportDialog({
   const [titleSize, setTitleSize]   = useState(11);
   const [titleColor, setTitleColor] = useState('#0f172a');
   const [background, setBackground] = useState('#ffffff');
+  const [transparentBackground, setTransparentBackground] = useState(false);
 
   // ── Display settings ──
   const [showAxes, setShowAxes]             = useState(true);
@@ -988,6 +1001,7 @@ function ChartExportDialog({
     xTickOffsetX: clamp(xTickOffsetX, -400, 400),
     yTickOffsetX: clamp(yTickOffsetX, -400, 400),
     background,
+    transparentBackground,
     showTitle, title, titleFont, titleSize: clamp(titleSize, 6, 60), titleColor,
     showAxes, showGridlines, showAxisLabels,
     showTopBorder, showRightBorder,
@@ -1064,7 +1078,7 @@ function ChartExportDialog({
     else        renderScatterCanvas(preview, baselinePoints, overlayPoints, opts);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    open, widthPx, heightPx, padding, xAxisCaptionPadding, yAxisCaptionPadding, labelPadding, rightEdgePadding, leftEdgePadding, xAxisLabelOffsetY, xTickOffsetY, yAxisLabelOffsetX, yAxisLabelOffsetY, xTickOffsetX, yTickOffsetX, xTickOffsetX, yTickOffsetX, background,
+    open, widthPx, heightPx, padding, xAxisCaptionPadding, yAxisCaptionPadding, labelPadding, rightEdgePadding, leftEdgePadding, xAxisLabelOffsetY, xTickOffsetY, yAxisLabelOffsetX, yAxisLabelOffsetY, xTickOffsetX, yTickOffsetX, xTickOffsetX, yTickOffsetX, background, transparentBackground,
     showTitle, title, titleFont, titleSize, titleColor,
     showAxes, showGridlines, showAxisLabels, showLegend, showPointLabels, showArrows,
     showTopBorder, showRightBorder,
@@ -1078,7 +1092,7 @@ function ChartExportDialog({
   const handleSaveSettings = () => {
     const s = {
       filename, format, widthVal, heightVal, unit, dpi, lockAspect, padding, xAxisCaptionPadding, yAxisCaptionPadding, labelPadding, rightEdgePadding, leftEdgePadding, xAxisLabelOffsetY, xTickOffsetY, yAxisLabelOffsetX, yAxisLabelOffsetY, xTickOffsetX, yTickOffsetX,
-      showTitle, title, titleFont, titleSize, titleColor, background,
+      showTitle, title, titleFont, titleSize, titleColor, background, transparentBackground,
       showAxes, showGridlines, showAxisLabels, showLegend, showPointLabels, showArrows,
       showTopBorder, showRightBorder,
       seriesColors, legendFontSize, legendFont, legendOffsetX, legendOffsetY, legendCols, legendColGap, legendRowGap, legendLineLen,
@@ -1128,6 +1142,7 @@ function ChartExportDialog({
         if (s.titleSize !== undefined) setTitleSize(s.titleSize);
         if (s.titleColor !== undefined) setTitleColor(s.titleColor);
         if (s.background !== undefined) setBackground(s.background);
+        if (s.transparentBackground !== undefined) setTransparentBackground(Boolean(s.transparentBackground));
         if (s.showAxes !== undefined) setShowAxes(s.showAxes);
         if (s.showGridlines !== undefined) setShowGridlines(s.showGridlines);
         if (s.showAxisLabels !== undefined) setShowAxisLabels(s.showAxisLabels);
@@ -1257,6 +1272,10 @@ function ChartExportDialog({
                     <input style={{ ...inp, flex: 1, minWidth: 0 }} value={background} onChange={e => setBackground(e.target.value)} />
                   </div>
                 </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={transparentBackground} onChange={e => setTransparentBackground(e.target.checked)} />
+                  Transparent background
+                </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer' }}><input type="checkbox" checked={showTitle} onChange={e => setShowTitle(e.target.checked)} />Show title</label>
                 {showTitle && (<>
                   <div><label style={lbl}>Title text</label><input style={inp} value={title} onChange={e => setTitle(e.target.value)} /></div>

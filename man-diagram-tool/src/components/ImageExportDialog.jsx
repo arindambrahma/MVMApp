@@ -179,6 +179,7 @@ function ImageExportDialog({
   const [scaleCaptionPadding, setScaleCaptionPadding] = useState(12);
   const [scaleLabelPadding, setScaleLabelPadding] = useState(0);
   const [scaleEdgePadding, setScaleEdgePadding] = useState(-147);
+  const [transparentBackground, setTransparentBackground] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(100);
   const [settingsTab, setSettingsTab] = useState('layout');
   const previewCanvasRef = useRef(null);
@@ -296,8 +297,14 @@ function ImageExportDialog({
       : avail;
     const offsetX = clamp(plotOffsetX, -avail.w, avail.w);
     const offsetY = clamp(plotOffsetY, -avail.h, avail.h);
-    plot.x = clamp(plot.x + offsetX, avail.x, avail.x + Math.max(0, avail.w - plot.w));
-    plot.y = clamp(plot.y + offsetY, avail.y, avail.y + Math.max(0, avail.h - plot.h));
+    const baseX = plot.x + offsetX;
+    const baseY = plot.y + offsetY;
+    const minX = Math.max(0, avail.x - avail.w);
+    const maxX = Math.min(w - plot.w, avail.x + avail.w);
+    const minY = Math.max(0, avail.y - avail.h);
+    const maxY = Math.min(h - plot.h, avail.y + avail.h);
+    plot.x = clamp(baseX, Math.min(minX, maxX), Math.max(minX, maxX));
+    plot.y = clamp(baseY, Math.min(minY, maxY), Math.max(minY, maxY));
     return { pad, titleHeight, plot, axisHeader, axisValue };
   };
 
@@ -690,7 +697,9 @@ function ImageExportDialog({
       const svg = [];
       svg.push('<?xml version="1.0" encoding="UTF-8"?>');
       svg.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
-      svg.push(`<rect width="${w}" height="${h}" fill="#ffffff"/>`);
+      if (!transparentBackground) {
+        svg.push(`<rect width="${w}" height="${h}" fill="#ffffff"/>`);
+      }
       if (showTitle) {
         svg.push(`<text x="${layout.pad}" y="${layout.pad + titlePx}" font-family="${escape(titleFont)}, Arial, sans-serif" font-size="${titlePx}" font-weight="700" fill="${escape(titleColor)}">${escape(title)}</text>`);
       }
@@ -731,7 +740,9 @@ function ImageExportDialog({
     const svg = [];
     svg.push(`<?xml version="1.0" encoding="UTF-8"?>`);
     svg.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
-    svg.push(`<rect width="${w}" height="${h}" fill="#ffffff"/>`);
+    if (!transparentBackground) {
+      svg.push(`<rect width="${w}" height="${h}" fill="#ffffff"/>`);
+    }
     if (showTitle) {
       const titlePx = fontPx(titleSize, 6, 90);
       svg.push(`<text x="${layout.pad}" y="${layout.pad + titlePx}" font-family="${escape(titleFont)}, Arial, sans-serif" font-size="${titlePx}" font-weight="700" fill="${escape(titleColor)}">${escape(title)}</text>`);
@@ -879,8 +890,12 @@ function ImageExportDialog({
     canvas.height = Math.floor(h);
     const ctx = canvas.getContext('2d');
     const layout = computeLayout(canvas.width, canvas.height);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!transparentBackground) {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
     if (showTitle) {
       ctx.fillStyle = titleColor;
       ctx.font = `700 ${fontPx(titleSize, 6, 90)}px ${titleFont}, Arial, sans-serif`;
@@ -987,6 +1002,7 @@ function ImageExportDialog({
     scaleCaptionPadding,
     scaleLabelPadding,
     scaleEdgePadding,
+    transparentBackground,
     plotData,
     plotOverlayPoints,
     plotPoints,
@@ -1100,6 +1116,7 @@ function ImageExportDialog({
     scaleCaptionPadding,
     scaleLabelPadding,
     scaleEdgePadding,
+    transparentBackground,
   });
 
   const handleSaveSettings = () => {
@@ -1197,6 +1214,7 @@ function ImageExportDialog({
     if (has('scaleCaptionPadding')) setScaleCaptionPadding(num(data.scaleCaptionPadding, 0, 200));
     if (has('scaleLabelPadding')) setScaleLabelPadding(num(data.scaleLabelPadding, 0, 200));
     if (has('scaleEdgePadding')) setScaleEdgePadding(num(data.scaleEdgePadding, -400, 400));
+    if (has('transparentBackground')) setTransparentBackground(Boolean(data.transparentBackground));
   };
 
   const handleImportSettings = async (event) => {
@@ -1310,6 +1328,10 @@ function ImageExportDialog({
               </div>
             </>
           )}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 8 }}>
+            <input type="checkbox" checked={transparentBackground} onChange={(e) => setTransparentBackground(e.target.checked)} />
+            Transparent background
+          </label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
             <label>
               <span style={{ fontSize: 11, color: '#475569' }}>Units</span>
