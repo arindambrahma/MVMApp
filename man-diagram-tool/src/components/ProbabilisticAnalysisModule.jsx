@@ -337,6 +337,11 @@ export default function ProbabilisticAnalysisModule({ result, baseline, nodes })
               i.e. the margin is still positive despite uncertainty.
               Green ≥ 90%, yellow 70–90%, red &lt; 70%.
             </div>
+
+            <div style={{ marginBottom: 14, padding: '8px 12px', background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, color: '#475569' }}>
+              <strong>Interpretation:</strong> Use this table to spot margins at risk of going negative under uncertainty.
+              Lower P(excess &gt; 0) indicates a higher chance of redesign or constraint violations in those margins.
+            </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
                 <thead>
@@ -373,17 +378,6 @@ export default function ProbabilisticAnalysisModule({ result, baseline, nodes })
                 </tbody>
               </table>
             </div>
-
-            {/* Baseline comparison note */}
-            {baselineData?.result && (
-              <div style={{ marginTop: 16, padding: '10px 14px', background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, fontSize: 12, color: '#92400E' }}>
-                <strong>Deterministic baseline:</strong> The amber line in each histogram and the nominal MVM values.
-                Baseline excess:{' '}
-                {Object.entries(baselineData.result.excess || {}).map(([m, v]) =>
-                  `${m.replace('E_', 'E')} = ${fmt(v)}`
-                ).join('  ·  ')}
-              </div>
-            )}
           </div>
         )}
 
@@ -394,6 +388,21 @@ export default function ProbabilisticAnalysisModule({ result, baseline, nodes })
               Distribution of excess for each margin across {n_samples.toLocaleString()} Monte Carlo samples.
               The dashed line at 0% marks failure (negative excess). The amber line is the deterministic baseline.
             </div>
+
+            <div style={{ marginBottom: 14, padding: '8px 12px', background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, color: '#475569' }}>
+              <strong>Interpretation:</strong> Wide or left-shifted histograms indicate unstable margins.
+              If much of the distribution falls left of zero, that margin frequently fails under uncertainty.
+            </div>
+            {baselineData?.result && (
+              <div style={{ marginBottom: 16, padding: '10px 14px', background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, fontSize: 12, color: '#92400E' }}>
+                <strong>Deterministic baseline:</strong> The amber line in each histogram and the nominal MVM values here.
+                Baseline excess:{' '}
+                {Object.entries(baselineData.result.excess || {}).map(([m, v]) =>
+                  `${m.replace('E_', 'E')} = ${fmt(v)}`
+                ).join('  |  ')}
+              </div>
+            )}
+
             {marginNames.length === 0 && (
               <div style={{ color: '#94A3B8', textAlign: 'center', marginTop: 40 }}>No margin samples collected.</div>
             )}
@@ -435,6 +444,10 @@ export default function ProbabilisticAnalysisModule({ result, baseline, nodes })
               Probabilistic Margin Value Plot. Each bubble is placed at the mean (Impact, Absorption)
               and error bars show the 5th–95th percentile range across samples. Bubble size reflects mean excess.
             </div>
+            <div style={{ marginBottom: 14, padding: '8px 12px', background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, color: '#475569' }}>
+              <strong>Interpretation:</strong> Prefer margins in the high-absorption/low-impact quadrant.
+              Wide error bars indicate sensitivity to uncertainty and merit further attention.
+            </div>
             <div style={{ display: 'flex', justifyContent: 'center' }}>
               <div style={{ background: '#fff', borderRadius: 10, padding: 16, boxShadow: '0 1px 6px rgba(0,0,0,0.08)', border: '1px solid #E2E8F0' }}>
                 <ProbMVMPlot statistics={statistics} baseline={baselineData?.result} />
@@ -460,6 +473,10 @@ export default function ProbabilisticAnalysisModule({ result, baseline, nodes })
             <div style={{ fontSize: 13, color: '#475569', marginBottom: 16 }}>
               Distribution of performance parameter values across Monte Carlo samples.
               The blue band spans the 5th–95th percentile; the dark line marks the mean.
+            </div>
+            <div style={{ marginBottom: 14, padding: '8px 12px', background: '#F1F5F9', border: '1px solid #E2E8F0', borderRadius: 8, fontSize: 12, color: '#475569' }}>
+              <strong>Interpretation:</strong> Use these distributions to gauge performance robustness.
+              If critical performance parameters show wide spreads, the design may be sensitive to upstream uncertainty.
             </div>
             {perfNames.length === 0 && (
               <div style={{ color: '#94A3B8', textAlign: 'center', marginTop: 40 }}>No performance parameters tracked.</div>
