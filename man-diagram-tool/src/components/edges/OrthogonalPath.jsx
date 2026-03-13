@@ -45,6 +45,61 @@ function pointAtFraction(points, fraction = 0.5) {
   return points[points.length - 1];
 }
 
+function polylineLength(points) {
+  let total = 0;
+  for (let i = 1; i < (points || []).length; i++) {
+    const dx = points[i].x - points[i - 1].x;
+    const dy = points[i].y - points[i - 1].y;
+    total += Math.hypot(dx, dy);
+  }
+  return total;
+}
+
+function slicePolyline(points, startDist, endDist) {
+  if (!points || points.length < 2) return [];
+  const total = polylineLength(points);
+  const start = Math.max(0, Math.min(total, startDist));
+  const end = Math.max(0, Math.min(total, endDist));
+  if (end - start <= 0.5) return [];
+
+  const out = [];
+  let acc = 0;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+    if (segLen <= 1e-6) continue;
+    const segStart = acc;
+    const segEnd = acc + segLen;
+    if (segEnd < start) {
+      acc = segEnd;
+      continue;
+    }
+    if (segStart > end) break;
+
+    const localStart = Math.max(start, segStart);
+    const localEnd = Math.min(end, segEnd);
+    const t0 = (localStart - segStart) / segLen;
+    const t1 = (localEnd - segStart) / segLen;
+    const p0 = {
+      x: a.x + (b.x - a.x) * t0,
+      y: a.y + (b.y - a.y) * t0,
+    };
+    const p1 = {
+      x: a.x + (b.x - a.x) * t1,
+      y: a.y + (b.y - a.y) * t1,
+    };
+    if (out.length === 0) out.push(p0);
+    else {
+      const last = out[out.length - 1];
+      if (last.x !== p0.x || last.y !== p0.y) out.push(p0);
+    }
+    out.push(p1);
+    acc = segEnd;
+  }
+  return out.length >= 2 ? out : [];
+}
+
 // Move a draggable segment perpendicularly. Stub segments (index 0 and n-2) are not draggable.
 // For a horizontal segment (same y): moves in y. For vertical: moves in x.
 function moveSegment(points, segIdx, delta) {
@@ -92,6 +147,25 @@ function OrthogonalPath({
   const effectiveRoute = liveRoute || route;
   const pathD = pointsToSvgPath(effectiveRoute);
   const arrowPts = computeArrowhead(effectiveRoute);
+  const endPoint = effectiveRoute[effectiveRoute.length - 1] || effectiveRoute[0];
+  const preEndPoint = effectiveRoute.length > 1
+    ? effectiveRoute[effectiveRoute.length - 2]
+    : endPoint;
+  const endDx = endPoint.x - preEndPoint.x;
+  const endDy = endPoint.y - preEndPoint.y;
+  const endLen = Math.hypot(endDx, endDy) || 1;
+  const endUx = endDx / endLen;
+  const endUy = endDy / endLen;
+  const labelDistBack = Math.max(14, Math.min(0.3 * endLen, 46));
+  const labelX = endPoint.x - endUx * labelDistBack;
+  const labelY = endPoint.y - endUy * labelDistBack;
+  const routeLen = polylineLength(effectiveRoute);
+  const labelDistFromStart = Math.max(0, routeLen - labelDistBack);
+  const gapHalf = 8;
+  const gapStart = Math.max(0, labelDistFromStart - gapHalf);
+  const gapEnd = Math.min(routeLen, labelDistFromStart + gapHalf);
+  const leadRoute = slicePolyline(effectiveRoute, 0, gapStart);
+  const tailRoute = slicePolyline(effectiveRoute, gapEnd, routeLen);
 
   const color = edge.edgeType === EDGE_TYPES.THRESHOLD ? '#DC2626'
     : edge.edgeType === EDGE_TYPES.DECIDED ? '#111827'
@@ -252,16 +326,29 @@ function OrthogonalPath({
         />
       )}
 
-      {/* Visible line — thin, crisp */}
-      <path
-        d={pathD}
-        fill="none"
-        stroke={hovered ? hoverColor : color}
-        strokeWidth={hovered || selected ? 1.9 : 1.0}
-        strokeLinecap="round"
-        opacity={hovered ? 1 : 0.95}
-        style={{ pointerEvents: 'none' }}
-      />
+      {/* Visible line — thin, crisp (broken at label) */}
+      {(leadRoute.length >= 2) && (
+        <path
+          d={pointsToSvgPath(leadRoute)}
+          fill="none"
+          stroke={hovered ? hoverColor : color}
+          strokeWidth={hovered || selected ? 1.9 : 1.0}
+          strokeLinecap="round"
+          opacity={hovered ? 1 : 0.95}
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
+      {(tailRoute.length >= 2) && (
+        <path
+          d={pointsToSvgPath(tailRoute)}
+          fill="none"
+          stroke={hovered ? hoverColor : color}
+          strokeWidth={hovered || selected ? 1.9 : 1.0}
+          strokeLinecap="round"
+          opacity={hovered ? 1 : 0.95}
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
 
       {/* Crossing jumps */}
       {(jumps || []).map((j, idx) => {
@@ -334,6 +421,21 @@ function OrthogonalPath({
         fill={color}
         style={{ pointerEvents: 'none' }}
       />
+      {/* Edge label near target */}
+      {!overlayOnly && (
+        <text
+          x={labelX}
+          y={labelY}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={9}
+          fontFamily="system-ui, sans-serif"
+          fill={color}
+          style={{ pointerEvents: 'none' }}
+        >
+          {srcNode.label}
+        </text>
+      )}
 
       {/* Probe latches attached to this edge */}
       {!overlayOnly && (attachedProbes || []).map((probe) => {
