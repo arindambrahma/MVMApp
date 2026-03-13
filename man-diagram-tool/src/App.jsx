@@ -11,6 +11,7 @@ import SensitivityStudyModule from './components/SensitivityStudyModule';
 import RedesignAnalysisModule from './components/RedesignAnalysisModule';
 import ProbabilisticAnalysisModule from './components/ProbabilisticAnalysisModule';
 import DsmAnalysisModule from './components/DsmAnalysisModule';
+import ChangePropagationModule from './components/ChangePropagationModule';
 import ReportingModule from './components/ReportingModule';
 import ExportModal from './components/ExportModal';
 import PreAnalysisModal from './components/PreAnalysisModal';
@@ -258,6 +259,7 @@ function App() {
         if (!next.includes('sensitivity')) next.push('sensitivity');
         if (!next.includes('redesign')) next.push('redesign');
         if (!next.includes('dsm')) next.push('dsm');
+        if (!next.includes('propagation')) next.push('propagation');
         if (!next.includes('reporting')) next.push('reporting');
         return next;
       });
@@ -319,7 +321,7 @@ function App() {
   }, [state.nodes]);
 
   const openWorkspaceTab = useCallback((tabId) => {
-    if (tabId !== 'sensitivity' && tabId !== 'dsm' && tabId !== 'redesign' && tabId !== 'reporting' && tabId !== 'probabilistic') return;
+    if (tabId !== 'sensitivity' && tabId !== 'dsm' && tabId !== 'redesign' && tabId !== 'reporting' && tabId !== 'probabilistic' && tabId !== 'propagation') return;
     if (!analysisResult) {
       setAnalysisError('Run analysis first to open analysis modules.');
       return;
@@ -351,6 +353,7 @@ function App() {
     if (tabId === 'reporting') return 'Reporting';
     if (tabId === 'probabilistic') return 'Probabilistic';
     if (tabId === 'dsm') return 'DSM';
+    if (tabId === 'propagation') return 'Change Propagation';
     if (tabId.startsWith('subCanvas_')) {
       const nodeId = tabId.slice('subCanvas_'.length);
       const node = state.nodes.find(n => n.id === nodeId);
@@ -406,6 +409,7 @@ function App() {
         onOpenModel={() => setActiveTab('model')}
         onOpenSensitivity={() => openWorkspaceTab('sensitivity')}
         onOpenDsm={() => openWorkspaceTab('dsm')}
+        onOpenPropagation={() => openWorkspaceTab('propagation')}
         onOpenReporting={() => openWorkspaceTab('reporting')}
         analysisReady={Boolean(analysisResult)}
         analysisLoading={analysisLoading}
@@ -534,6 +538,14 @@ function App() {
       ) : activeTab === 'dsm' ? (
         <div className="analysis-workspace">
           <DsmAnalysisModule
+            nodes={state.nodes}
+            edges={state.edges}
+            analysisResult={analysisResult}
+          />
+        </div>
+      ) : activeTab === 'propagation' ? (
+        <div className="analysis-workspace">
+          <ChangePropagationModule
             nodes={state.nodes}
             edges={state.edges}
             analysisResult={analysisResult}
