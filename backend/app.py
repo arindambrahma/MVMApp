@@ -1380,6 +1380,7 @@ def analyse_probabilistic():
         raw_input_weights = data.get("inputWeights") or data.get("input_weights") or {}
         n_samples = max(100, min(5000, int(data.get("nSamples", 1000))))
         seed = data.get("seed", None)
+        sampling = str(data.get("sampling") or "mc").lower()
 
         if seed is not None:
             try:
@@ -1413,7 +1414,7 @@ def analyse_probabilistic():
                     out.append(n)
                     continue
 
-                dist = unc.get("distribution", "normal")
+                dist = str(unc.get("distribution", "normal")).lower()
                 sampled = nominal
                 if dist == "normal":
                     cov_s = str(unc.get("cov") or "").strip()
@@ -1441,13 +1442,107 @@ def analyse_probabilistic():
                 out.append(n2)
             return out
 
-        samples = {"excess": {}, "weighted_impact": {}, "weighted_absorption": {}, "performance": {}}
+        def _erfinv(x):
+            a = 0.147
+            x = np.clip(x, -0.999999, 0.999999)
+            sign = np.sign(x)
+            ln = np.log(1 - x * x)
+            first = 2 / (math.pi * a) + ln / 2
+            return sign * np.sqrt(np.sqrt(first * first - ln / a) - first)
+
+        def build_lhs_samples(nodes):
+            uncertain = []
+            for idx, n in enumerate(nodes):
+                unc = n.get("uncertainty") or {}
+                if not unc.get("enabled"):
+                    continue
+                if n["type"] == "input":
+                    nom_str = str(n.get("value") or 0)
+                elif n["type"] == "decision":
+                    nom_str = str(n.get("decidedValue") or 0)
+                else:
+                    continue
+                try:
+                    nominal = float(nom_str)
+                except (ValueError, TypeError):
+                    continue
+
+                dist = str(unc.get("distribution", "normal")).lower()
+                params = {"distribution": dist, "nominal": nominal, "node_index": idx}
+                if dist == "normal":
+                    cov_s = str(unc.get("cov") or "").strip()
+                    std_s = str(unc.get("std") or "").strip()
+                    sigma = None
+                    if cov_s and cov_s not in ("null", "undefined", ""):
+                        try:
+                            sigma = abs(nominal * float(cov_s) / 100.0)
+                        except (ValueError, TypeError):
+                            sigma = None
+                    elif std_s and std_s not in ("null", "undefined", ""):
+                        try:
+                            sigma = abs(float(std_s))
+                        except (ValueError, TypeError):
+                            sigma = None
+                    params["sigma"] = sigma
+                elif dist == "uniform":
+                    lo_s = str(unc.get("lower") or "").strip()
+                    hi_s = str(unc.get("upper") or "").strip()
+                    try:
+                        params["lower"] = float(lo_s)
+                        params["upper"] = float(hi_s)
+                    except (ValueError, TypeError):
+                        params["lower"] = None
+                        params["upper"] = None
+                uncertain.append(params)
+
+            if not uncertain:
+                return None
+
+            n = n_samples
+            samples_by_node = {u["node_index"]: np.full(n, u["nominal"], dtype=float) for u in uncertain}
+            for u in uncertain:
+                base = (np.arange(n) + np.random.rand(n)) / n
+                np.random.shuffle(base)
+                if u["distribution"] == "uniform":
+                    lo = u.get("lower")
+                    hi = u.get("upper")
+                    if lo is None or hi is None:
+                        samples = np.full(n, u["nominal"], dtype=float)
+                    else:
+                        samples = lo + base * (hi - lo)
+                else:
+                    sigma = u.get("sigma")
+                    if sigma is None or sigma == 0:
+                        samples = np.full(n, u["nominal"], dtype=float)
+                    else:
+                        z = math.sqrt(2) * _erfinv(2 * base - 1)
+                        samples = u["nominal"] + sigma * z
+                samples_by_node[u["node_index"]] = samples
+            return samples_by_node
+
+        samples = {"excess": {}, "weighted_impact": {}, "weighted_absorption": {}, "performance": {}, "params": {}}
         n_failed = 0
 
-        for _ in range(n_samples):
-            perturbed = perturb_nodes(gui_nodes)
+        lhs_samples = build_lhs_samples(gui_nodes) if sampling == "lhs" else None
+
+        for i in range(n_samples):
+            if lhs_samples is None:
+                perturbed = perturb_nodes(gui_nodes)
+            else:
+                perturbed = []
+                for idx, n in enumerate(gui_nodes):
+                    if idx in lhs_samples:
+                        n2 = dict(n)
+                        field = "value" if n["type"] == "input" else "decidedValue"
+                        n2[field] = str(lhs_samples[idx][i])
+                        perturbed.append(n2)
+                    else:
+                        perturbed.append(n)
             try:
                 res, _eng, pvals = _run_analysis(perturbed, gui_edges, raw_perf_weights, raw_input_weights)
+                for k, v in pvals.items():
+                    if isinstance(v, (int, float, np.integer, np.floating)):
+                        samples["params"].setdefault(k, []).append(float(v))
                 for m, v in res.excess.items():
                     samples["excess"].setdefault(m, []).append(float(v))
                 for m, v in res.weighted_impact.items():
@@ -1491,6 +1586,7 @@ def analyse_probabilistic():
         return jsonify({
             "success": True,
             "mode": "probabilistic",
+            "sampling": sampling,
             "n_samples": n_samples - n_failed,
             "n_failed": n_failed,
             "baseline": {

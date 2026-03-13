@@ -171,6 +171,19 @@ function PreAnalysisModal({
                     style={{ width: '100%', padding: '5px 7px', border: '1px solid #D1D5DB', borderRadius: 5, fontSize: 12, boxSizing: 'border-box' }}
                   />
                 </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={{ fontSize: 11, color: '#64748B', display: 'block', marginBottom: 3 }}>
+                    Sampling method
+                  </label>
+                  <select
+                    value={mcSettings?.sampling || 'mc'}
+                    onChange={e => onChangeMcSettings({ ...(mcSettings || {}), sampling: e.target.value })}
+                    style={{ width: '100%', padding: '5px 7px', border: '1px solid #D1D5DB', borderRadius: 5, fontSize: 12, boxSizing: 'border-box' }}
+                  >
+                    <option value="mc">Monte Carlo (random)</option>
+                    <option value="lhs">Latin Hypercube (stratified)</option>
+                  </select>
+                </div>
               </div>
             )}
             {(mcSettings?.mode || 'deterministic') === 'probabilistic' && (

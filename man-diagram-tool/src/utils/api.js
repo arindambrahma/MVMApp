@@ -154,7 +154,7 @@ export async function validateFunction(functionCode, inputs, rootSelectionPolicy
 }
 
 export async function runProbabilisticAnalysis(nodes, edges, options = {}) {
-  const { perfWeights = {}, inputWeights = {}, nSamples = 1000, seed = null } = options;
+  const { perfWeights = {}, inputWeights = {}, nSamples = 1000, seed = null, sampling = 'mc' } = options;
   const compatNodes = toLegacyCompatibleNodes(nodes, edges);
   const res = await fetch('/api/analyse-probabilistic', {
     method: 'POST',
@@ -166,6 +166,7 @@ export async function runProbabilisticAnalysis(nodes, edges, options = {}) {
       inputWeights,
       nSamples,
       seed: (seed !== '' && seed !== null && seed !== undefined) ? Number(seed) : null,
+      sampling,
     }),
   });
 

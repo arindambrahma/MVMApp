@@ -48,7 +48,7 @@ function App() {
   const [analysisProgress, setAnalysisProgress] = useState(null);
   const [analysisError, setAnalysisError] = useState(null);
   const [analysisWeights, setAnalysisWeights] = useState({ perf: {}, input: {} });
-  const [mcSettings, setMcSettings] = useState({ mode: 'deterministic', nSamples: 1000, seed: '' });
+  const [mcSettings, setMcSettings] = useState({ mode: 'deterministic', nSamples: 1000, seed: '', sampling: 'mc' });
   const [probabilisticResult, setProbabilisticResult] = useState(null);
   const [reportCharts, setReportCharts] = useState([]);
   const [backendVersion, setBackendVersion] = useState(null);
@@ -274,6 +274,7 @@ function App() {
           inputWeights: effectiveWeights.inputWeights,
           nSamples: mcSettings.nSamples || 1000,
           seed: mcSettings.seed,
+          sampling: mcSettings.sampling || 'mc',
         });
         setProbabilisticResult(probData);
         setWorkspaceTabs((prev) => {
