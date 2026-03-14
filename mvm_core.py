@@ -308,9 +308,12 @@ class MANEngine:
                     impact_matrix[mn.name][pp] = 0.0
                 else:
                     raw = (pp_base - pp_mod) / pp_mod
-                    # Flip sign for 'lower_better' so that a margin causing the
-                    # parameter to rise (worsen) still yields a positive impact.
-                    sign = -1 if self._perf_polarity.get(pp, 'higher_better') == 'lower_better' else 1
+                    # Convention: positive impact = undesirable (margin hurts performance),
+                    # negative impact = beneficial (margin helps performance).
+                    #
+                    # higher_better: baseline > zeroed when margin helps → raw > 0 → negate
+                    # lower_better:  baseline > zeroed when margin hurts  → raw > 0 → keep
+                    sign = 1 if self._perf_polarity.get(pp, 'higher_better') == 'lower_better' else -1
                     impact_matrix[mn.name][pp] = sign * raw
 
         # ── Metric 3: Deterioration & Absorption ───────────────────
