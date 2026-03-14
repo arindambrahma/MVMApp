@@ -818,6 +818,42 @@ function PropertyPanel({
         />
       )}
 
+      {node.type === 'performance' && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>
+            Polarity
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[
+              { value: 'higher_better', label: '↑ Higher is better' },
+              { value: 'lower_better',  label: '↓ Lower is better'  },
+            ].map(opt => {
+              const active = (node.polarity || 'higher_better') === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => update('polarity', opt.value)}
+                  style={{
+                    flex: 1,
+                    padding: '5px 4px',
+                    borderRadius: 6,
+                    border: `1px solid ${active ? '#DC2626' : '#CBD5E1'}`,
+                    background: active ? '#FEF2F2' : '#FFFFFF',
+                    color: active ? '#DC2626' : '#64748B',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {node.type === 'input' && (
         <Field
           label="Value"

@@ -109,6 +109,7 @@ class MANEngine:
         self._margin_nodes: List[MarginNode] = []
         self._input_param_names: List[str] = []
         self._perf_param_names: List[str] = []
+        self._perf_polarity: Dict[str, str] = {}  # 'higher_better' | 'lower_better'
         self._exec_order: List[Any] = []   # mixed list of node objects in run order
 
     # ------------------------------------------------------------------
@@ -130,6 +131,16 @@ class MANEngine:
         for n in names:
             if n not in self._perf_param_names:
                 self._perf_param_names.append(n)
+
+    def mark_performance_polarity(self, name: str, polarity: str) -> None:
+        """Set polarity for a performance parameter.
+
+        polarity: 'higher_better' (default) or 'lower_better'.
+        For 'lower_better' parameters the impact sign is flipped so that
+        a margin causing the parameter to *increase* (deteriorate) yields a
+        positive impact value, consistent with 'higher_better' semantics.
+        """
+        self._perf_polarity[name] = polarity
 
     def add_calc(self, node: CalculationNode) -> None:
         self._calc_nodes.append(node)
@@ -296,7 +307,14 @@ class MANEngine:
                 if abs(pp_mod) < 1e-12 * ref:
                     impact_matrix[mn.name][pp] = 0.0
                 else:
-                    impact_matrix[mn.name][pp] = (pp_base - pp_mod) / pp_mod
+                    raw = (pp_base - pp_mod) / pp_mod
+                    # Convention: positive impact = undesirable (margin hurts performance),
+                    # negative impact = beneficial (margin helps performance).
+                    #
+                    # higher_better: baseline > zeroed when margin helps → raw > 0 → negate
+                    # lower_better:  baseline > zeroed when margin hurts  → raw > 0 → keep
+                    sign = 1 if self._perf_polarity.get(pp, 'higher_better') == 'lower_better' else -1
+                    impact_matrix[mn.name][pp] = sign * raw
 
         # ── Metric 3: Deterioration & Absorption ───────────────────
         deterioration: Dict[str, float] = {}

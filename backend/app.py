@@ -863,6 +863,7 @@ def analyse():
                     param_values[var_name] = 0.0
 
                 engine.mark_performance(var_name)
+                engine.mark_performance_polarity(var_name, node.get('polarity', 'higher_better'))
 
             elif node['type'] in {'calc', 'calcFunction'}:
                 in_edges = [e for e in norm_edges if e['to'] == nid]
@@ -1208,6 +1209,7 @@ def _run_analysis(gui_nodes, gui_edges, raw_perf_weights, raw_input_weights):
                 engine.set_param(var_name, 0.0)
                 param_values[var_name] = 0.0
             engine.mark_performance(var_name)
+            engine.mark_performance_polarity(var_name, node.get("polarity", "higher_better"))
 
         elif node["type"] in {"calc", "calcFunction"}:
             in_edges = [e for e in norm_edges if e["to"] == nid]
