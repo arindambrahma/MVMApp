@@ -1,0 +1,734 @@
+{
+  "nodes": [
+    {
+      "id": "Lh",
+      "type": "input",
+      "x": 90,
+      "y": 170,
+      "label": "Lh",
+      "description": "Peak space-heating load.",
+      "unit": "kW",
+      "value": "10",
+      "equation": "",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": true,
+      "stepNumber": null,
+      "autoLabel": "I1",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "k_backup",
+      "type": "input",
+      "x": 90,
+      "y": 280,
+      "label": "k_backup",
+      "description": "Required backup fraction of heating load under heat-pump failure.",
+      "unit": "-",
+      "value": "0.5",
+      "equation": "",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": true,
+      "stepNumber": null,
+      "autoLabel": "I2",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "Hp_req",
+      "type": "calc",
+      "x": 239.3894196320416,
+      "y": 43.98050537749977,
+      "label": "Hp_req",
+      "description": "Required heat-pump capacity, sized to 80% of peak heating load.",
+      "unit": "kW",
+      "value": "",
+      "equation": "0.8 * Lh",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": "cluster_hp",
+      "isOfInterest": false,
+      "stepNumber": 1,
+      "autoLabel": "F1",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "Bb_req",
+      "type": "calc",
+      "x": 240,
+      "y": 200,
+      "label": "Bb_req",
+      "description": "Required boiler capacity for backup service.",
+      "unit": "kW",
+      "value": "",
+      "equation": "k_backup * Lh",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": "cluster_boiler",
+      "isOfInterest": false,
+      "stepNumber": 2,
+      "autoLabel": "F2",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "Fc_req",
+      "type": "calc",
+      "x": 234.34774701087562,
+      "y": 359.8458526217617,
+      "label": "Fc_req",
+      "description": "Required fan-coil capacity equals peak space-heating load.",
+      "unit": "kW",
+      "value": "",
+      "equation": "Lh",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": "cluster_fancoil",
+      "isOfInterest": false,
+      "stepNumber": 3,
+      "autoLabel": "F3",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "D1",
+      "type": "decision",
+      "x": 390.4593968044719,
+      "y": 40.770573860208955,
+      "label": "Heat Pump\nSelection",
+      "description": "Select next standard heat-pump size >= Hp_req. Chosen: 10 kW.",
+      "unit": "kW",
+      "value": "",
+      "equation": "",
+      "functionCode": "",
+      "decidedValue": "10",
+      "clusterId": "cluster_hp",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "D1",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "D2",
+      "type": "decision",
+      "x": 390,
+      "y": 200,
+      "label": "Boiler\nSelection",
+      "description": "Select next standard boiler size >= Bb_req. Chosen: 6 kW.",
+      "unit": "kW",
+      "value": "",
+      "equation": "",
+      "functionCode": "",
+      "decidedValue": "6",
+      "clusterId": "cluster_boiler",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "D2",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "D3",
+      "type": "decision",
+      "x": 386.4877013557362,
+      "y": 358.7758754493314,
+      "label": "Fan Coil\nSelection",
+      "description": "Select next standard fan-coil size >= Fc_req. Chosen: 12 kW.",
+      "unit": "kW",
+      "value": "",
+      "equation": "",
+      "functionCode": "",
+      "decidedValue": "12",
+      "clusterId": "cluster_fancoil",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "D3",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "E1",
+      "type": "margin",
+      "x": 539.3894196320416,
+      "y": 43.98050537749977,
+      "label": "E1",
+      "description": "Heat-pump capacity margin.",
+      "unit": "kW",
+      "value": "",
+      "equation": "",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": "cluster_hp",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "E1",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "E2",
+      "type": "margin",
+      "x": 540,
+      "y": 200,
+      "label": "E2",
+      "description": "Boiler capacity margin.",
+      "unit": "kW",
+      "value": "",
+      "equation": "",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": "cluster_boiler",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "E2",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "E3",
+      "type": "margin",
+      "x": 537.5576785281664,
+      "y": 357.70589827690117,
+      "label": "E3",
+      "description": "Fan-coil capacity margin.",
+      "unit": "kW",
+      "value": "",
+      "equation": "",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": "cluster_fancoil",
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "E3",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "Q_norm",
+      "type": "calc",
+      "x": 700,
+      "y": 110,
+      "label": "Q_norm",
+      "description": "Normal-operation deliverable heat. Fan coil limits what can be delivered.",
+      "unit": "kW",
+      "value": "",
+      "equation": "min(E3, E1 + E2)",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": false,
+      "stepNumber": 4,
+      "autoLabel": "F4",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "R_norm",
+      "type": "calc",
+      "x": 821.4808217925103,
+      "y": 113.20993151729083,
+      "label": "R_norm",
+      "description": "Normal-operation service fraction.",
+      "unit": "-",
+      "value": "",
+      "equation": "min(1, Q_norm / Lh)",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": false,
+      "stepNumber": 5,
+      "autoLabel": "F5",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "Q_fail",
+      "type": "calc",
+      "x": 700,
+      "y": 240,
+      "label": "Q_fail",
+      "description": "Deliverable heat under heat-pump outage. Boiler only, still limited by fan coil.",
+      "unit": "kW",
+      "value": "",
+      "equation": "min(E3, E2)",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": false,
+      "stepNumber": 6,
+      "autoLabel": "F6",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "R_fail",
+      "type": "calc",
+      "x": 824.690753309801,
+      "y": 245.34988586215135,
+      "label": "R_fail",
+      "description": "Service fraction under heat-pump outage.",
+      "unit": "-",
+      "value": "",
+      "equation": "min(1, Q_fail / Lh)",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": false,
+      "stepNumber": 7,
+      "autoLabel": "F7",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "Rel",
+      "type": "calc",
+      "x": 932.2618718607177,
+      "y": 176.06997717243027,
+      "label": "Rel",
+      "description": "Overall reliability / service-assurance proxy.",
+      "unit": "-",
+      "value": "",
+      "equation": "0.5 * R_norm + 0.5 * R_fail",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": false,
+      "stepNumber": 8,
+      "autoLabel": "F8",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "Ccap",
+      "type": "calc",
+      "x": 700,
+      "y": 360,
+      "label": "Ccap",
+      "description": "Installed-cost proxy.",
+      "unit": "cost_proxy",
+      "value": "",
+      "equation": "600 * E1 + 180 * E2 + 80 * E3",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": false,
+      "stepNumber": 9,
+      "autoLabel": "F9",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "Pop",
+      "type": "calc",
+      "x": 817.2009131027892,
+      "y": 362.13995434486054,
+      "label": "Pop",
+      "description": "Operating-power penalty proxy.",
+      "unit": "kW_e_proxy",
+      "value": "",
+      "equation": "0.33 * E1 + 1.0 * E2 + 0.05 * E3",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": false,
+      "stepNumber": 10,
+      "autoLabel": "F10",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "Pen",
+      "type": "calc",
+      "x": 926.9119859985664,
+      "y": 357.86004565513946,
+      "label": "Pen",
+      "description": "Combined cost + power-consumption penalty proxy.",
+      "unit": "penalty_proxy",
+      "value": "",
+      "equation": "Ccap + 1000 * Pop",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": false,
+      "stepNumber": 11,
+      "autoLabel": "F11",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "P1",
+      "type": "performance",
+      "x": 1038.3928077910766,
+      "y": 176.06997717243027,
+      "label": "P1",
+      "description": "Reliability / service-assurance performance parameter. Higher is better.",
+      "unit": "-",
+      "value": "",
+      "equation": "Rel",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "P1",
+      "rootSelectionPolicy": "min"
+    },
+    {
+      "id": "P2",
+      "type": "performance",
+      "x": 1041.6027393083673,
+      "y": 357.86004565513946,
+      "label": "P2",
+      "description": "Cost / power-consumption penalty performance parameter. Lower is better.",
+      "unit": "penalty_proxy",
+      "value": "",
+      "equation": "Pen",
+      "functionCode": "",
+      "decidedValue": "",
+      "clusterId": null,
+      "isOfInterest": false,
+      "stepNumber": null,
+      "autoLabel": "P2",
+      "rootSelectionPolicy": "min",
+      "polarity": "lower_better"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e01",
+      "from": "Lh",
+      "to": "Hp_req",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e02",
+      "from": "Lh",
+      "to": "Bb_req",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e03",
+      "from": "k_backup",
+      "to": "Bb_req",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e04",
+      "from": "Lh",
+      "to": "Fc_req",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e05",
+      "from": "Hp_req",
+      "to": "D1",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e06",
+      "from": "Bb_req",
+      "to": "D2",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e07",
+      "from": "Fc_req",
+      "to": "D3",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e08",
+      "from": "Hp_req",
+      "to": "E1",
+      "edgeType": "threshold",
+      "waypoints": [
+        {
+          "x": 258.44197851529924,
+          "y": 54.98050537749977
+        },
+        {
+          "x": 282.44197851529924,
+          "y": 54.98050537749977
+        },
+        {
+          "x": 282.44197851529924,
+          "y": 87.58769758642318
+        },
+        {
+          "x": 501.3894196320416,
+          "y": 87.58769758642318
+        },
+        {
+          "x": 501.3894196320416,
+          "y": 23.980505377499767
+        },
+        {
+          "x": 525.3894196320416,
+          "y": 23.980505377499767
+        }
+      ],
+      "manualOffset": 0
+    },
+    {
+      "id": "e09",
+      "from": "D1",
+      "to": "E1",
+      "edgeType": "decided"
+    },
+    {
+      "id": "e10",
+      "from": "Bb_req",
+      "to": "E2",
+      "edgeType": "threshold",
+      "waypoints": [
+        {
+          "x": 259.05255888325763,
+          "y": 189
+        },
+        {
+          "x": 283.05255888325763,
+          "y": 189
+        },
+        {
+          "x": 283.05255888325763,
+          "y": 137.90412384977031
+        },
+        {
+          "x": 492,
+          "y": 137.90412384977031
+        },
+        {
+          "x": 492,
+          "y": 200
+        },
+        {
+          "x": 516,
+          "y": 200
+        }
+      ],
+      "manualOffset": 0
+    },
+    {
+      "id": "e11",
+      "from": "D2",
+      "to": "E2",
+      "edgeType": "decided"
+    },
+    {
+      "id": "e12",
+      "from": "Fc_req",
+      "to": "E3",
+      "edgeType": "threshold",
+      "waypoints": [
+        {
+          "x": 256.34774701087565,
+          "y": 359.8458526217617
+        },
+        {
+          "x": 280.34774701087565,
+          "y": 359.8458526217617
+        },
+        {
+          "x": 280.34774701087565,
+          "y": 410.39665158670215
+        },
+        {
+          "x": 499.55767852816643,
+          "y": 410.39665158670215
+        },
+        {
+          "x": 499.55767852816643,
+          "y": 377.70589827690117
+        },
+        {
+          "x": 523.5576785281664,
+          "y": 377.70589827690117
+        }
+      ],
+      "manualOffset": 0
+    },
+    {
+      "id": "e13",
+      "from": "D3",
+      "to": "E3",
+      "edgeType": "decided"
+    },
+    {
+      "id": "e14",
+      "from": "E1",
+      "to": "Q_norm",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e15",
+      "from": "E2",
+      "to": "Q_norm",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e16",
+      "from": "E3",
+      "to": "Q_norm",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e17",
+      "from": "Q_norm",
+      "to": "R_norm",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e18",
+      "from": "Lh",
+      "to": "R_norm",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e19",
+      "from": "E2",
+      "to": "Q_fail",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e20",
+      "from": "E3",
+      "to": "Q_fail",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e21",
+      "from": "Q_fail",
+      "to": "R_fail",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e22",
+      "from": "Lh",
+      "to": "R_fail",
+      "edgeType": "plain",
+      "waypoints": null,
+      "manualOffset": 0
+    },
+    {
+      "id": "e23",
+      "from": "R_norm",
+      "to": "Rel",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e24",
+      "from": "R_fail",
+      "to": "Rel",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e25",
+      "from": "E1",
+      "to": "Ccap",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e26",
+      "from": "E2",
+      "to": "Ccap",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e27",
+      "from": "E3",
+      "to": "Ccap",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e28",
+      "from": "E1",
+      "to": "Pop",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e29",
+      "from": "E2",
+      "to": "Pop",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e30",
+      "from": "E3",
+      "to": "Pop",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e31",
+      "from": "Ccap",
+      "to": "Pen",
+      "edgeType": "plain",
+      "waypoints": [
+        {
+          "x": 722,
+          "y": 360
+        },
+        {
+          "x": 746,
+          "y": 360
+        },
+        {
+          "x": 746,
+          "y": 316.23866041283827
+        },
+        {
+          "x": 880.9119859985664,
+          "y": 316.23866041283827
+        },
+        {
+          "x": 880.9119859985664,
+          "y": 357.86004565513946
+        },
+        {
+          "x": 904.9119859985664,
+          "y": 357.86004565513946
+        }
+      ],
+      "manualOffset": 0
+    },
+    {
+      "id": "e32",
+      "from": "Pop",
+      "to": "Pen",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e33",
+      "from": "Rel",
+      "to": "P1",
+      "edgeType": "plain"
+    },
+    {
+      "id": "e34",
+      "from": "Pen",
+      "to": "P2",
+      "edgeType": "plain"
+    }
+  ],
+  "clusters": [
+    {
+      "id": "cluster_hp",
+      "x": 167.3894196320416,
+      "y": -35.229426139791045,
+      "w": 446,
+      "h": 152,
+      "label": "Heat Pump Subsystem",
+      "description": "Heat-pump threshold, selection, and local margin.",
+      "fill": "#DBEAFE",
+      "stroke": "#60A5FA"
+    },
+    {
+      "id": "cluster_boiler",
+      "x": 168,
+      "y": 124,
+      "w": 446,
+      "h": 152,
+      "label": "Boiler Subsystem",
+      "description": "Boiler backup threshold, selection, and local margin.",
+      "fill": "#FEE2E2",
+      "stroke": "#F87171"
+    },
+    {
+      "id": "cluster_fancoil",
+      "x": 162.34774701087562,
+      "y": 282.7758754493314,
+      "w": 449.2099315172908,
+      "h": 152,
+      "label": "Fan Coil Subsystem",
+      "description": "Fan-coil threshold, selection, and local margin.",
+      "fill": "#DCFCE7",
+      "stroke": "#4ADE80"
+    }
+  ]
+}
