@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 const TAB_ELEMENT_TYPES = {
   'needs-requirements': {
@@ -77,7 +77,14 @@ function ElementIcon({ type }) {
   }
 }
 
-function CascadePalette({ activeTab, onAddRow, onAddColumn, onAddUncertainty }) {
+function CascadePalette({
+  activeTab,
+  onAddRow,
+  onAddColumn,
+  onAddUncertainty,
+  relationshipMode,
+  onChangeRelationshipMode,
+}) {
   const config = TAB_ELEMENT_TYPES[activeTab] || { rows: [], columns: [], extras: [] };
 
   const tabTitles = {
@@ -152,6 +159,36 @@ function CascadePalette({ activeTab, onAddRow, onAddColumn, onAddUncertainty }) 
         </div>
       )}
 
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', marginBottom: 4, marginTop: 10 }}>
+        Relationship Value
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {[
+          { id: 'binary', label: 'Binary (0/1)' },
+          { id: 'likert', label: 'Likert (0.1/0.5/0.9)' },
+          { id: 'numeric', label: 'Number (0-1)' },
+        ].map((mode) => (
+          <button
+            key={mode.id}
+            type="button"
+            onClick={() => onChangeRelationshipMode && onChangeRelationshipMode(mode.id)}
+            style={{
+              border: `1px solid ${relationshipMode === mode.id ? '#0EA5E9' : '#CBD5E1'}`,
+              borderRadius: 6,
+              background: relationshipMode === mode.id ? '#E0F2FE' : '#FFFFFF',
+              color: '#334155',
+              fontSize: 11,
+              fontWeight: 600,
+              textAlign: 'left',
+              padding: '6px 8px',
+              cursor: 'pointer',
+            }}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
+
       <div style={{
         marginTop: 'auto',
         paddingTop: 12,
@@ -160,7 +197,7 @@ function CascadePalette({ activeTab, onAddRow, onAddColumn, onAddUncertainty }) 
         color: '#94A3B8',
         lineHeight: 1.5,
       }}>
-        Click cells to toggle relationships.<br />
+        Click cells to set relationships.<br />
         Click headers to edit labels.<br />
         Use Forward/Back to navigate matrices.
       </div>

@@ -41,6 +41,35 @@ const UNCERT_C = { bg: '#FEF3C7', stroke: '#D97706', text: '#92400E', flowRgb: '
 
 const LEVEL_NAMES = ['Needs', 'Requirements', 'Architecture', 'Parameters'];
 
+function clamp01(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function importance(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function computeColumnScores(rows, columns, relationships, rowImportanceMap) {
+  const scores = {};
+  let total = 0;
+  for (const col of columns) {
+    let score = 0;
+    for (const row of rows) {
+      const rel = clamp01(relationships?.[`${row.id}__${col.id}`]);
+      if (rel <= 0) continue;
+      score += importance(rowImportanceMap?.[row.id]) * rel;
+    }
+    scores[col.id] = score;
+    total += score;
+  }
+  const priority = {};
+  for (const col of columns) priority[col.id] = total > 0 ? (scores[col.id] / total) * 100 : 0;
+  return { scores, priority };
+}
+
 // ── Sankey layout engine ──────────────────────────────────────────────────────
 /**
  * Given the four level arrays and edge list, returns:
@@ -135,7 +164,7 @@ function computeLayout(levels, edges) {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
-function FlowPath({ edge, edgePorts, highlight, dim, onEnter, onLeave }) {
+function FlowPath({ edge, edgePorts, highlight, dim, onEnter, onLeave, maxEdgeValue }) {
   const k  = `${edge.fromId}__${edge.toId}`;
   const pp = edgePorts[k];
   if (!pp?.x1 || !pp?.x2) return null;
@@ -147,7 +176,9 @@ function FlowPath({ edge, edgePorts, highlight, dim, onEnter, onLeave }) {
   const isUncert = edge.type === 'uncert';
   const C        = isUncert ? UNCERT_C : (LEVEL_C[edge.fromLevelIdx] || LEVEL_C[0]);
   const opacity  = dim ? 0.06 : highlight ? 0.80 : 0.28;
-  const sw       = highlight ? 3 : 2;
+  const norm     = maxEdgeValue > 0 ? edge.value / maxEdgeValue : 0;
+  const baseSw   = 1 + norm * 5;
+  const sw       = highlight ? baseSw + 1 : baseSw;
 
   return (
     <path
@@ -157,9 +188,46 @@ function FlowPath({ edge, edgePorts, highlight, dim, onEnter, onLeave }) {
       strokeWidth={sw}
       strokeOpacity={opacity}
       style={{ cursor: 'default', transition: 'stroke-opacity 0.12s, stroke-width 0.12s' }}
+      title={`w=${(edge.weight || 0).toFixed(2)}, contribution=${(edge.value || 0).toFixed(2)}`}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     />
+  );
+}
+
+function FlowValueLabel({ edge, edgePorts, highlight, dim }) {
+  const k = `${edge.fromId}__${edge.toId}`;
+  const pp = edgePorts[k];
+  if (!pp?.x1 || !pp?.x2 || dim) return null;
+
+  const x = (pp.x1 + pp.x2) / 2;
+  const y = (pp.y1 + pp.y2) / 2;
+  const txt = (Number(edge.value) || 0).toFixed(1);
+
+  return (
+    <g pointerEvents="none" opacity={highlight ? 1 : 0.88}>
+      <rect
+        x={x - 14}
+        y={y - 7}
+        width={28}
+        height={14}
+        rx={4}
+        fill="#FFFFFF"
+        fillOpacity={0.88}
+        stroke="#CBD5E1"
+        strokeWidth={0.8}
+      />
+      <text
+        x={x}
+        y={y + 3}
+        textAnchor="middle"
+        fontSize={8.5}
+        fontWeight={700}
+        fill="#334155"
+      >
+        {txt}
+      </text>
+    </g>
   );
 }
 
@@ -208,7 +276,7 @@ function SankeyNode({ pos, isUncert, highlight, dim, onEnter, onLeave }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function CascadeSankey({ data }) {
+export default function CascadeSankey({ data, showFlowValues = true }) {
   const [hoveredNodeId,  setHoveredNodeId]  = useState(null);
   const [hoveredEdgeKey, setHoveredEdgeKey] = useState(null);
 
@@ -217,44 +285,84 @@ export default function CascadeSankey({ data }) {
     const m1u = data.m1Uncertainties || [];
     const m2u = data.m2Uncertainties || [];
     const m3u = data.m3Uncertainties || [];
+    const m1Rows = data.m1Rows || [];
+    const m1Cols = data.m1Columns || [];
+    const m2Cols = data.m2Columns || [];
+    const m3Cols = data.m3Columns || [];
     const m2uIds = new Set(m2u.map(u => u.id));
     const m3uIds = new Set(m3u.map(u => u.id));
+    const m1AllRows = [...m1Rows, ...m1u];
+    const m2AllRows = [...m1Cols, ...m2u];
+    const m3AllRows = [...m2Cols, ...m3u];
+
+    const m1RowImp = {
+      ...(data.m1NeedImportance || {}),
+      ...(data.m1UncertaintyImportance || {}),
+    };
+    const m1Score = computeColumnScores(m1AllRows, m1Cols, data.m1Relationships || {}, m1RowImp);
+    const m2RowImp = {
+      ...(m1Score.priority || {}),
+      ...(data.m2UncertaintyImportance || {}),
+    };
+    const m3RowImp = {
+      ...(data.m2ArchImportance || {}),
+      ...(data.m3UncertaintyImportance || {}),
+    };
 
     const levels = [
-      [...(data.m1Rows    || []), ...m1u],   // L0: Needs + M1 uncert sources
-      [...(data.m1Columns || []), ...m2u],   // L1: Requirements + M2 uncert sources
-      [...(data.m2Columns || []), ...m3u],   // L2: Arch Elements + M3 uncert sources
-      [...(data.m3Columns || [])],           // L3: Parameters
+      [...m1Rows, ...m1u],   // L0: Needs + M1 uncert sources
+      [...m1Cols, ...m2u],   // L1: Requirements + M2 uncert sources
+      [...m2Cols, ...m3u],   // L2: Arch Elements + M3 uncert sources
+      [...m3Cols],           // L3: Parameters
     ];
 
     const edges = [];
 
     // M1 relationships  (Needs / M1-uncert  →  Requirements)
     Object.entries(data.m1Relationships || {}).forEach(([k, v]) => {
-      if (!v) return;
+      const weight = clamp01(v);
+      if (weight <= 0) return;
       const [fromId, toId] = k.split('__');
       const isU = m1u.some(u => u.id === fromId);
-      edges.push({ fromId, toId, fromLevelIdx: 0, toLevelIdx: 1, type: isU ? 'uncert' : 'm1' });
+      edges.push({
+        fromId, toId, fromLevelIdx: 0, toLevelIdx: 1, type: isU ? 'uncert' : 'm1',
+        weight,
+        value: importance(m1RowImp[fromId]) * weight,
+      });
     });
 
     // M2 relationships  (Requirements / M2-uncert  →  Arch Elements)
     Object.entries(data.m2Relationships || {}).forEach(([k, v]) => {
-      if (!v) return;
+      const weight = clamp01(v);
+      if (weight <= 0) return;
       const [fromId, toId] = k.split('__');
-      edges.push({ fromId, toId, fromLevelIdx: 1, toLevelIdx: 2, type: m2uIds.has(fromId) ? 'uncert' : 'm2' });
+      edges.push({
+        fromId, toId, fromLevelIdx: 1, toLevelIdx: 2, type: m2uIds.has(fromId) ? 'uncert' : 'm2',
+        weight,
+        value: importance(m2RowImp[fromId]) * weight,
+      });
     });
 
     // M3 relationships  (Arch Elements / M3-uncert  →  Parameters)
     Object.entries(data.m3Relationships || {}).forEach(([k, v]) => {
-      if (!v) return;
+      const weight = clamp01(v);
+      if (weight <= 0) return;
       const [fromId, toId] = k.split('__');
-      edges.push({ fromId, toId, fromLevelIdx: 2, toLevelIdx: 3, type: m3uIds.has(fromId) ? 'uncert' : 'm3' });
+      edges.push({
+        fromId, toId, fromLevelIdx: 2, toLevelIdx: 3, type: m3uIds.has(fromId) ? 'uncert' : 'm3',
+        weight,
+        value: importance(m3RowImp[fromId]) * weight,
+      });
     });
 
     return { levels, edges };
   }, [data]);
 
   const layout = useMemo(() => computeLayout(levels, edges), [levels, edges]);
+  const maxEdgeValue = useMemo(
+    () => edges.reduce((m, e) => Math.max(m, Number.isFinite(e.value) ? e.value : 0), 0),
+    [edges]
+  );
 
   // ── Hover: BFS to find connected chain ───────────────────────────────────
   const connected = useMemo(() => {
@@ -264,26 +372,20 @@ export default function CascadeSankey({ data }) {
     const cEdges = new Set();
 
     if (hoveredNodeId) {
-      // Bidirectional BFS from hovered node
+      // Directional BFS (propagation direction only) from hovered node
       const queue   = [hoveredNodeId];
       const visited = new Set([hoveredNodeId]);
       cNodes.add(hoveredNodeId);
 
       while (queue.length) {
         const id = queue.shift();
-        for (const e of edges) {
+        for (const e of layout.outEdges[id] || []) {
           const ek = `${e.fromId}__${e.toId}`;
-          if (e.fromId === id && !visited.has(e.toId)) {
+          cEdges.add(ek);
+          if (!visited.has(e.toId)) {
             visited.add(e.toId);
             queue.push(e.toId);
             cNodes.add(e.toId);
-            cEdges.add(ek);
-          }
-          if (e.toId === id && !visited.has(e.fromId)) {
-            visited.add(e.fromId);
-            queue.push(e.fromId);
-            cNodes.add(e.fromId);
-            cEdges.add(ek);
           }
         }
       }
@@ -296,7 +398,7 @@ export default function CascadeSankey({ data }) {
     }
 
     return { cNodes, cEdges };
-  }, [hoveredNodeId, hoveredEdgeKey, edges]);
+  }, [hoveredNodeId, hoveredEdgeKey, edges, layout.outEdges]);
 
   // ── Empty / no-data states ────────────────────────────────────────────────
   const hasNodes = levels.some(l => l.length > 0);
@@ -363,10 +465,27 @@ export default function CascadeSankey({ data }) {
               key={idx}
               edge={e}
               edgePorts={layout.edgePorts}
+              maxEdgeValue={maxEdgeValue}
               highlight={hl}
               dim={dm}
               onEnter={() => { setHoveredEdgeKey(ek); setHoveredNodeId(null); }}
               onLeave={() => setHoveredEdgeKey(null)}
+            />
+          );
+        })}
+
+        {/* ── Flow value labels ── */}
+        {showFlowValues && edges.map((e, idx) => {
+          const ek = `${e.fromId}__${e.toId}`;
+          const hl = connected ? connected.cEdges.has(ek) : false;
+          const dm = connected ? !connected.cEdges.has(ek) : false;
+          return (
+            <FlowValueLabel
+              key={`val_${idx}`}
+              edge={e}
+              edgePorts={layout.edgePorts}
+              highlight={hl}
+              dim={dm}
             />
           );
         })}
