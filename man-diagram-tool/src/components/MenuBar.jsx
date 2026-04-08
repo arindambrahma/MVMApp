@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 function MenuBar({
   onLoadExample, onPreAnalysis, onExport, onExportDiagram, onImport, onClear, onRunAnalysis,
   onOpenModel, onOpenSensitivity, onOpenDsm, onOpenReporting,
+  onExitToHome,
   analysisReady, analysisLoading, analysisProgress, analysisBlocked,
 }) {
   const [openMenu, setOpenMenu] = useState(null);
@@ -58,6 +59,12 @@ function MenuBar({
           label: 'Reset',
           items: [
             { label: 'Clear Diagram', onClick: onClear },
+          ],
+        },
+        {
+          label: 'Navigation',
+          items: [
+            { label: 'Exit to Main Menu', onClick: onExitToHome },
           ],
         },
       ],
@@ -137,6 +144,7 @@ function MenuBar({
     onOpenDsm,
     onOpenReporting,
     onClear,
+    onExitToHome,
     analysisReady,
   ]);
 
@@ -152,7 +160,7 @@ function MenuBar({
           <circle cx="25" cy="7.5" r="4.5" fill="#1D4ED8" stroke="#60A5FA" strokeWidth="0.8"/>
           <rect x="11.5" y="20.5" width="9" height="6.5" rx="2" fill="#059669" stroke="#34D399" strokeWidth="0.8"/>
         </svg>
-        MARVIN
+        MARVIN <span style={{ fontWeight: 400, color: '#94A3B8', fontSize: 12 }}>&mdash; Margin Value Analysis</span>
       </div>
 
       <div className="menu-group">

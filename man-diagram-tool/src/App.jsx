@@ -20,6 +20,7 @@ import { runAnalysis, runProbabilisticAnalysis, fetchHealth } from './utils/api'
 import { validateGraph } from './utils/graphValidation';
 import { buildPreviewParamValues } from './utils/preAnalysisPreview';
 import { autoArrangeNodes } from './utils/autoLayout';
+import { useNavigate } from 'react-router-dom';
 import { FRONTEND_VERSION, GIT_BRANCH } from './version';
 import { sanitize } from './utils/helpers';
 
@@ -33,6 +34,8 @@ function App() {
     toggleInterest, loadGraph, clear, setNodes,
     updateSubGraph,
   } = useGraphStore();
+
+  const navigate = useNavigate();
 
   const [showExport, setShowExport] = useState(false);
   const [showDiagramExport, setShowDiagramExport] = useState(false);
@@ -399,6 +402,7 @@ function App() {
       <MenuBar
         onLoadExample={handleLoadExample}
         onPreAnalysis={() => setShowPreAnalysis(true)}
+        onExitToHome={() => navigate('/')}
         onExport={() => setShowExport(true)}
         onExportDiagram={handleOpenDiagramExport}
         onImport={handleImport}
@@ -618,7 +622,7 @@ function App() {
       )}
 
       <div className="app-footer">
-        <span className="app-footer-title">MARVIN &mdash; Margin Analysis &amp; Reasoning Visual Interface</span>
+        <span className="app-footer-title">MARVIN &mdash; Margin Value Analysis</span>
         <span className="app-footer-copy">
           &copy; {new Date().getFullYear()} Arindam Brahma &nbsp;&middot;&nbsp; Based on the Margin Value Method &nbsp;&middot;&nbsp;{' '}
           <a
