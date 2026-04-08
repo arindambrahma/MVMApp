@@ -1,31 +1,31 @@
 import React, { useState, useRef, useEffect } from 'react';
 
 /**
- * CascadeMatrix renders one MDC matrix as a QFD "house" made of clean,
- * separated blocks matching the schematic diagram style.
+ * CascadeMatrix renders one MDC matrix as a QFD "house" made of
+ * separated blocks matching the schematic diagram:
  *
- * Visual structure (gaps between all blocks):
- *   ┌─────────────────────────────┐
- *   │     [Column Headers]        │   <- top block
- *   └─────────────────────────────┘
- *   ┌──────┐ ┌───────────┐ ┌─────┐
- *   │ Row  │ │ Relation- │ │Rat. │   <- middle row of blocks
- *   │ Hdrs │ │ ship      │ │     │
- *   └──────┘ └───────────┘ └─────┘
- *   ┌─────────────────────────────┐
- *   │  Margin type / Method       │   <- bottom block
- *   └─────────────────────────────┘
+ *              ┌─Col Headers──┐
+ *              │              │
+ *   ┌──────┐  ┌──────────────┐  ┌─────┐
+ *   │ Row  │  │ Relationship │  │Rat. │
+ *   │ Hdrs │  │              │  │     │
+ *   └──────┘  └──────────────┘  └─────┘
+ *   ┌──────┐  ┌──────────────┐
+ *   │Uncert│  │ Uncert Rels  │
+ *   └──────┘  └──────────────┘
+ *              ┌──────────────┐
+ *              │Margin Method │
+ *              └──────────────┘
  */
 
-/* Muted warm-gray palette matching the schematic image */
-const BLOCK = {
-  bg:       '#DCD6CE',   // main block fill
-  bgLight:  '#E5E0D9',   // lighter variant
-  bgMedium: '#CBC4BA',   // medium variant
-  text:     '#3D3D3D',   // primary text
-  textMuted:'#6B6560',   // secondary text
-  gap:      4,           // px gap between blocks
-  radius:   5,           // border-radius
+const B = {
+  bg:       '#DCD6CE',
+  bgLight:  '#E5E0D9',
+  bgMedium: '#CBC4BA',
+  text:     '#3D3D3D',
+  muted:    '#6B6560',
+  gap:      4,
+  r:        5,
 };
 
 function EditableText({ value, onChange, style, placeholder }) {
@@ -78,38 +78,29 @@ function EditableText({ value, onChange, style, placeholder }) {
 }
 
 function CascadeMatrix({
-  matrixType,
-  rows,
-  columns,
-  relationships,
-  nominalValues,
-  marginValues,
-  specifiedValues,
-  rationale,
-  onToggleCell,
-  onUpdateRowLabel,
-  onUpdateColumnLabel,
-  onUpdateNominal,
-  onUpdateMargin,
-  onUpdateRationale,
-  onDeleteRow,
-  onDeleteColumn,
+  matrixType, rows, columns, relationships,
+  nominalValues, marginValues, specifiedValues, rationale,
+  onToggleCell, onUpdateRowLabel, onUpdateColumnLabel,
+  onUpdateNominal, onUpdateMargin, onUpdateRationale,
+  onDeleteRow, onDeleteColumn,
 }) {
-  const showNominalMarginStrip = matrixType === 'needs-requirements';
+  const showNMS = matrixType === 'needs-requirements';
   const showRoof = matrixType === 'architecture-parameters';
   const showBottom = matrixType !== 'architecture-parameters';
   const mainRows = rows.filter(r => !r.isUncertainty);
-  const uncertaintyRows = rows.filter(r => r.isUncertainty);
+  const uncRows = rows.filter(r => r.isUncertainty);
   const hasData = columns.length > 0 || rows.length > 0;
 
-  const rowBlockLabel = matrixType === 'needs-requirements' ? 'Needs'
-    : matrixType === 'requirements-architecture' ? 'Req.' : 'Arch. Elem.';
-  const colBlockLabel = matrixType === 'needs-requirements' ? 'Requirements'
+  const rowLabel = matrixType === 'needs-requirements' ? 'Needs'
+    : matrixType === 'requirements-architecture' ? 'Req.' : 'Arch.\nElem.';
+  const colLabel = matrixType === 'needs-requirements' ? 'Requirements'
     : matrixType === 'requirements-architecture' ? 'Architectural Elements' : 'Parameters';
+  const uncLabel = matrixType === 'requirements-architecture' ? 'Arch.\nUncert.'
+    : matrixType === 'architecture-parameters' ? 'Para.\nUncert.' : 'Uncert.';
 
-  const thinBorder = '1px solid rgba(0,0,0,0.06)';
+  const thin = '1px solid rgba(0,0,0,0.06)';
 
-  const renderDeleteBtn = (onClick) => (
+  const delBtn = (onClick) => (
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick(); }}
@@ -120,8 +111,7 @@ function CascadeMatrix({
         border: 'none', background: 'rgba(0,0,0,0.08)',
         color: '#6B6560', fontSize: 9, cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        lineHeight: 1, opacity: 0,
-        transition: 'opacity 0.15s',
+        lineHeight: 1, opacity: 0, transition: 'opacity 0.15s',
       }}
       onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
       onMouseLeave={(e) => { e.currentTarget.style.opacity = '0'; }}
@@ -130,108 +120,79 @@ function CascadeMatrix({
     </button>
   );
 
-  // Render the empty-state house blocks
+  const block = (bg, radius, children, style) => (
+    <div style={{
+      background: bg, borderRadius: radius || B.r,
+      overflow: 'hidden', ...style,
+    }}>
+      {children}
+    </div>
+  );
+
+  // ──── EMPTY STATE ────
   if (!hasData) {
+    const emptyBlock = (label, bg, style) => (
+      <div style={{
+        background: bg || B.bgLight, borderRadius: B.r,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '12px 8px', fontSize: 11, fontWeight: 600,
+        color: B.muted, textAlign: 'center', whiteSpace: 'pre-line',
+        ...style,
+      }}>
+        {label}
+      </div>
+    );
+
     return (
       <div className="cascade-matrix-wrapper">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: BLOCK.gap, maxWidth: 520, margin: '0 auto' }}>
-
-          {/* Coupling roof (Matrix 3 only) */}
+        <div style={{ maxWidth: 520, margin: '0 auto' }}>
+          {/* Coupling roof */}
           {showRoof && (
-            <div style={{
-              display: 'flex', justifyContent: 'center',
-            }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: B.gap }}>
               <div style={{
                 width: 0, height: 0,
-                borderLeft: '120px solid transparent',
-                borderRight: '120px solid transparent',
-                borderBottom: `50px solid ${BLOCK.bgLight}`,
-                borderRadius: '4px 4px 0 0',
-                position: 'relative',
+                borderLeft: '100px solid transparent', borderRight: '100px solid transparent',
+                borderBottom: `45px solid ${B.bgLight}`, position: 'relative',
               }}>
                 <span style={{
-                  position: 'absolute', top: 28, left: '50%', transform: 'translateX(-50%)',
-                  fontSize: 10, fontWeight: 600, color: BLOCK.textMuted, whiteSpace: 'nowrap',
-                }}>
-                  Para. Coupling
-                </span>
+                  position: 'absolute', top: 25, left: '50%', transform: 'translateX(-50%)',
+                  fontSize: 9, fontWeight: 600, color: B.muted, whiteSpace: 'nowrap',
+                }}>Para. Coupling</span>
               </div>
             </div>
           )}
 
-          {/* Column headers block */}
-          <div style={{
-            background: BLOCK.bg,
-            borderRadius: BLOCK.radius,
-            padding: '14px 16px',
-            textAlign: 'center',
-            fontSize: 12, fontWeight: 600, color: BLOCK.text,
-          }}>
-            {colBlockLabel}
+          {/* Col headers — center only */}
+          <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr 48px', gap: B.gap, marginBottom: B.gap }}>
+            <div />
+            {emptyBlock(colLabel, B.bg, { padding: '14px 16px', fontSize: 12 })}
+            <div />
           </div>
 
-          {/* Middle row: Rows | Relationship | Rationale */}
-          <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 56px', gap: BLOCK.gap }}>
-            <div style={{
-              background: BLOCK.bgLight,
-              borderRadius: BLOCK.radius,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '24px 6px',
-              fontSize: 11, fontWeight: 600, color: BLOCK.text, textAlign: 'center',
-            }}>
-              {rowBlockLabel}
-            </div>
-            <div style={{
-              background: BLOCK.bgMedium,
-              borderRadius: BLOCK.radius,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '24px 12px', minHeight: 100,
-              fontSize: 13, fontWeight: 600, color: BLOCK.textMuted,
-            }}>
-              Relationship
-            </div>
-            <div style={{
-              background: BLOCK.bgLight,
-              borderRadius: BLOCK.radius,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '12px 4px',
-              fontSize: 10, fontWeight: 600, color: BLOCK.textMuted,
-            }}>
-              Rat.
-            </div>
+          {/* Row | Relationship | Rat */}
+          <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr 48px', gap: B.gap, marginBottom: B.gap }}>
+            {emptyBlock(rowLabel, B.bgLight, { minHeight: 100 })}
+            {emptyBlock('Relationship', B.bgMedium, { minHeight: 100, fontSize: 13 })}
+            {emptyBlock('Rat.', B.bgLight)}
           </div>
 
-          {/* Uncertainty block */}
-          <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 56px', gap: BLOCK.gap }}>
-            <div style={{
-              background: BLOCK.bgLight,
-              borderRadius: BLOCK.radius,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '8px 6px',
-              fontSize: 8, fontWeight: 600, color: BLOCK.textMuted, textAlign: 'center',
-            }}>
-              {matrixType === 'requirements-architecture' ? 'Arch.\nUncert.' : matrixType === 'architecture-parameters' ? 'Para.\nUncert.' : 'Uncert.'}
-            </div>
-            <div style={{
-              gridColumn: 'span 2',
-              borderRadius: BLOCK.radius,
-            }} />
+          {/* Uncert | Uncert Rels */}
+          <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr 48px', gap: B.gap, marginBottom: B.gap }}>
+            {emptyBlock(uncLabel, B.bgLight, { padding: '8px 6px', fontSize: 9 })}
+            {emptyBlock('', B.bgLight, { padding: '8px', minHeight: 32 })}
+            <div />
           </div>
 
-          {/* Bottom block: Margin type / Method */}
+          {/* Margin type / Method — center only */}
           {showBottom && (
-            <div style={{
-              background: BLOCK.bgLight,
-              borderRadius: BLOCK.radius,
-              padding: '10px 16px',
-              textAlign: 'center',
-              fontSize: 10, fontWeight: 600, color: BLOCK.textMuted,
-            }}>
-              Margin type / Method
+            <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr 48px', gap: B.gap }}>
+              <div />
+              {emptyBlock('Margin type / Method', B.bgLight, { padding: '10px 16px', fontSize: 10 })}
+              <div />
             </div>
           )}
 
-          <p style={{ textAlign: 'center', color: '#B5AFA7', fontSize: 11, marginTop: 8 }}>
+          <p style={{ textAlign: 'center', color: '#B5AFA7', fontSize: 11, marginTop: 14 }}>
             Use the left palette to add rows and columns.
           </p>
         </div>
@@ -239,302 +200,238 @@ function CascadeMatrix({
     );
   }
 
-  // Render the populated house
+  // ──── POPULATED STATE ────
+  // Use a single table with border-spacing for gaps.
+  // Corner cells (top-left, top-right) are transparent to create
+  // the effect of the column header block being only above the center.
+
+  const cellPad = '7px 8px';
+  const cellPadSm = '4px 6px';
+
   return (
     <div className="cascade-matrix-wrapper">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: BLOCK.gap }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: B.gap }}>
 
-        {/* Coupling roof (Matrix 3 only) */}
-        {showRoof && columns.length > 0 && (
-          <div style={{
-            background: BLOCK.bgLight,
-            borderRadius: BLOCK.radius,
-            padding: '10px 16px',
-            textAlign: 'center',
-            fontSize: 10, fontWeight: 600, color: BLOCK.textMuted,
-          }}>
+        {/* Coupling roof block (Matrix 3 only) */}
+        {showRoof && block(B.bgLight, B.r, (
+          <div style={{ padding: '8px 16px', textAlign: 'center', fontSize: 10, fontWeight: 600, color: B.muted }}>
             Parameter Coupling
           </div>
-        )}
+        ))}
 
-        {/* Column headers block */}
-        <div style={{
-          background: BLOCK.bg,
-          borderRadius: BLOCK.radius,
-          overflow: 'hidden',
-        }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <tbody>
-              <tr>
-                <td style={{
-                  padding: '8px 10px',
-                  fontSize: 9, fontWeight: 700, color: BLOCK.textMuted,
-                  textTransform: 'uppercase', letterSpacing: 0.5,
-                  minWidth: 180, borderRight: thinBorder,
+        {/* Main table with border-spacing for gaps */}
+        <table style={{ borderCollapse: 'separate', borderSpacing: B.gap }}>
+          <thead>
+            {/* Column header row — corner cells transparent */}
+            <tr>
+              {/* Top-left corner: empty/transparent */}
+              <th style={{ background: 'transparent', minWidth: 180 }} />
+              {columns.map((col) => (
+                <th key={col.id} style={{
+                  background: B.bg, borderRadius: B.r,
+                  padding: cellPad, textAlign: 'center',
+                  fontSize: 11, fontWeight: 700, color: B.text,
+                  minWidth: 100, position: 'relative',
                 }}>
-                  {colBlockLabel}
-                </td>
-                {columns.map((col) => (
-                  <td key={col.id} style={{
-                    padding: '8px 6px',
-                    textAlign: 'center',
-                    fontSize: 11, fontWeight: 700, color: BLOCK.text,
-                    minWidth: 100, borderRight: thinBorder,
-                    position: 'relative',
+                  <EditableText
+                    value={col.label}
+                    onChange={(v) => onUpdateColumnLabel(col.id, v)}
+                    placeholder="Column"
+                    style={{ fontSize: 11, fontWeight: 700, color: B.text }}
+                  />
+                  {onDeleteColumn && delBtn(() => onDeleteColumn(col.id))}
+                </th>
+              ))}
+              {/* Top-right corner: empty/transparent */}
+              <th style={{ background: 'transparent', minWidth: 90 }} />
+            </tr>
+          </thead>
+
+          <tbody>
+            {/* Nominal / Margin / Specified (Matrix 1 only) */}
+            {showNMS && [
+              { key: 'nom', label: 'Nominal (A)', bg: '#EDE9E2', vals: nominalValues, fn: onUpdateNominal, tc: B.text },
+              { key: 'mar', label: 'Margin (\u0394A)', bg: '#E8DFD0', vals: marginValues, fn: onUpdateMargin, tc: '#7F6000' },
+              { key: 'spec', label: 'Specified (A+\u0394A)', bg: '#D8CFBF', vals: specifiedValues, fn: null, tc: '#4A4540' },
+            ].map((s, si) => (
+              <tr key={s.key}>
+                <td style={{
+                  background: s.bg, padding: cellPadSm,
+                  fontSize: 10, fontWeight: 700, color: s.tc,
+                  borderRadius: si === 0 ? `${B.r}px 0 0 0` : si === 2 ? `0 0 0 ${B.r}px` : 0,
+                }}>{s.label}</td>
+                {columns.map((col, ci) => (
+                  <td key={`${s.key}_${col.id}`} style={{
+                    background: s.bg, padding: cellPadSm, textAlign: 'center',
+                    borderRadius:
+                      si === 0 && ci === columns.length - 1 ? `0 ${B.r}px 0 0` :
+                      si === 2 && ci === columns.length - 1 ? `0 0 ${B.r}px 0` : 0,
                   }}>
-                    <EditableText
-                      value={col.label}
-                      onChange={(v) => onUpdateColumnLabel(col.id, v)}
-                      placeholder="Column"
-                      style={{ fontSize: 11, fontWeight: 700, color: BLOCK.text }}
-                    />
-                    {onDeleteColumn && (
-                      <span style={{ position: 'absolute', top: 2, right: 2 }}>
-                        {renderDeleteBtn(() => onDeleteColumn(col.id))}
+                    {s.fn ? (
+                      <EditableText
+                        value={(s.vals || {})[col.id] || ''}
+                        onChange={(v) => s.fn(col.id, v)}
+                        placeholder="value"
+                        style={{ fontSize: 10, color: s.tc }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: 10, fontWeight: 600, color: s.tc }}>
+                        {(s.vals || {})[col.id] || '\u2014'}
                       </span>
                     )}
                   </td>
                 ))}
+                <td style={{ background: 'transparent' }} />
+              </tr>
+            ))}
+
+            {/* Main rows: row-header | relationship cells | rationale */}
+            {mainRows.map((row, ri) => (
+              <tr key={row.id} className="cascade-row">
+                {/* Row header */}
                 <td style={{
-                  padding: '8px 6px',
-                  textAlign: 'center',
-                  fontSize: 9, fontWeight: 700, color: BLOCK.textMuted,
-                  textTransform: 'uppercase', letterSpacing: 0.5,
-                  minWidth: 90,
+                  background: B.bgLight, padding: cellPad,
+                  fontSize: 11, fontWeight: 600, color: B.text,
+                  position: 'relative',
+                  borderRadius:
+                    ri === 0 ? `${B.r}px 0 0 0` :
+                    ri === mainRows.length - 1 ? `0 0 0 ${B.r}px` : 0,
                 }}>
-                  Rationale
+                  <EditableText
+                    value={row.label}
+                    onChange={(v) => onUpdateRowLabel(row.id, v)}
+                    placeholder="Row name"
+                    style={{ fontSize: 11, fontWeight: 600, color: B.text }}
+                  />
+                  {onDeleteRow && delBtn(() => onDeleteRow(row.id))}
+                </td>
+
+                {/* Relationship cells */}
+                {columns.map((col, ci) => {
+                  const k = `${row.id}__${col.id}`;
+                  const on = relationships[k];
+                  const isTopRight = ri === 0 && ci === columns.length - 1;
+                  const isBotLeft = ri === mainRows.length - 1 && ci === 0;
+                  const isBotRight = ri === mainRows.length - 1 && ci === columns.length - 1;
+                  const isTopLeft = ri === 0 && ci === 0;
+                  let br = 0;
+                  if (isTopLeft) br = `${B.r}px 0 0 0`;
+                  if (isTopRight) br = `0 ${B.r}px 0 0`;
+                  if (isBotLeft) br = `0 0 0 ${B.r}px`;
+                  if (isBotRight) br = `0 0 ${B.r}px 0`;
+                  return (
+                    <td
+                      key={k}
+                      onClick={() => onToggleCell(row.id, col.id)}
+                      style={{
+                        background: on ? B.bgMedium : B.bgLight,
+                        padding: '6px', textAlign: 'center',
+                        cursor: 'pointer', fontSize: 15, fontWeight: 700,
+                        color: on ? B.text : 'transparent',
+                        transition: 'background 0.12s', userSelect: 'none',
+                        minWidth: 100, borderRadius: br,
+                      }}
+                      title={on ? 'Click to remove' : 'Click to mark relationship'}
+                    >
+                      {on ? '\u25CF' : ''}
+                    </td>
+                  );
+                })}
+
+                {/* Rationale */}
+                <td style={{
+                  background: B.bgLight, padding: cellPadSm, textAlign: 'center',
+                  borderRadius:
+                    ri === 0 ? `${B.r}px ${B.r}px 0 0` :
+                    ri === mainRows.length - 1 ? `0 0 ${B.r}px ${B.r}px` : 0,
+                }}>
+                  <EditableText
+                    value={(rationale || {})[row.id] || ''}
+                    onChange={(v) => onUpdateRationale(row.id, v)}
+                    placeholder="rationale"
+                    style={{ fontSize: 10, color: B.muted }}
+                  />
                 </td>
               </tr>
-            </tbody>
-          </table>
-        </div>
+            ))}
 
-        {/* Nominal / Margin / Specified strip (Matrix 1 only) */}
-        {showNominalMarginStrip && (
-          <div style={{
-            background: BLOCK.bgLight,
-            borderRadius: BLOCK.radius,
-            overflow: 'hidden',
-          }}>
-            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-              <tbody>
-                {[
-                  { key: 'nom', label: 'Nominal (A)', bg: '#EDE9E2', values: nominalValues, onChange: onUpdateNominal, textColor: BLOCK.text },
-                  { key: 'mar', label: 'Margin (\u0394A)', bg: '#E8DFD0', values: marginValues, onChange: onUpdateMargin, textColor: '#7F6000' },
-                  { key: 'spec', label: 'Specified (A+\u0394A)', bg: '#D8CFBF', values: specifiedValues, onChange: null, textColor: '#4A4540' },
-                ].map((strip) => (
-                  <tr key={strip.key}>
-                    <td style={{
-                      padding: '4px 10px',
-                      fontSize: 10, fontWeight: 700, color: strip.textColor,
-                      minWidth: 180, borderRight: thinBorder,
-                      background: strip.bg,
-                      borderBottom: thinBorder,
-                    }}>
-                      {strip.label}
-                    </td>
-                    {columns.map((col) => (
-                      <td key={`${strip.key}_${col.id}`} style={{
-                        padding: '4px 6px',
-                        textAlign: 'center',
-                        background: strip.bg,
-                        borderRight: thinBorder,
-                        borderBottom: thinBorder,
-                        minWidth: 100,
-                      }}>
-                        {strip.onChange ? (
-                          <EditableText
-                            value={(strip.values || {})[col.id] || ''}
-                            onChange={(v) => strip.onChange(col.id, v)}
-                            placeholder="value"
-                            style={{ fontSize: 10, color: strip.textColor }}
-                          />
-                        ) : (
-                          <span style={{ fontSize: 10, fontWeight: 600, color: strip.textColor }}>
-                            {(strip.values || {})[col.id] || '\u2014'}
-                          </span>
-                        )}
-                      </td>
-                    ))}
-                    <td style={{ background: strip.bg, minWidth: 90, borderBottom: thinBorder }}></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+            {/* Uncertainty rows: uncert-label | uncert-relationship cells */}
+            {uncRows.map((row, ri) => (
+              <tr key={row.id} className="cascade-row">
+                {/* Uncertainty row header */}
+                <td style={{
+                  background: '#E8DFD0', padding: cellPad,
+                  fontSize: 11, fontWeight: 600, color: B.muted,
+                  fontStyle: 'italic', position: 'relative',
+                  borderRadius:
+                    ri === 0 ? `${B.r}px 0 0 0` :
+                    ri === uncRows.length - 1 ? `0 0 0 ${B.r}px` : 0,
+                }}>
+                  <EditableText
+                    value={row.label}
+                    onChange={(v) => onUpdateRowLabel(row.id, v)}
+                    placeholder="Uncertainty source"
+                    style={{ fontSize: 11, fontWeight: 600, color: B.muted, fontStyle: 'italic' }}
+                  />
+                  {onDeleteRow && delBtn(() => onDeleteRow(row.id))}
+                </td>
 
-        {/* Middle section: Row headers | Relationship matrix | Rationale */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 0 }}>
-          <div style={{
-            background: BLOCK.bgLight,
-            borderRadius: BLOCK.radius,
-            overflow: 'hidden',
-          }}>
-            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-              <tbody>
-                {mainRows.map((row) => (
-                  <tr key={row.id} className="cascade-row">
-                    <td style={{
-                      padding: '7px 10px',
-                      fontSize: 11, fontWeight: 600, color: BLOCK.text,
-                      minWidth: 180,
-                      borderRight: thinBorder,
-                      borderBottom: thinBorder,
-                      background: BLOCK.bgLight,
-                      position: 'relative',
-                    }}>
-                      <EditableText
-                        value={row.label}
-                        onChange={(v) => onUpdateRowLabel(row.id, v)}
-                        placeholder="Row name"
-                        style={{ fontSize: 11, fontWeight: 600, color: BLOCK.text }}
-                      />
-                      {onDeleteRow && renderDeleteBtn(() => onDeleteRow(row.id))}
+                {/* Uncertainty relationship cells */}
+                {columns.map((col, ci) => {
+                  const k = `${row.id}__${col.id}`;
+                  const on = relationships[k];
+                  const isTopRight = ri === 0 && ci === columns.length - 1;
+                  const isBotLeft = ri === uncRows.length - 1 && ci === 0;
+                  const isBotRight = ri === uncRows.length - 1 && ci === columns.length - 1;
+                  const isTopLeft = ri === 0 && ci === 0;
+                  let br = 0;
+                  if (isTopLeft) br = `${B.r}px 0 0 0`;
+                  if (isTopRight) br = `0 ${B.r}px 0 0`;
+                  if (isBotLeft) br = `0 0 0 ${B.r}px`;
+                  if (isBotRight) br = `0 0 ${B.r}px 0`;
+                  return (
+                    <td
+                      key={k}
+                      onClick={() => onToggleCell(row.id, col.id)}
+                      style={{
+                        background: on ? B.bgMedium : '#E8DFD0',
+                        padding: '6px', textAlign: 'center',
+                        cursor: 'pointer', fontSize: 15, fontWeight: 700,
+                        color: on ? '#7F6000' : 'transparent',
+                        transition: 'background 0.12s', userSelect: 'none',
+                        minWidth: 100, borderRadius: br,
+                      }}
+                      title={on ? 'Click to remove' : 'Click to mark relationship'}
+                    >
+                      {on ? '\u25CF' : ''}
                     </td>
-                    {columns.map((col) => {
-                      const key = `${row.id}__${col.id}`;
-                      const active = relationships[key];
-                      return (
-                        <td
-                          key={key}
-                          onClick={() => onToggleCell(row.id, col.id)}
-                          style={{
-                            background: active ? BLOCK.bgMedium : BLOCK.bgLight,
-                            borderRight: thinBorder,
-                            borderBottom: thinBorder,
-                            textAlign: 'center',
-                            cursor: 'pointer',
-                            fontSize: 15,
-                            fontWeight: 700,
-                            color: active ? BLOCK.text : 'transparent',
-                            padding: '6px',
-                            transition: 'background 0.12s',
-                            userSelect: 'none',
-                            minWidth: 100,
-                          }}
-                          title={active ? 'Click to remove' : 'Click to mark relationship'}
-                        >
-                          {active ? '\u25CF' : ''}
-                        </td>
-                      );
-                    })}
-                    <td style={{
-                      padding: '4px 8px',
-                      borderBottom: thinBorder,
-                      background: BLOCK.bgLight,
-                      textAlign: 'center',
-                      minWidth: 90,
-                    }}>
-                      <EditableText
-                        value={(rationale || {})[row.id] || ''}
-                        onChange={(v) => onUpdateRationale(row.id, v)}
-                        placeholder="rationale"
-                        style={{ fontSize: 10, color: BLOCK.textMuted }}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  );
+                })}
 
-        {/* Uncertainty rows block */}
-        {uncertaintyRows.length > 0 && (
-          <div style={{
-            background: '#E8DFD0',
-            borderRadius: BLOCK.radius,
-            overflow: 'hidden',
-          }}>
-            <div style={{
-              padding: '4px 10px',
-              fontSize: 8, fontWeight: 700, color: BLOCK.textMuted,
-              textTransform: 'uppercase', letterSpacing: 0.5,
-              borderBottom: thinBorder,
-            }}>
-              Additional Uncertainties
-            </div>
-            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-              <tbody>
-                {uncertaintyRows.map((row) => (
-                  <tr key={row.id} className="cascade-row">
-                    <td style={{
-                      padding: '6px 10px',
-                      fontSize: 11, fontWeight: 600, color: BLOCK.textMuted,
-                      fontStyle: 'italic',
-                      minWidth: 180,
-                      borderRight: thinBorder,
-                      borderBottom: thinBorder,
-                      position: 'relative',
-                    }}>
-                      <EditableText
-                        value={row.label}
-                        onChange={(v) => onUpdateRowLabel(row.id, v)}
-                        placeholder="Uncertainty source"
-                        style={{ fontSize: 11, fontWeight: 600, color: BLOCK.textMuted, fontStyle: 'italic' }}
-                      />
-                      {onDeleteRow && renderDeleteBtn(() => onDeleteRow(row.id))}
-                    </td>
-                    {columns.map((col) => {
-                      const key = `${row.id}__${col.id}`;
-                      const active = relationships[key];
-                      return (
-                        <td
-                          key={key}
-                          onClick={() => onToggleCell(row.id, col.id)}
-                          style={{
-                            background: active ? BLOCK.bgMedium : 'transparent',
-                            borderRight: thinBorder,
-                            borderBottom: thinBorder,
-                            textAlign: 'center',
-                            cursor: 'pointer',
-                            fontSize: 15,
-                            fontWeight: 700,
-                            color: active ? '#7F6000' : 'transparent',
-                            padding: '6px',
-                            transition: 'background 0.12s',
-                            userSelect: 'none',
-                            minWidth: 100,
-                          }}
-                          title={active ? 'Click to remove' : 'Click to mark relationship'}
-                        >
-                          {active ? '\u25CF' : ''}
-                        </td>
-                      );
-                    })}
-                    <td style={{
-                      padding: '4px 8px',
-                      borderBottom: thinBorder,
-                      textAlign: 'center',
-                      minWidth: 90,
-                    }}>
-                      <EditableText
-                        value={(rationale || {})[row.id] || ''}
-                        onChange={(v) => onUpdateRationale(row.id, v)}
-                        placeholder="rationale"
-                        style={{ fontSize: 10, color: BLOCK.textMuted }}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                {/* No rationale for uncertainty rows */}
+                <td style={{ background: 'transparent' }} />
+              </tr>
+            ))}
 
-        {/* Bottom block: Margin type / Method */}
-        {showBottom && (
-          <div style={{
-            background: BLOCK.bgLight,
-            borderRadius: BLOCK.radius,
-            padding: '8px 16px',
-            textAlign: 'center',
-            fontSize: 10, fontWeight: 600, color: BLOCK.textMuted,
-          }}>
-            Margin type / Method
-          </div>
-        )}
+            {/* Margin type / Method row — center columns only */}
+            {showBottom && (
+              <tr>
+                <td style={{ background: 'transparent' }} />
+                <td
+                  colSpan={columns.length}
+                  style={{
+                    background: B.bgLight, borderRadius: B.r,
+                    padding: '8px 16px', textAlign: 'center',
+                    fontSize: 10, fontWeight: 600, color: B.muted,
+                  }}
+                >
+                  Margin type / Method
+                </td>
+                <td style={{ background: 'transparent' }} />
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
