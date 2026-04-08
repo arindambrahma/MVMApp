@@ -4,6 +4,7 @@ import CascadeMenuBar from '../components/CascadeMenuBar';
 import CascadePalette from '../components/CascadePalette';
 import CascadeMatrix from '../components/CascadeMatrix';
 import CascadeSankey from '../components/CascadeSankey';
+import { MATRIX2_MARGIN_CHARACTERISTICS, MATRIX2_CHARACTERISTIC_BY_ID } from '../constants/marginCharacteristics';
 import './CascadeAnalysis.css';
 
 const TAB_ORDER = ['needs-requirements', 'requirements-architecture', 'architecture-parameters', 'flow-view'];
@@ -42,20 +43,47 @@ function toImportance(value) {
   return Number.isFinite(num) ? num : 0;
 }
 
-function toRelationshipWeight(value) {
-  if (typeof value === 'boolean') return value ? 1 : 0;
-  const num = parseFloat(value);
-  if (!Number.isFinite(num)) return 0;
-  return Math.max(0, Math.min(1, num));
+function normalizeMatrix1Relationship(value) {
+  if (value === 'deliberate' || value === 'inadvertent') return value;
+  if (value === true) return 'deliberate';
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return 'deliberate';
+  return null;
 }
 
-function computeColumnScores(rows, columns, relationships, rowImportanceMap) {
+function normalizeMatrix2Relationship(value) {
+  if (typeof value === 'string' && MATRIX2_CHARACTERISTIC_BY_ID[value]) return value;
+  if (value === true) return MATRIX2_MARGIN_CHARACTERISTICS[0].id;
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return MATRIX2_MARGIN_CHARACTERISTICS[0].id;
+  return null;
+}
+
+function normalizeMatrix3Relationship(value) {
+  if (value === true) return 1;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return Math.max(1, num);
+}
+
+function matrix1Weight(value) {
+  return normalizeMatrix1Relationship(value) ? 1 : 0;
+}
+
+function matrix2Weight(value) {
+  return normalizeMatrix2Relationship(value) ? 1 : 0;
+}
+
+function matrix3Weight(value) {
+  const parsed = normalizeMatrix3Relationship(value);
+  return parsed == null ? 0 : parsed;
+}
+
+function computeColumnScores(rows, columns, relationships, rowImportanceMap, weightResolver) {
   const scores = {};
   let total = 0;
   for (const col of columns) {
     let score = 0;
     for (const row of rows) {
-      const rel = toRelationshipWeight(relationships[`${row.id}__${col.id}`]);
+      const rel = weightResolver(relationships[`${row.id}__${col.id}`]);
       if (!rel) continue;
       score += toImportance((rowImportanceMap || {})[row.id]) * rel;
     }
@@ -98,6 +126,7 @@ const EMPTY_STATE = () => ({
   m1Direction: {},
   m1Rationale: {},
   m1Uncertainties: [],  // additional uncertainty rows
+  m1UncertaintyTypes: {},
 
   // Matrix 2: Requirements -> Arch Elements
   m2Columns: [],        // architectural elements
@@ -107,15 +136,18 @@ const EMPTY_STATE = () => ({
   m2UncertaintyImportance: {},
   m2Rationale: {},
   m2Uncertainties: [],
+  m2UncertaintyTypes: {},
 
   // Matrix 3: Arch Elements -> Parameters
   m3Columns: [],        // parameters
   m3Relationships: {},
+  m3Couplings: {},      // parameter-parameter roof couplings (+ / -)
   m3MainLabel: 'Customer',
   m3ParamImportance: {},
   m3UncertaintyImportance: {},
   m3Rationale: {},
   m3Uncertainties: [],
+  m3UncertaintyTypes: {},
 });
 
 const HOT_WATER_EXAMPLE = () => {
@@ -143,10 +175,10 @@ const HOT_WATER_EXAMPLE = () => {
   state.m1Margin = { r1: '+4 bar', r2: '+1 bar', r3: '+3 mm', r4: '\u22121 kWh/24h', r5: '+100 kg' };
   state.m1Direction = { r1: 'up', r2: 'up', r3: 'up', r4: 'down', r5: 'up' };
   state.m1Relationships = {
-    'n1__r1': true, 'n1__r2': true,
-    'n2__r3': true,
-    'n3__r4': true,
-    'n4__r5': true,
+    'n1__r1': 'deliberate', 'n1__r2': 'deliberate',
+    'n2__r3': 'deliberate',
+    'n3__r4': 'inadvertent',
+    'n4__r5': 'deliberate',
   };
   state.m1Rationale = {
     n1: 'Safety factor',
@@ -165,11 +197,11 @@ const HOT_WATER_EXAMPLE = () => {
   ];
   state.m2ArchImportance = { ae1: 9, ae2: 7, ae3: 8, ae4: 6, ae5: 5 };
   state.m2Relationships = {
-    'r1__ae1': true, 'r1__ae3': true,
-    'r2__ae3': true,
-    'r3__ae1': true, 'r3__ae4': true,
-    'r4__ae2': true,
-    'r5__ae1': true, 'r5__ae5': true,
+    'r1__ae1': 'safety', 'r1__ae3': 'reliability',
+    'r2__ae3': 'safety',
+    'r3__ae1': 'durability', 'r3__ae4': 'maintainability',
+    'r4__ae2': 'quality',
+    'r5__ae1': 'robustness', 'r5__ae5': 'reliability',
   };
   state.m2Rationale = {};
   state.m2Uncertainties = [
@@ -177,11 +209,12 @@ const HOT_WATER_EXAMPLE = () => {
     { id: 'u2_2', label: '+ Heat loss at pipe connections', isUncertainty: true },
     { id: 'u2_3', label: '+ Valve manufacturing spread', isUncertainty: true },
   ];
+  state.m2UncertaintyTypes = { u2_1: 'aleatory', u2_2: 'epistemic', u2_3: 'epistemic' };
   // Uncertainty relationships for matrix 2
-  state.m2Relationships['u2_1__ae1'] = true;
-  state.m2Relationships['u2_1__ae5'] = true;
-  state.m2Relationships['u2_2__ae3'] = true;
-  state.m2Relationships['u2_3__ae2'] = true;
+  state.m2Relationships['u2_1__ae1'] = 'robustness';
+  state.m2Relationships['u2_1__ae5'] = 'reliability';
+  state.m2Relationships['u2_2__ae3'] = 'resilience';
+  state.m2Relationships['u2_3__ae2'] = 'quality';
 
   // Matrix 3 Parameters
   state.m3Columns = [
@@ -194,11 +227,11 @@ const HOT_WATER_EXAMPLE = () => {
   ];
   state.m3ParamImportance = { p1: 9, p2: 8, p3: 7, p4: 8, p5: 5, p6: 6 };
   state.m3Relationships = {
-    'ae1__p1': true, 'ae1__p2': true,
-    'ae2__p3': true,
-    'ae3__p4': true,
-    'ae4__p5': true,
-    'ae5__p6': true,
+    'ae1__p1': 1.3, 'ae1__p2': 1.1,
+    'ae2__p3': 1,
+    'ae3__p4': 1.4,
+    'ae4__p5': 1,
+    'ae5__p6': 1.2,
   };
   state.m3Rationale = {};
   state.m3Uncertainties = [
@@ -206,9 +239,16 @@ const HOT_WATER_EXAMPLE = () => {
     { id: 'u3_2', label: '+ Wall thickness varies in manufacturing', isUncertainty: true },
     { id: 'u3_3', label: '+ Insulation degrades over time', isUncertainty: true },
   ];
-  state.m3Relationships['u3_1__p2'] = true;
-  state.m3Relationships['u3_2__p1'] = true;
-  state.m3Relationships['u3_3__p3'] = true;
+  state.m3UncertaintyTypes = { u3_1: 'aleatory', u3_2: 'aleatory', u3_3: 'epistemic' };
+  state.m3Relationships['u3_1__p2'] = 1.2;
+  state.m3Relationships['u3_2__p1'] = 1.2;
+  state.m3Relationships['u3_3__p3'] = 1.1;
+  state.m3Couplings = {
+    'p1__p2': '+',
+    'p1__p3': '-',
+    'p3__p4': '+',
+    'p4__p6': '+',
+  };
 
   return state;
 };
@@ -221,7 +261,14 @@ const LEGEND_ITEMS = [
   { color: '#D97706', label: 'Uncertainty source flow',     dot: true  },
 ];
 
-function SankeyLegend({ showFlowValues, onToggleFlowValues }) {
+function SankeyLegend({
+  showFlowValues,
+  onToggleFlowValues,
+  showRelationshipTags,
+  onToggleRelationshipTags,
+  showCouplings,
+  onToggleCouplings,
+}) {
   return (
     <div className="sankey-legend-panel">
       <div className="sankey-legend-title">Legend</div>
@@ -291,6 +338,68 @@ function SankeyLegend({ showFlowValues, onToggleFlowValues }) {
           />
         </button>
       </div>
+      <div className="sankey-legend-row" style={{ justifyContent: 'space-between' }}>
+        <span>Relationship Tags</span>
+        <button
+          type="button"
+          onClick={() => onToggleRelationshipTags && onToggleRelationshipTags(!showRelationshipTags)}
+          style={{
+            width: 34,
+            height: 18,
+            borderRadius: 999,
+            border: '1px solid #94A3B8',
+            background: showRelationshipTags ? '#14B8A6' : '#CBD5E1',
+            position: 'relative',
+            cursor: 'pointer',
+            padding: 0,
+          }}
+          title={showRelationshipTags ? 'Hide relationship tags' : 'Show relationship tags'}
+        >
+          <span
+            style={{
+              position: 'absolute',
+              top: 1,
+              left: showRelationshipTags ? 17 : 1,
+              width: 14,
+              height: 14,
+              borderRadius: '50%',
+              background: '#FFFFFF',
+              transition: 'left 0.15s',
+            }}
+          />
+        </button>
+      </div>
+      <div className="sankey-legend-row" style={{ justifyContent: 'space-between' }}>
+        <span>Couplings</span>
+        <button
+          type="button"
+          onClick={() => onToggleCouplings && onToggleCouplings(!showCouplings)}
+          style={{
+            width: 34,
+            height: 18,
+            borderRadius: 999,
+            border: '1px solid #94A3B8',
+            background: showCouplings ? '#14B8A6' : '#CBD5E1',
+            position: 'relative',
+            cursor: 'pointer',
+            padding: 0,
+          }}
+          title={showCouplings ? 'Hide parameter couplings' : 'Show parameter couplings'}
+        >
+          <span
+            style={{
+              position: 'absolute',
+              top: 1,
+              left: showCouplings ? 17 : 1,
+              width: 14,
+              height: 14,
+              borderRadius: '50%',
+              background: '#FFFFFF',
+              transition: 'left 0.15s',
+            }}
+          />
+        </button>
+      </div>
 
       <div className="sankey-legend-hint">
         Hover a node to trace its full upstream / downstream chain.
@@ -304,8 +413,9 @@ export default function CascadeAnalysis() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(TAB_ORDER[0]);
   const [data, setData] = useState(EMPTY_STATE);
-  const [relationshipMode, setRelationshipMode] = useState('binary');
   const [showFlowValues, setShowFlowValues] = useState(true);
+  const [showRelationshipTags, setShowRelationshipTags] = useState(false);
+  const [showCouplings, setShowCouplings] = useState(true);
 
   // Compute specified values (nominal + margin)
   const specifiedValues = useMemo(() => {
@@ -345,7 +455,7 @@ export default function CascadeAnalysis() {
   );
 
   const m1ScoreData = useMemo(() => (
-    computeColumnScores(m1AllRows, data.m1Columns, data.m1Relationships, m1ImportanceMap)
+    computeColumnScores(m1AllRows, data.m1Columns, data.m1Relationships, m1ImportanceMap, matrix1Weight)
   ), [m1AllRows, data.m1Columns, data.m1Relationships, m1ImportanceMap]);
 
   const m2RowImportance = useMemo(() => {
@@ -362,7 +472,7 @@ export default function CascadeAnalysis() {
   );
 
   const m2ScoreData = useMemo(() => (
-    computeColumnScores(m2AllRows, data.m2Columns, data.m2Relationships, m2ImportanceMap)
+    computeColumnScores(m2AllRows, data.m2Columns, data.m2Relationships, m2ImportanceMap, matrix2Weight)
   ), [m2AllRows, data.m2Columns, data.m2Relationships, m2ImportanceMap]);
 
   const m3RowImportance = useMemo(() => {
@@ -379,7 +489,7 @@ export default function CascadeAnalysis() {
   );
 
   const m3ScoreData = useMemo(() => (
-    computeColumnScores(m3AllRows, data.m3Columns, data.m3Relationships, m3ImportanceMap)
+    computeColumnScores(m3AllRows, data.m3Columns, data.m3Relationships, m3ImportanceMap, matrix3Weight)
   ), [m3AllRows, data.m3Columns, data.m3Relationships, m3ImportanceMap]);
 
   // Navigation — arrows only step through the three matrix tabs, not Flow View
@@ -410,11 +520,13 @@ export default function CascadeAnalysis() {
   }, []);
 
   const addM1Uncertainty = useCallback(() => {
+    const id = uid('u1');
     setData(prev => ({
       ...prev,
       m1Uncertainties: [...prev.m1Uncertainties, {
-        id: uid('u1'), label: '+ New uncertainty', isUncertainty: true,
+        id, label: '+ New uncertainty', isUncertainty: true,
       }],
+      m1UncertaintyTypes: { ...(prev.m1UncertaintyTypes || {}), [id]: 'epistemic' },
     }));
   }, []);
 
@@ -427,11 +539,13 @@ export default function CascadeAnalysis() {
   }, []);
 
   const addM2Uncertainty = useCallback(() => {
+    const id = uid('u2');
     setData(prev => ({
       ...prev,
       m2Uncertainties: [...prev.m2Uncertainties, {
-        id: uid('u2'), label: '+ New uncertainty', isUncertainty: true,
+        id, label: '+ New uncertainty', isUncertainty: true,
       }],
+      m2UncertaintyTypes: { ...(prev.m2UncertaintyTypes || {}), [id]: 'epistemic' },
     }));
   }, []);
 
@@ -444,11 +558,13 @@ export default function CascadeAnalysis() {
   }, []);
 
   const addM3Uncertainty = useCallback(() => {
+    const id = uid('u3');
     setData(prev => ({
       ...prev,
       m3Uncertainties: [...prev.m3Uncertainties, {
-        id: uid('u3'), label: '+ New uncertainty', isUncertainty: true,
+        id, label: '+ New uncertainty', isUncertainty: true,
       }],
+      m3UncertaintyTypes: { ...(prev.m3UncertaintyTypes || {}), [id]: 'epistemic' },
     }));
   }, []);
 
@@ -487,39 +603,63 @@ export default function CascadeAnalysis() {
     }));
   }, []);
 
-  // Generic handlers
-  const setCellValue = useCallback((matrixKey) => (rowId, colId, value) => {
+  // Matrix relationship handlers
+  const cycleM1Cell = useCallback((rowId, colId) => {
     setData(prev => {
       const relKey = `${rowId}__${colId}`;
-      const rels = { ...prev[matrixKey] };
-      const safe = toRelationshipWeight(value);
-      if (safe <= 0) delete rels[relKey];
-      else rels[relKey] = safe;
-      return { ...prev, [matrixKey]: rels };
+      const rels = { ...prev.m1Relationships };
+      const current = normalizeMatrix1Relationship(rels[relKey]);
+      if (current === 'deliberate') rels[relKey] = 'inadvertent';
+      else if (current === 'inadvertent') delete rels[relKey];
+      else rels[relKey] = 'deliberate';
+      return { ...prev, m1Relationships: rels };
     });
   }, []);
 
-  const toggleCell = useCallback((matrixKey) => (rowId, colId) => {
+  const setM2Cell = useCallback((rowId, colId, value) => {
     setData(prev => {
       const relKey = `${rowId}__${colId}`;
-      const rels = { ...prev[matrixKey] };
-      const current = toRelationshipWeight(rels[relKey]);
-      let next = 0;
-      if (relationshipMode === 'binary') {
-        next = current > 0 ? 0 : 1;
-      } else if (relationshipMode === 'likert') {
-        if (current < 0.05) next = 0.1;
-        else if (current < 0.3) next = 0.5;
-        else if (current < 0.7) next = 0.9;
-        else next = 0;
-      } else {
-        next = current > 0 ? 0 : 0.5;
-      }
-      if (next <= 0) delete rels[relKey];
-      else rels[relKey] = next;
-      return { ...prev, [matrixKey]: rels };
+      const rels = { ...prev.m2Relationships };
+      const normalized = normalizeMatrix2Relationship(value);
+      if (normalized == null) delete rels[relKey];
+      else rels[relKey] = normalized;
+      return { ...prev, m2Relationships: rels };
     });
-  }, [relationshipMode]);
+  }, []);
+
+  const setM3Cell = useCallback((rowId, colId, value) => {
+    setData(prev => {
+      const relKey = `${rowId}__${colId}`;
+      const rels = { ...prev.m3Relationships };
+      const isBlank = value == null || String(value).trim() === '';
+      if (isBlank) {
+        delete rels[relKey];
+      } else {
+        const normalized = normalizeMatrix3Relationship(value);
+        if (normalized == null) delete rels[relKey];
+        else rels[relKey] = normalized;
+      }
+      return { ...prev, m3Relationships: rels };
+    });
+  }, []);
+
+  const setM3Coupling = useCallback((leftId, rightId, value) => {
+    setData(prev => {
+      const pair = [leftId, rightId].sort();
+      const key = `${pair[0]}__${pair[1]}`;
+      const next = { ...(prev.m3Couplings || {}) };
+      if (value === '+' || value === '-') next[key] = value;
+      else delete next[key];
+      return { ...prev, m3Couplings: next };
+    });
+  }, []);
+
+  const updateUncertaintyType = useCallback((mapKey) => (rowId, value) => {
+    setData(prev => ({
+      ...prev,
+      [mapKey]: { ...(prev[mapKey] || {}), [rowId]: value === 'aleatory' ? 'aleatory' : 'epistemic' },
+    }));
+  }, []);
 
   const updateRowLabel = useCallback((listKey) => (rowId, newLabel) => {
     setData(prev => ({
@@ -560,11 +700,17 @@ export default function CascadeAnalysis() {
       const newDir = { ...prev.m1Direction };
       const newArchImp = { ...prev.m2ArchImportance };
       const newParamImp = { ...prev.m3ParamImportance };
+      const newCouplings = { ...(prev.m3Couplings || {}) };
       delete newNom[colId];
       delete newMar[colId];
       delete newDir[colId];
       delete newArchImp[colId];
       delete newParamImp[colId];
+      if (listKey === 'm3Columns') {
+        for (const k of Object.keys(newCouplings)) {
+          if (k.startsWith(`${colId}__`) || k.endsWith(`__${colId}`)) delete newCouplings[k];
+        }
+      }
       return {
         ...prev,
         [listKey]: prev[listKey].filter(c => c.id !== colId),
@@ -574,6 +720,7 @@ export default function CascadeAnalysis() {
         m1Direction: newDir,
         m2ArchImportance: newArchImp,
         m3ParamImportance: newParamImp,
+        m3Couplings: newCouplings,
       };
     });
   }, []);
@@ -665,15 +812,20 @@ export default function CascadeAnalysis() {
 
       <div className="app-body">
         {activeTab === 'flow-view' ? (
-          <SankeyLegend showFlowValues={showFlowValues} onToggleFlowValues={setShowFlowValues} />
+          <SankeyLegend
+            showFlowValues={showFlowValues}
+            onToggleFlowValues={setShowFlowValues}
+            showRelationshipTags={showRelationshipTags}
+            onToggleRelationshipTags={setShowRelationshipTags}
+            showCouplings={showCouplings}
+            onToggleCouplings={setShowCouplings}
+          />
         ) : (
           <CascadePalette
             activeTab={activeTab}
             onAddRow={handleAddRow}
             onAddColumn={handleAddColumn}
             onAddUncertainty={handleAddUncertainty}
-            relationshipMode={relationshipMode}
-            onChangeRelationshipMode={setRelationshipMode}
           />
         )}
 
@@ -699,6 +851,8 @@ export default function CascadeAnalysis() {
               onInsertColumnAt={insertRequirementAt}
               onMoveRow={moveListItem('m1Rows')}
               onMoveColumn={moveListItem('m1Columns')}
+              uncertaintyTypes={data.m1UncertaintyTypes}
+              onUpdateUncertaintyType={updateUncertaintyType('m1UncertaintyTypes')}
               rowImportanceValues={m1ImportanceMap}
               onUpdateRowImportance={(rowId, v) => {
                 setData(prev => {
@@ -716,9 +870,8 @@ export default function CascadeAnalysis() {
               }}
               scoreValues={m1ScoreData.scores}
               priorityValues={m1ScoreData.priority}
-              relationshipMode={relationshipMode}
-              onToggleCell={toggleCell('m1Relationships')}
-              onSetCellValue={setCellValue('m1Relationships')}
+              onToggleCell={cycleM1Cell}
+              onSetCellValue={cycleM1Cell}
               onUpdateRowLabel={(rowId, label) => {
                 // Could be in m1Rows or m1Uncertainties
                 setData(prev => ({
@@ -736,11 +889,13 @@ export default function CascadeAnalysis() {
                   const newRels = { ...prev.m1Relationships };
                   const newNeedImportance = { ...prev.m1NeedImportance };
                   const newUncImportance = { ...prev.m1UncertaintyImportance };
+                  const newUncTypes = { ...(prev.m1UncertaintyTypes || {}) };
                   for (const k of Object.keys(newRels)) {
                     if (k.startsWith(`${rowId}__`)) delete newRels[k];
                   }
                   delete newNeedImportance[rowId];
                   delete newUncImportance[rowId];
+                  delete newUncTypes[rowId];
                   return {
                     ...prev,
                     m1Rows: prev.m1Rows.filter(r => r.id !== rowId),
@@ -748,6 +903,7 @@ export default function CascadeAnalysis() {
                     m1Relationships: newRels,
                     m1NeedImportance: newNeedImportance,
                     m1UncertaintyImportance: newUncImportance,
+                    m1UncertaintyTypes: newUncTypes,
                   };
                 });
               }}
@@ -767,6 +923,8 @@ export default function CascadeAnalysis() {
               onInsertColumnAt={insertArchitectureAt}
               onMoveRow={moveListItem('m1Columns')}
               onMoveColumn={moveListItem('m2Columns')}
+              uncertaintyTypes={data.m2UncertaintyTypes}
+              onUpdateUncertaintyType={updateUncertaintyType('m2UncertaintyTypes')}
               rowImportanceValues={m2ImportanceMap}
               rowImportanceReadOnly
               isRowImportanceReadOnly={(row, isUncertainty) => !isUncertainty}
@@ -775,9 +933,7 @@ export default function CascadeAnalysis() {
               onUpdateColumnImportance={updateMapValue('m2ArchImportance')}
               scoreValues={m2ScoreData.scores}
               priorityValues={m2ScoreData.priority}
-              relationshipMode={relationshipMode}
-              onToggleCell={toggleCell('m2Relationships')}
-              onSetCellValue={setCellValue('m2Relationships')}
+              onSetCellValue={setM2Cell}
               onUpdateRowLabel={(rowId, label) => {
                 // Only uncertainty rows are editable here (cascaded rows are read-only)
                 setData(prev => ({
@@ -796,12 +952,15 @@ export default function CascadeAnalysis() {
                     if (k.startsWith(`${rowId}__`)) delete newRels[k];
                   }
                   const newUncImportance = { ...prev.m2UncertaintyImportance };
+                  const newUncTypes = { ...(prev.m2UncertaintyTypes || {}) };
                   delete newUncImportance[rowId];
+                  delete newUncTypes[rowId];
                   return {
                     ...prev,
                     m2Uncertainties: prev.m2Uncertainties.filter(r => r.id !== rowId),
                     m2Relationships: newRels,
                     m2UncertaintyImportance: newUncImportance,
+                    m2UncertaintyTypes: newUncTypes,
                   };
                 });
               }}
@@ -815,12 +974,15 @@ export default function CascadeAnalysis() {
               rows={m3AllRows}
               columns={data.m3Columns}
               relationships={data.m3Relationships}
+              roofRelationships={data.m3Couplings}
               rationale={data.m3Rationale}
               onAddColumn={addParameter}
               onInsertRowAt={insertArchitectureAt}
               onInsertColumnAt={insertParameterAt}
               onMoveRow={moveListItem('m2Columns')}
               onMoveColumn={moveListItem('m3Columns')}
+              uncertaintyTypes={data.m3UncertaintyTypes}
+              onUpdateUncertaintyType={updateUncertaintyType('m3UncertaintyTypes')}
               rowImportanceValues={m3ImportanceMap}
               rowImportanceReadOnly
               isRowImportanceReadOnly={(row, isUncertainty) => !isUncertainty}
@@ -829,9 +991,8 @@ export default function CascadeAnalysis() {
               onUpdateColumnImportance={updateMapValue('m3ParamImportance')}
               scoreValues={m3ScoreData.scores}
               priorityValues={m3ScoreData.priority}
-              relationshipMode={relationshipMode}
-              onToggleCell={toggleCell('m3Relationships')}
-              onSetCellValue={setCellValue('m3Relationships')}
+              onSetCellValue={setM3Cell}
+              onSetRoofCell={setM3Coupling}
               onUpdateRowLabel={(rowId, label) => {
                 setData(prev => ({
                   ...prev,
@@ -848,12 +1009,15 @@ export default function CascadeAnalysis() {
                     if (k.startsWith(`${rowId}__`)) delete newRels[k];
                   }
                   const newUncImportance = { ...prev.m3UncertaintyImportance };
+                  const newUncTypes = { ...(prev.m3UncertaintyTypes || {}) };
                   delete newUncImportance[rowId];
+                  delete newUncTypes[rowId];
                   return {
                     ...prev,
                     m3Uncertainties: prev.m3Uncertainties.filter(r => r.id !== rowId),
                     m3Relationships: newRels,
                     m3UncertaintyImportance: newUncImportance,
+                    m3UncertaintyTypes: newUncTypes,
                   };
                 });
               }}
@@ -862,7 +1026,12 @@ export default function CascadeAnalysis() {
           )}
 
           {activeTab === 'flow-view' && (
-            <CascadeSankey data={data} showFlowValues={showFlowValues} />
+            <CascadeSankey
+              data={data}
+              showFlowValues={showFlowValues}
+              showRelationshipTags={showRelationshipTags}
+              showCouplings={showCouplings}
+            />
           )}
         </div>
       </div>

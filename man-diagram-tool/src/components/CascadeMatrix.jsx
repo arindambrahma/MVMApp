@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { MATRIX2_MARGIN_CHARACTERISTICS, MATRIX2_CHARACTERISTIC_BY_ID } from '../constants/marginCharacteristics';
 
 /**
  * CascadeMatrix — renders one MDC matrix as a QFD "house" of blocks.
@@ -182,14 +183,17 @@ function Block({ bg, children, style, radius }) {
 
 function CascadeMatrix({
   matrixType, rows, columns, relationships,
+  roofRelationships,
   nominalValues, marginValues, specifiedValues, rationale,
   directionValues, onUpdateDirection,
   onToggleCell, onUpdateRowLabel, onUpdateColumnLabel,
-  onSetCellValue, relationshipMode,
+  onSetCellValue,
+  onSetRoofCell,
   onUpdateNominal, onUpdateMargin, onUpdateRationale,
   onDeleteRow, onDeleteColumn,
   onAddColumn, onInsertRowAt, onInsertColumnAt,
   onMoveRow, onMoveColumn,
+  uncertaintyTypes, onUpdateUncertaintyType,
   rowImportanceValues, onUpdateRowImportance, rowImportanceReadOnly,
   isRowImportanceReadOnly,
   columnImportanceValues, onUpdateColumnImportance,
@@ -324,18 +328,50 @@ function CascadeMatrix({
     return (Math.round(num * 10) / 10).toFixed(1);
   };
 
-  const getRelValue = (value) => {
-    if (typeof value === 'boolean') return value ? 1 : 0;
-    const num = parseFloat(value);
-    if (!Number.isFinite(num)) return 0;
-    return Math.max(0, Math.min(1, num));
+  const relationType = matrixType === 'needs-requirements'
+    ? 'matrix1'
+    : matrixType === 'requirements-architecture'
+      ? 'matrix2'
+      : 'matrix3';
+
+  const normalizeMatrix1Relationship = (value) => {
+    if (value === 'deliberate' || value === 'inadvertent') return value;
+    if (value === true) return 'deliberate';
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) return 'deliberate';
+    return null;
   };
 
-  const fmtRel = (value) => {
-    const v = getRelValue(value);
-    if (v <= 0) return '';
-    if (Math.abs(v - 1) < 0.0001) return '1';
-    return v.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  const normalizeMatrix2Relationship = (value) => {
+    if (typeof value === 'string' && MATRIX2_CHARACTERISTIC_BY_ID[value]) return value;
+    if (value === true) return MATRIX2_MARGIN_CHARACTERISTICS[0].id;
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) return MATRIX2_MARGIN_CHARACTERISTICS[0].id;
+    return null;
+  };
+
+  const normalizeMatrix3Relationship = (value) => {
+    if (value === true) return 1;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(1, n);
+  };
+
+  const getCellValue = (value) => {
+    if (relationType === 'matrix1') return normalizeMatrix1Relationship(value);
+    if (relationType === 'matrix2') return normalizeMatrix2Relationship(value);
+    return normalizeMatrix3Relationship(value);
+  };
+
+  const isCellOn = (value) => {
+    if (relationType === 'matrix1' || relationType === 'matrix2') return !!getCellValue(value);
+    const n = getCellValue(value);
+    return n != null;
+  };
+
+  const formatMatrix3 = (value) => {
+    const n = getCellValue(value);
+    if (n == null) return '';
+    if (Math.abs(n - Math.round(n)) < 0.0001) return String(Math.round(n));
+    return n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
   };
 
   const [hoveredRowInsert, setHoveredRowInsert] = useState(null);
@@ -345,6 +381,92 @@ function CascadeMatrix({
   const [dropRowTargetId, setDropRowTargetId] = useState(null);
   const [dropColTargetId, setDropColTargetId] = useState(null);
   const [editingRelKey, setEditingRelKey] = useState(null);
+  const roofKey = (leftId, rightId) => {
+    const pair = [leftId, rightId].sort();
+    return `${pair[0]}__${pair[1]}`;
+  };
+
+  const renderRoof = () => {
+    if (columns.length < 2) {
+      return (
+        <div style={{ padding: '10px 6px', textAlign: 'center', fontSize: 10, color: P.accentDk, opacity: 0.7 }}>
+          Add at least two parameters to define coupling.
+        </div>
+      );
+    }
+    const n = columns.length;
+    const rowGap = 26;
+    const topPad = 16;
+    const bottomPad = 8;
+    const diamond = 24;
+    const roofHeight = Math.max(94, topPad + (n - 1) * rowGap + bottomPad);
+
+    const pairs = [];
+    for (let d = 1; d < n; d += 1) {
+      for (let i = 0; i < n - d; i += 1) {
+        const j = i + d;
+        const xPct = (((i + j + 1) / 2) / n) * 100;
+        const y = topPad + (n - 1 - d) * rowGap;
+        const key = roofKey(columns[i].id, columns[j].id);
+        const value = (roofRelationships || {})[key] || '';
+        pairs.push({ i, j, xPct, y, key, value });
+      }
+    }
+
+    return (
+      <div style={{ position: 'relative', width: '100%', height: roofHeight, marginTop: 6 }}>
+        {pairs.map((cell) => {
+          const isPlus = cell.value === '+';
+          const isMinus = cell.value === '-';
+          const fill = isPlus ? '#16A34A' : isMinus ? '#EF4444' : '#FFFFFF';
+          const stroke = isPlus ? '#15803D' : isMinus ? '#DC2626' : 'rgba(148,163,184,0.45)';
+          const text = isPlus || isMinus ? '#FFFFFF' : '#94A3B8';
+          return (
+            <button
+              type="button"
+              key={cell.key}
+              onClick={() => {
+                if (!onSetRoofCell) return;
+                const next = cell.value === '+' ? '-' : cell.value === '-' ? '' : '+';
+                onSetRoofCell(columns[cell.i].id, columns[cell.j].id, next);
+              }}
+              title={cell.value === '+' ? 'Positive coupling' : cell.value === '-' ? 'Negative coupling' : 'No coupling'}
+              style={{
+                position: 'absolute',
+                left: `${cell.xPct}%`,
+                top: cell.y,
+                width: diamond,
+                height: diamond,
+                transform: 'translate(-50%, -50%) rotate(45deg)',
+                borderRadius: 4,
+                border: `1.2px solid ${stroke}`,
+                background: fill,
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transform: 'rotate(-45deg)',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: text,
+                  lineHeight: 1,
+                }}
+              >
+                {cell.value || ''}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
 
   // ── Render a list of items as stacked rows inside a block ──
   const renderRows = (items, blockBg, isUncert) => {
@@ -459,7 +581,35 @@ function CascadeMatrix({
             </button>
           </div>
         )}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center' }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {isUncert && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!onUpdateUncertaintyType) return;
+                const cur = (uncertaintyTypes || {})[row.id] === 'aleatory' ? 'aleatory' : 'epistemic';
+                onUpdateUncertaintyType(row.id, cur === 'aleatory' ? 'epistemic' : 'aleatory');
+              }}
+              title="Uncertainty type (click to toggle): A=Aleatory, E=Epistemic"
+              style={{
+                minWidth: 18,
+                height: 16,
+                borderRadius: 9,
+                border: '1px solid rgba(146,64,14,0.45)',
+                background: '#FFFFFF',
+                color: '#92400E',
+                fontSize: 9,
+                fontWeight: 800,
+                lineHeight: 1,
+                cursor: 'pointer',
+                padding: '0 4px',
+                flexShrink: 0,
+              }}
+            >
+              {(uncertaintyTypes || {})[row.id] === 'aleatory' ? 'A' : 'E'}
+            </button>
+          )}
           <EditableText
             value={row.label}
             onChange={(v) => onUpdateRowLabel(row.id, v)}
@@ -531,23 +681,35 @@ function CascadeMatrix({
             <tr key={row.id}>
               {columns.map((col) => {
                 const k = `${row.id}__${col.id}`;
-                const relValue = getRelValue(relationships[k]);
-                const on = relValue > 0;
-                const isNumeric = relationshipMode === 'numeric';
-                const isLikert = relationshipMode === 'likert';
+                const relValue = getCellValue(relationships[k]);
+                const on = isCellOn(relationships[k]);
+                const isMatrix1 = relationType === 'matrix1';
+                const isMatrix2 = relationType === 'matrix2';
+                const isMatrix3 = relationType === 'matrix3';
+                const m2Entry = isMatrix2 && relValue ? MATRIX2_CHARACTERISTIC_BY_ID[relValue] : null;
                 return (
                   <td
                     key={k}
                     onClick={() => {
-                      if (isNumeric) setEditingRelKey(k);
-                      else onToggleCell(row.id, col.id);
+                      if (isMatrix1) {
+                        onToggleCell && onToggleCell(row.id, col.id);
+                        return;
+                      }
+                      if (isMatrix2) {
+                        setEditingRelKey(k);
+                        return;
+                      }
+                      if (isMatrix3) {
+                        if (!on) onSetCellValue && onSetCellValue(row.id, col.id, 1);
+                        setEditingRelKey(k);
+                      }
                     }}
                     style={{
                       background: on ? (isUncert ? P.uncertBg : P.cellActive) : 'transparent',
                       textAlign: 'center', cursor: 'pointer',
-                      fontSize: isLikert || isNumeric ? 11 : 15,
+                      fontSize: isMatrix1 ? 11 : 10,
                       fontWeight: 700,
-                      color: on ? (isUncert ? P.uncertMark : P.markColor) : (isNumeric ? '#94A3B8' : 'transparent'),
+                      color: on ? (isUncert ? P.uncertMark : P.markColor) : (isMatrix3 ? '#94A3B8' : '#CBD5E1'),
                       height: isUncert ? uncRowHeight : mainRowHeight,
                       padding: '0 6px',
                       borderBottom: ri < rowItems.length - 1 ? INNER_BORDER : 'none',
@@ -555,27 +717,53 @@ function CascadeMatrix({
                       transition: 'background 0.1s', userSelect: 'none',
                     }}
                     title={
-                      isNumeric
-                        ? 'Click to edit value (0-1)'
-                        : isLikert
-                        ? 'Click to cycle 0.1 / 0.5 / 0.9'
-                        : on
-                        ? 'Click to remove'
-                        : 'Click to mark relationship'
+                      isMatrix1
+                        ? `Click to cycle: none -> deliberate -> inadvertent${on ? ' -> none' : ''}`
+                        : isMatrix2
+                          ? (m2Entry ? `${m2Entry.label}: ${m2Entry.description}` : 'Click to select a margin characteristic')
+                          : 'Click to set/edit amplification (>=1). Clear input to remove link.'
                     }
                   >
-                    {isNumeric && editingRelKey === k ? (
+                    {isMatrix2 && editingRelKey === k ? (
+                      <select
+                        autoFocus
+                        value={relValue || ''}
+                        onChange={(e) => {
+                          onSetCellValue && onSetCellValue(row.id, col.id, e.target.value || null);
+                          setEditingRelKey(null);
+                        }}
+                        onBlur={() => setEditingRelKey(null)}
+                        style={{
+                          width: '100%',
+                          border: '1px solid #94A3B8',
+                          borderRadius: 3,
+                          fontSize: 10,
+                          background: '#FFFFFF',
+                          padding: '1px 2px',
+                        }}
+                      >
+                        <option value="">(none)</option>
+                        {MATRIX2_MARGIN_CHARACTERISTICS.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : isMatrix3 && editingRelKey === k ? (
                       <input
                         autoFocus
                         type="number"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={fmtRel(relValue)}
+                        min="1"
+                        step="0.1"
+                        value={formatMatrix3(relValue)}
                         onChange={(e) => onSetCellValue && onSetCellValue(row.id, col.id, e.target.value)}
                         onBlur={() => setEditingRelKey(null)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === 'Escape') setEditingRelKey(null);
+                          if (e.key === 'Delete' || e.key === 'Backspace') {
+                            const raw = e.currentTarget.value || '';
+                            if (!raw.trim()) onSetCellValue && onSetCellValue(row.id, col.id, '');
+                          }
                         }}
                         style={{
                           width: '100%',
@@ -588,12 +776,12 @@ function CascadeMatrix({
                           padding: '1px 2px',
                         }}
                       />
-                    ) : isNumeric ? (
-                      fmtRel(relValue) || '0'
-                    ) : isLikert ? (
-                      fmtRel(relValue)
+                    ) : isMatrix3 ? (
+                      formatMatrix3(relValue) || ''
+                    ) : isMatrix2 ? (
+                      m2Entry ? m2Entry.label : ''
                     ) : (
-                      on ? '\u25CF' : ''
+                      relValue === 'deliberate' ? 'D' : relValue === 'inadvertent' ? 'I' : ''
                     )}
                   </td>
                 );
@@ -632,8 +820,9 @@ function CascadeMatrix({
         {showRoof && (
           <div style={grid}>
             <div />
-            <Block bg={P.blockBg2} style={{ padding: '8px 16px', textAlign: 'center' }}>
-              <span style={{ fontSize: 10, fontWeight: 600, color: P.accentDk }}>Parameter Coupling</span>
+            <Block bg={P.blockBg2} style={{ padding: '8px 10px 4px', textAlign: 'center' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: P.accentDk }}>Parameter Coupling</span>
+              {renderRoof()}
             </Block>
             <div />
           </div>
