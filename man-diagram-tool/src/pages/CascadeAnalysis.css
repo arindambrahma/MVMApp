@@ -20,7 +20,7 @@
 .cascade-matrix-wrapper {
   flex: 1;
   overflow: auto;
-  padding: 16px 20px;
+  padding: 20px 24px;
 }
 
 .cascade-matrix-scroll {
@@ -36,6 +36,14 @@
 .cascade-matrix-table th,
 .cascade-matrix-table td {
   vertical-align: middle;
+}
+
+/* Show delete button on row hover */
+.cascade-row:hover button {
+  opacity: 0.5 !important;
+}
+.cascade-row:hover button:hover {
+  opacity: 1 !important;
 }
 
 /* Navigation buttons in menu bar */
@@ -68,62 +76,4 @@
   background: #64748B;
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-/* Empty house block placeholders */
-.cascade-house-empty {
-  padding: 24px 20px;
-}
-
-.cascade-house-grid {
-  display: grid;
-  grid-template-columns: 80px 1fr 50px;
-  gap: 6px;
-  min-height: 120px;
-  margin-bottom: 8px;
-}
-
-.cascade-block {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px dashed #CBD5E1;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  background: #F8FAFC;
-  padding: 12px 8px;
-  text-align: center;
-}
-
-.cascade-block--rows {
-  writing-mode: vertical-lr;
-  text-orientation: mixed;
-  transform: rotate(180deg);
-}
-
-.cascade-block--rationale {
-  border-color: #7C3AED;
-  color: #7C3AED;
-  background: #F5F3FF;
-}
-
-.cascade-block--bottom {
-  border: 2px dashed #CBD5E1;
-  border-radius: 8px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  background: #F1F5F9;
-  padding: 10px;
-  text-align: center;
-  margin-top: 6px;
-}
-
-/* House container */
-.cascade-house {
-  transition: border-color 0.2s;
 }
