@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import CascadeMenuBar from '../components/CascadeMenuBar';
 import CascadePalette from '../components/CascadePalette';
 import CascadeMatrix from '../components/CascadeMatrix';
+import CascadeSankey from '../components/CascadeSankey';
 import './CascadeAnalysis.css';
 
-const TAB_ORDER = ['needs-requirements', 'requirements-architecture', 'architecture-parameters'];
+const TAB_ORDER = ['needs-requirements', 'requirements-architecture', 'architecture-parameters', 'flow-view'];
 const TAB_LABELS = {
   'needs-requirements': 'Needs \u2192 Requirements',
   'requirements-architecture': 'Requirements \u2192 Architecture',
   'architecture-parameters': 'Architecture \u2192 Parameters',
+  'flow-view': 'Flow Propagation',
 };
 
 let nextId = 1;
@@ -149,6 +151,60 @@ const HOT_WATER_EXAMPLE = () => {
   return state;
 };
 
+// ── Legend panel shown in place of the palette on the Flow View tab ──────────
+const LEGEND_ITEMS = [
+  { color: '#6366F1', label: 'Needs → Requirements',        dot: false },
+  { color: '#14B8A6', label: 'Requirements → Architecture', dot: false },
+  { color: '#F59E0B', label: 'Architecture → Parameters',   dot: false },
+  { color: '#D97706', label: 'Uncertainty source flow',     dot: true  },
+];
+
+function SankeyLegend() {
+  return (
+    <div className="sankey-legend-panel">
+      <div className="sankey-legend-title">Legend</div>
+
+      <div className="sankey-legend-section">Flow colours</div>
+      {LEGEND_ITEMS.map(item => (
+        <div key={item.label} className="sankey-legend-row">
+          <svg width={28} height={10}>
+            <line
+              x1={2} y1={5} x2={26} y2={5}
+              stroke={item.color} strokeWidth={item.dot ? 2 : 2.5}
+              strokeDasharray={item.dot ? '4 3' : undefined}
+            />
+          </svg>
+          <span>{item.label}</span>
+        </div>
+      ))}
+
+      <div className="sankey-legend-section" style={{ marginTop: 16 }}>Node types</div>
+      {[
+        { bg: '#EEF2FF', stroke: '#6366F1', label: 'Need' },
+        { bg: '#F0FDFA', stroke: '#14B8A6', label: 'Requirement' },
+        { bg: '#FFFBEB', stroke: '#F59E0B', label: 'Arch. Element' },
+        { bg: '#F0FDF4', stroke: '#22C55E', label: 'Parameter' },
+        { bg: '#FEF3C7', stroke: '#D97706', label: 'Uncertainty source', italic: true },
+      ].map(item => (
+        <div key={item.label} className="sankey-legend-row">
+          <svg width={28} height={16}>
+            <rect x={2} y={2} width={24} height={12} rx={3}
+              fill={item.bg} stroke={item.stroke} strokeWidth={1.5} />
+          </svg>
+          <span style={item.italic ? { fontStyle: 'italic' } : undefined}>
+            {item.label}
+          </span>
+        </div>
+      ))}
+
+      <div className="sankey-legend-hint">
+        Hover a node to trace its full upstream / downstream chain.
+        Hover a flow to highlight that link.
+      </div>
+    </div>
+  );
+}
+
 export default function CascadeAnalysis() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(TAB_ORDER[0]);
@@ -182,16 +238,17 @@ export default function CascadeAnalysis() {
     }));
   }, [data.m2Columns]);
 
-  // Navigation
-  const tabIndex = TAB_ORDER.indexOf(activeTab);
-  const canGoForward = tabIndex < TAB_ORDER.length - 1;
-  const canGoBackward = tabIndex > 0;
+  // Navigation — arrows only step through the three matrix tabs, not Flow View
+  const MATRIX_TABS = TAB_ORDER.filter(t => t !== 'flow-view');
+  const matrixIdx = MATRIX_TABS.indexOf(activeTab);
+  const canGoForward  = matrixIdx >= 0 && matrixIdx < MATRIX_TABS.length - 1;
+  const canGoBackward = matrixIdx > 0;
   const handleForward = useCallback(() => {
-    if (canGoForward) setActiveTab(TAB_ORDER[tabIndex + 1]);
-  }, [tabIndex, canGoForward]);
+    if (canGoForward) setActiveTab(MATRIX_TABS[matrixIdx + 1]);
+  }, [matrixIdx, canGoForward, MATRIX_TABS]);
   const handleBackward = useCallback(() => {
-    if (canGoBackward) setActiveTab(TAB_ORDER[tabIndex - 1]);
-  }, [tabIndex, canGoBackward]);
+    if (canGoBackward) setActiveTab(MATRIX_TABS[matrixIdx - 1]);
+  }, [matrixIdx, canGoBackward, MATRIX_TABS]);
 
   // --- Matrix 1 actions ---
   const addNeed = useCallback(() => {
@@ -401,12 +458,16 @@ export default function CascadeAnalysis() {
       </div>
 
       <div className="app-body">
-        <CascadePalette
-          activeTab={activeTab}
-          onAddRow={handleAddRow}
-          onAddColumn={handleAddColumn}
-          onAddUncertainty={handleAddUncertainty}
-        />
+        {activeTab === 'flow-view' ? (
+          <SankeyLegend />
+        ) : (
+          <CascadePalette
+            activeTab={activeTab}
+            onAddRow={handleAddRow}
+            onAddColumn={handleAddColumn}
+            onAddUncertainty={handleAddUncertainty}
+          />
+        )}
 
         <div className="cascade-content">
           <div className="cascade-matrix-title">
@@ -522,6 +583,10 @@ export default function CascadeAnalysis() {
               }}
               onDeleteColumn={deleteColumn('m3Columns', 'm3Relationships')}
             />
+          )}
+
+          {activeTab === 'flow-view' && (
+            <CascadeSankey data={data} />
           )}
         </div>
       </div>

@@ -46,6 +46,86 @@
   opacity: 1 !important;
 }
 
+/* ── Sankey / Flow Propagation view ───────────────────────────────────────── */
+
+.sankey-scroll-area {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 24px;
+}
+
+.sankey-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #94A3B8;
+}
+
+.sankey-hint {
+  margin: 10px 0 4px;
+  padding: 9px 16px;
+  background: #FEF3C7;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #92400E;
+}
+
+/* Legend panel (replaces CascadePalette on the Flow View tab) */
+.sankey-legend-panel {
+  width: 200px;
+  background: #F1F5F9;
+  border-right: 1px solid #E2E8F0;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.sankey-legend-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #E2E8F0;
+  margin-bottom: 4px;
+}
+
+.sankey-legend-section {
+  font-size: 10px;
+  font-weight: 600;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-top: 6px;
+}
+
+.sankey-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #334155;
+  padding: 2px 0;
+}
+
+.sankey-legend-hint {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #E2E8F0;
+  font-size: 10px;
+  color: #94A3B8;
+  line-height: 1.6;
+}
+
 /* Navigation buttons in menu bar */
 .cascade-nav-btn {
   border: none;
