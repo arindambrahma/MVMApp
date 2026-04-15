@@ -4,6 +4,7 @@ import CascadeMenuBar from '../components/CascadeMenuBar';
 import CascadePalette from '../components/CascadePalette';
 import CascadeMatrix from '../components/CascadeMatrix';
 import CascadeSankey from '../components/CascadeSankey';
+import CascadeExportDialog from '../components/CascadeExportDialog';
 import { MATRIX2_MARGIN_CHARACTERISTICS, MATRIX2_CHARACTERISTIC_BY_ID } from '../constants/marginCharacteristics';
 import './CascadeAnalysis.css';
 
@@ -416,6 +417,8 @@ export default function CascadeAnalysis() {
   const [showFlowValues, setShowFlowValues] = useState(true);
   const [showRelationshipTags, setShowRelationshipTags] = useState(false);
   const [showCouplings, setShowCouplings] = useState(true);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportInitialSelection, setExportInitialSelection] = useState(null);
 
   // Compute specified values (nominal + margin)
   const specifiedValues = useMemo(() => {
@@ -781,10 +784,122 @@ export default function CascadeAnalysis() {
     setActiveTab(TAB_ORDER[0]);
   }, []);
 
+  const exportMatrices = useMemo(() => ([
+    {
+      id: 'needs-requirements',
+      title: 'Needs -> Requirements',
+      matrixType: 'needs-requirements',
+      props: {
+        matrixType: 'needs-requirements',
+        rows: m1AllRows,
+        columns: data.m1Columns,
+        relationships: data.m1Relationships,
+        nominalValues: data.m1Nominal,
+        marginValues: data.m1Margin,
+        specifiedValues,
+        directionValues: data.m1Direction,
+        rationale: data.m1Rationale,
+        uncertaintyTypes: data.m1UncertaintyTypes,
+        rowImportanceValues: m1ImportanceMap,
+        scoreValues: m1ScoreData.scores,
+        priorityValues: m1ScoreData.priority,
+      },
+    },
+    {
+      id: 'requirements-architecture',
+      title: 'Requirements -> Architecture',
+      matrixType: 'requirements-architecture',
+      props: {
+        matrixType: 'requirements-architecture',
+        rows: m2AllRows,
+        columns: data.m2Columns,
+        relationships: data.m2Relationships,
+        rationale: data.m2Rationale,
+        uncertaintyTypes: data.m2UncertaintyTypes,
+        rowImportanceValues: m2ImportanceMap,
+        rowImportanceReadOnly: true,
+        isRowImportanceReadOnly: (row, isUncertainty) => !isUncertainty,
+        columnImportanceValues: data.m2ArchImportance,
+        scoreValues: m2ScoreData.scores,
+        priorityValues: m2ScoreData.priority,
+      },
+    },
+    {
+      id: 'architecture-parameters',
+      title: 'Architecture -> Parameters',
+      matrixType: 'architecture-parameters',
+      props: {
+        matrixType: 'architecture-parameters',
+        rows: m3AllRows,
+        columns: data.m3Columns,
+        relationships: data.m3Relationships,
+        roofRelationships: data.m3Couplings,
+        rationale: data.m3Rationale,
+        uncertaintyTypes: data.m3UncertaintyTypes,
+        rowImportanceValues: m3ImportanceMap,
+        rowImportanceReadOnly: true,
+        isRowImportanceReadOnly: (row, isUncertainty) => !isUncertainty,
+        columnImportanceValues: data.m3ParamImportance,
+        scoreValues: m3ScoreData.scores,
+        priorityValues: m3ScoreData.priority,
+      },
+    },
+  ]), [
+    m1AllRows,
+    data.m1Columns,
+    data.m1Relationships,
+    data.m1Nominal,
+    data.m1Margin,
+    specifiedValues,
+    data.m1Direction,
+    data.m1Rationale,
+    data.m1UncertaintyTypes,
+    m1ImportanceMap,
+    m1ScoreData.scores,
+    m1ScoreData.priority,
+    m2AllRows,
+    data.m2Columns,
+    data.m2Relationships,
+    data.m2Rationale,
+    data.m2UncertaintyTypes,
+    m2ImportanceMap,
+    data.m2ArchImportance,
+    m2ScoreData.scores,
+    m2ScoreData.priority,
+    m3AllRows,
+    data.m3Columns,
+    data.m3Relationships,
+    data.m3Couplings,
+    data.m3Rationale,
+    data.m3UncertaintyTypes,
+    m3ImportanceMap,
+    data.m3ParamImportance,
+    m3ScoreData.scores,
+    m3ScoreData.priority,
+  ]);
+
+  const openExportForAll = useCallback(() => {
+    setExportInitialSelection(null);
+    setShowExportDialog(true);
+  }, []);
+
+  const openExportForMatrix = useCallback((matrixId) => {
+    setExportInitialSelection(matrixId ? [matrixId] : null);
+    setShowExportDialog(true);
+  }, []);
+
+  const activeMatrixTab = activeTab === 'needs-requirements'
+    || activeTab === 'requirements-architecture'
+    || activeTab === 'architecture-parameters'
+    ? activeTab
+    : null;
+
   return (
     <div className="app-container">
       <CascadeMenuBar
         onExport={handleExport}
+        onExportMatrices={openExportForAll}
+        onExportCurrentMatrix={() => openExportForMatrix(activeMatrixTab)}
         onImport={handleImport}
         onClear={handleClear}
         onLoadExample={handleLoadExample}
@@ -831,7 +946,27 @@ export default function CascadeAnalysis() {
 
         <div className="cascade-content">
           <div className="cascade-matrix-title">
-            {TAB_LABELS[activeTab]}
+            <span>{TAB_LABELS[activeTab]}</span>
+            {activeMatrixTab && (
+              <button
+                type="button"
+                onClick={() => openExportForMatrix(activeMatrixTab)}
+                style={{
+                  marginLeft: 'auto',
+                  border: '1px solid #93C5FD',
+                  borderRadius: 8,
+                  background: '#EFF6FF',
+                  color: '#1D4ED8',
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+                title="Export this matrix"
+              >
+                Export This Matrix
+              </button>
+            )}
           </div>
 
           {activeTab === 'needs-requirements' && (
@@ -1049,6 +1184,16 @@ export default function CascadeAnalysis() {
           </a>
         </span>
       </div>
+
+      <CascadeExportDialog
+        open={showExportDialog}
+        onClose={() => {
+          setShowExportDialog(false);
+          setExportInitialSelection(null);
+        }}
+        matrices={exportMatrices}
+        initialSelectedIds={exportInitialSelection}
+      />
     </div>
   );
 }

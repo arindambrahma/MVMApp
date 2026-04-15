@@ -171,7 +171,7 @@ function Block({ bg, children, style, radius }) {
   return (
     <div style={{
       background: bg || '#F8FAFC',
-      borderRadius: radius ?? R,
+      borderRadius: radius ?? 'var(--cascade-block-radius, 6px)',
       overflow: 'hidden',
       border: OUTER_BORDER,
       ...style,
@@ -198,19 +198,63 @@ function CascadeMatrix({
   isRowImportanceReadOnly,
   columnImportanceValues, onUpdateColumnImportance,
   scoreValues, priorityValues,
+  styleOverrides,
+  containerStyle,
 }) {
-  const P = PALETTE[matrixType] || PALETTE['needs-requirements'];
-  const showNMS = matrixType === 'needs-requirements';
-  const showRoof = matrixType === 'architecture-parameters';
-  const showBottom = matrixType !== 'architecture-parameters';
+  const basePalette = PALETTE[matrixType] || PALETTE['needs-requirements'];
+  const P = { ...basePalette, ...((styleOverrides && styleOverrides.palette) || {}) };
+  const elements = (styleOverrides && styleOverrides.elements) || {};
+  const layout = (styleOverrides && styleOverrides.layout) || {};
+  const typography = (styleOverrides && styleOverrides.typography) || {};
+  const cornerRadius = (() => {
+    const raw = Number(styleOverrides && styleOverrides.cornerRadius);
+    if (!Number.isFinite(raw)) return 6;
+    return Math.max(0, Math.min(32, raw));
+  })();
+  const showNMS = matrixType === 'needs-requirements' && elements.showNMS !== false;
+  const showRoof = matrixType === 'architecture-parameters' && elements.showRoof !== false;
+  const showBottom = matrixType !== 'architecture-parameters' && elements.showBottom !== false;
+  const showDirection = showNMS && elements.showDirection !== false;
+  const showRationale = elements.showRationale !== false;
+  const showUncertainty = elements.showUncertainty !== false;
+  const showScorePriority = elements.showScorePriority !== false;
+  const showWeighting = elements.showWeighting !== false;
   const mainRows = rows.filter(r => !r.isUncertainty);
   const uncRows = rows.filter(r => r.isUncertainty);
   const wrapperRef = useRef(null);
   const [availableWidth, setAvailableWidth] = useState(null);
-  const baseRowHeaderWidth = matrixType === 'architecture-parameters' ? 136 : 160;
-  const baseRationaleWidth = matrixType === 'architecture-parameters' ? 56 : 90;
+  const baseRowHeaderWidth = (() => {
+    const configured = Number(layout.rowHeaderWidth);
+    if (Number.isFinite(configured)) return Math.max(90, Math.min(360, configured));
+    return matrixType === 'architecture-parameters' ? 136 : 160;
+  })();
+  const baseRationaleWidth = (() => {
+    if (!showRationale) return 0;
+    const configured = Number(layout.rationaleWidth);
+    if (Number.isFinite(configured)) return Math.max(0, Math.min(220, configured));
+    return matrixType === 'architecture-parameters' ? 56 : 90;
+  })();
   const minRowHeaderWidth = 90;
-  const minRationaleWidth = 40;
+  const minRationaleWidth = showRationale ? 40 : 0;
+  const textScale = (() => {
+    const configured = Number(typography.textScale);
+    if (!Number.isFinite(configured)) return 1;
+    return Math.max(0.7, Math.min(1.8, configured));
+  })();
+  const fontFamily = typeof typography.fontFamily === 'string' && typography.fontFamily.trim()
+    ? typography.fontFamily
+    : undefined;
+  const configuredColumnWidth = (() => {
+    const n = Number(layout.columnWidth);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(72, Math.min(360, n));
+  })();
+  const configuredRowHeight = (() => {
+    const n = Number(layout.rowHeight);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(24, Math.min(88, n));
+  })();
+  const effectiveRowImportanceValues = showWeighting ? rowImportanceValues : null;
   const sideWidths = useMemo(() => {
     let rowW = baseRowHeaderWidth;
     let ratW = baseRationaleWidth;
@@ -236,7 +280,7 @@ function CascadeMatrix({
     : matrixType === 'requirements-architecture' ? 'Architecture' : 'Parameters';
   const uncLabel = matrixType === 'requirements-architecture' ? 'Arch. Uncert.'
     : matrixType === 'architecture-parameters' ? 'Para. Uncert.' : 'Uncert.';
-  const showColumnImportance = !!columnImportanceValues;
+  const showColumnImportance = !!columnImportanceValues && showWeighting;
   const canInsertRows = !!onInsertRowAt;
   const canInsertColumns = !!onInsertColumnAt;
 
@@ -281,13 +325,17 @@ function CascadeMatrix({
   }, []);
 
   const colPct = columns.length > 0 ? `${100 / columns.length}%` : '100%';
+  const colStyle = configuredColumnWidth ? { width: `${configuredColumnWidth}px` } : { width: colPct };
+  const dynamicColumnGrid = configuredColumnWidth
+    ? `repeat(${columns.length}, ${configuredColumnWidth}px)`
+    : `repeat(${columns.length}, minmax(0, 1fr))`;
   const mainRowHeight = useMemo(
-    () => getRowHeight(mainRows, getMainRowTextWidth(rowHeaderWidth, !!rowImportanceValues)),
-    [mainRows, rowHeaderWidth, rowImportanceValues]
+    () => configuredRowHeight || getRowHeight(mainRows, getMainRowTextWidth(rowHeaderWidth, !!effectiveRowImportanceValues)),
+    [mainRows, rowHeaderWidth, effectiveRowImportanceValues, configuredRowHeight]
   );
   const uncRowHeight = useMemo(
-    () => getRowHeight(uncRows, getUncertaintyRowTextWidth(rowHeaderWidth, !!rowImportanceValues)),
-    [uncRows, rowHeaderWidth, rowImportanceValues]
+    () => configuredRowHeight || getRowHeight(uncRows, getUncertaintyRowTextWidth(rowHeaderWidth, !!effectiveRowImportanceValues)),
+    [uncRows, rowHeaderWidth, effectiveRowImportanceValues, configuredRowHeight]
   );
   const minMainAxisHeight = useMemo(
     () => Math.max(mainRowHeight, Math.ceil(measureTextWidth(rowLabel, '700 11px Segoe UI')) + 16),
@@ -301,11 +349,11 @@ function CascadeMatrix({
   // Columns: [rowHeaders] [relationship area] [rationale]
   const grid = useMemo(() => ({
     display: 'grid',
-    gridTemplateColumns: `${rowHeaderWidth}px minmax(0, 1fr) ${rationaleWidth}px`,
+    gridTemplateColumns: `${rowHeaderWidth}px minmax(0, 1fr) ${showRationale ? `${rationaleWidth}px` : '0px'}`,
     gap: GAP,
     width: '100%',
     minWidth: 0,
-  }), [rowHeaderWidth, rationaleWidth]);
+  }), [rowHeaderWidth, rationaleWidth, showRationale]);
 
   const emptyPlaceholder = (label, bg, style) => (
     <div style={{
@@ -626,7 +674,7 @@ function CascadeMatrix({
             }}
           />
         </div>
-        {rowImportanceValues && (
+        {effectiveRowImportanceValues && (
           <div style={{
             width: 30,
             minWidth: 30,
@@ -639,11 +687,11 @@ function CascadeMatrix({
           }}>
             {((isRowImportanceReadOnly && isRowImportanceReadOnly(row, isUncert)) || (!isRowImportanceReadOnly && rowImportanceReadOnly)) ? (
               <span style={{ fontSize: 9, fontWeight: 600, color: '#0F172A' }}>
-                {formatScore((rowImportanceValues || {})[row.id] ?? 0)}
+                {formatScore((effectiveRowImportanceValues || {})[row.id] ?? 0)}
               </span>
             ) : (
               <EditableText
-                value={(rowImportanceValues || {})[row.id] ?? ''}
+                value={(effectiveRowImportanceValues || {})[row.id] ?? ''}
                 onChange={(v) => onUpdateRowImportance && onUpdateRowImportance(row.id, v)}
                 placeholder="0"
                 style={{
@@ -670,10 +718,10 @@ function CascadeMatrix({
       return emptyPlaceholder('Relationship', undefined, { minHeight: isUncert ? uncRowHeight : Math.max(mainRowHeight, 80) });
     }
     return (
-      <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+      <table style={{ borderCollapse: 'collapse', width: configuredColumnWidth ? 'auto' : '100%', minWidth: configuredColumnWidth ? columns.length * configuredColumnWidth : undefined, tableLayout: 'fixed' }}>
         <colgroup>
           {columns.map((col) => (
-            <col key={`rel_col_${col.id}`} style={{ width: colPct }} />
+            <col key={`rel_col_${col.id}`} style={colStyle} />
           ))}
         </colgroup>
         <tbody>
@@ -813,7 +861,16 @@ function CascadeMatrix({
   };
 
   return (
-    <div className="cascade-matrix-wrapper" ref={wrapperRef}>
+    <div
+      className="cascade-matrix-wrapper"
+      ref={wrapperRef}
+      style={{
+        '--cascade-block-radius': `${cornerRadius}px`,
+        fontFamily,
+        zoom: textScale,
+        ...(containerStyle || {}),
+      }}
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: GAP }}>
 
         {/* ── Coupling roof (Matrix 3) ── */}
@@ -831,7 +888,7 @@ function CascadeMatrix({
         {/* ── Column headers — center only ── */}
         <div style={grid}>
           <div />
-          <Block bg={P.headerBg}>
+          <Block bg={P.headerBg} style={{ overflowX: configuredColumnWidth ? 'auto' : 'hidden' }}>
             <div style={{
               minHeight: 24,
               display: 'flex',
@@ -845,7 +902,7 @@ function CascadeMatrix({
               </span>
             </div>
             {columns.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`, position: 'relative' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: dynamicColumnGrid, position: 'relative' }}>
                 {columns.map((col, i) => (
                   <div
                     key={col.id}
@@ -985,11 +1042,11 @@ function CascadeMatrix({
                 Importance
               </div>
             </Block>
-            <Block bg={P.blockBg2}>
-              <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+            <Block bg={P.blockBg2} style={{ overflowX: configuredColumnWidth ? 'auto' : 'hidden' }}>
+              <table style={{ borderCollapse: 'collapse', width: configuredColumnWidth ? 'auto' : '100%', minWidth: configuredColumnWidth ? columns.length * configuredColumnWidth : undefined, tableLayout: 'fixed' }}>
                 <colgroup>
                   {columns.map((col) => (
-                    <col key={`imp_col_${col.id}`} style={{ width: colPct }} />
+                    <col key={`imp_col_${col.id}`} style={colStyle} />
                   ))}
                 </colgroup>
                 <tbody>
@@ -1021,7 +1078,7 @@ function CascadeMatrix({
         )}
 
         {/* ── Direction Of Improvement (Matrix 1 only) ── */}
-        {showNMS && columns.length > 0 && (
+        {showDirection && columns.length > 0 && (
           <div style={grid}>
             <Block bg={P.blockBg}>
               <div style={{
@@ -1037,11 +1094,11 @@ function CascadeMatrix({
                 Direction
               </div>
             </Block>
-            <Block bg={P.blockBg2}>
-              <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+            <Block bg={P.blockBg2} style={{ overflowX: configuredColumnWidth ? 'auto' : 'hidden' }}>
+              <table style={{ borderCollapse: 'collapse', width: configuredColumnWidth ? 'auto' : '100%', minWidth: configuredColumnWidth ? columns.length * configuredColumnWidth : undefined, tableLayout: 'fixed' }}>
                 <colgroup>
                   {columns.map((col) => (
-                    <col key={`dir_col_${col.id}`} style={{ width: colPct }} />
+                    <col key={`dir_col_${col.id}`} style={colStyle} />
                   ))}
                 </colgroup>
                 <tbody>
@@ -1105,11 +1162,11 @@ function CascadeMatrix({
                 </tbody>
               </table>
             </Block>
-            <Block bg={P.blockBg2}>
-              <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+            <Block bg={P.blockBg2} style={{ overflowX: configuredColumnWidth ? 'auto' : 'hidden' }}>
+              <table style={{ borderCollapse: 'collapse', width: configuredColumnWidth ? 'auto' : '100%', minWidth: configuredColumnWidth ? columns.length * configuredColumnWidth : undefined, tableLayout: 'fixed' }}>
                 <colgroup>
                   {columns.map((col) => (
-                    <col key={`nms_col_${col.id}`} style={{ width: colPct }} />
+                    <col key={`nms_col_${col.id}`} style={colStyle} />
                   ))}
                 </colgroup>
                 <tbody>
@@ -1177,16 +1234,18 @@ function CascadeMatrix({
               </div>
             </div>
           </Block>
-          <Block bg={P.blockBg2}>
+          <Block bg={P.blockBg2} style={{ overflowX: configuredColumnWidth ? 'auto' : 'hidden' }}>
             {renderRelCells(mainRows, false)}
           </Block>
-          <Block bg={P.blockBg}>
-            {renderRationale(mainRows)}
-          </Block>
+          {showRationale ? (
+            <Block bg={P.blockBg}>
+              {renderRationale(mainRows)}
+            </Block>
+          ) : <div />}
         </div>
 
         {/* ── Uncertainty rows: Labels | Relationship cells ── */}
-        {(uncRows.length > 0 || true) && (
+        {showUncertainty && (uncRows.length > 0 || true) && (
           <div style={grid}>
             <Block bg={P.uncertBg}>
               <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr', minHeight: uncRows.length === 0 ? minUncAxisHeight : undefined }}>
@@ -1218,7 +1277,7 @@ function CascadeMatrix({
                 </div>
               </div>
             </Block>
-            <Block bg={uncRows.length > 0 ? '#FEF9EE' : P.blockBg}>
+            <Block bg={uncRows.length > 0 ? '#FEF9EE' : P.blockBg} style={{ overflowX: configuredColumnWidth ? 'auto' : 'hidden' }}>
               {uncRows.length > 0
                 ? renderRelCells(uncRows, true)
                 : emptyPlaceholder('', undefined, { minHeight: uncRowHeight })
@@ -1229,7 +1288,7 @@ function CascadeMatrix({
         )}
 
         {/* ── Margin type / Method — center only ── */}
-        {columns.length > 0 && scoreValues && priorityValues && (
+        {showScorePriority && columns.length > 0 && scoreValues && priorityValues && (
           <div style={grid}>
             <Block bg="#E2E8F0">
               <div style={{
@@ -1256,11 +1315,11 @@ function CascadeMatrix({
                 Priority (%)
               </div>
             </Block>
-            <Block bg="#F8FAFC">
-              <table style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}>
+            <Block bg="#F8FAFC" style={{ overflowX: configuredColumnWidth ? 'auto' : 'hidden' }}>
+              <table style={{ borderCollapse: 'collapse', width: configuredColumnWidth ? 'auto' : '100%', minWidth: configuredColumnWidth ? columns.length * configuredColumnWidth : undefined, tableLayout: 'fixed' }}>
                 <colgroup>
                   {columns.map((col) => (
-                    <col key={`score_col_${col.id}`} style={{ width: colPct }} />
+                    <col key={`score_col_${col.id}`} style={colStyle} />
                   ))}
                 </colgroup>
                 <tbody>

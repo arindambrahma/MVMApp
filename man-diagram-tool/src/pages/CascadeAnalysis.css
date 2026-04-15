@@ -16,6 +16,9 @@
   color: #0F172A;
   border-bottom: 1px solid #E2E8F0;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .cascade-matrix-wrapper {

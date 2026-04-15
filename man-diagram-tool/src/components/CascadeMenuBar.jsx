@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 function CascadeMenuBar({
   onExport, onImport, onClear, onLoadExample,
+  onExportMatrices,
+  onExportCurrentMatrix,
   onExitToHome,
   activeTab, onNavigateForward, onNavigateBackward,
   canGoForward, canGoBackward,
@@ -44,6 +46,9 @@ function CascadeMenuBar({
     'requirements-architecture': 'Requirements \u2192 Architecture',
     'architecture-parameters': 'Architecture \u2192 Parameters',
   };
+  const isMatrixTab = activeTab === 'needs-requirements'
+    || activeTab === 'requirements-architecture'
+    || activeTab === 'architecture-parameters';
 
   const menus = useMemo(() => ([
     {
@@ -56,6 +61,8 @@ function CascadeMenuBar({
             { label: 'Load Example', onClick: onLoadExample },
             { label: 'Import JSON...', onClick: () => fileRef.current?.click() },
             { label: 'Export JSON...', onClick: onExport },
+            { label: 'Export Matrices (PDF/SVG)...', onClick: onExportMatrices },
+            { label: 'Export Current Matrix (PDF/SVG)...', onClick: onExportCurrentMatrix, disabled: !isMatrixTab },
           ],
         },
         {
@@ -72,7 +79,7 @@ function CascadeMenuBar({
         },
       ],
     },
-  ]), [onExport, onClear, onExitToHome, onLoadExample]);
+  ]), [onExport, onClear, onExitToHome, onLoadExample, onExportMatrices, onExportCurrentMatrix, isMatrixTab]);
 
   return (
     <div className="menu-bar" ref={menuWrapRef}>
