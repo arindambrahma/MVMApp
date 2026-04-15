@@ -1642,17 +1642,9 @@ def validate_function():
 
 @app.route('/api/pma/run-cpm', methods=['POST'])
 def pma_run_cpm():
-    """Run Clarkson-style CPM propagation for the Probabilistic Margin Analysis module.
-
-    Request JSON:
-        elements: list[str]         — element names (n)
-        likelihood: list[list[float]]  — n×n L matrix (values in [0,1])
-        impact:     list[list[float]]  — n×n I matrix (values in [0,1])
-        depth:      int (optional, default 4)
-        instigator: 'column' | 'row' (optional, default 'column')
-    """
+    """Run CPM propagation in classic or margin-aware mode for PMA."""
     try:
-        from cpm_lib import DSM, ChangePropagationTree
+        from cpm_lib import DSM, ChangePropagationTree, run_margin_aware_cpm
     except Exception as import_err:
         return jsonify({'success': False, 'error': f'CPM library not available: {import_err}'}), 500
 
@@ -1660,8 +1652,20 @@ def pma_run_cpm():
     elements = data.get('elements') or []
     likelihood_matrix = data.get('likelihood') or []
     impact_matrix = data.get('impact') or []
-    search_depth = int(data.get('depth', 4) or 4)
+    try:
+        search_depth = int(data.get('depth', 4) or 4)
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'error': 'depth must be an integer'}), 400
+    search_depth = max(1, min(12, search_depth))
     instigator = data.get('instigator', 'column')
+    mode_raw = str(data.get('mode', 'classic') or 'classic').strip().lower()
+
+    if mode_raw in ('classic', 'clarkson'):
+        mode = 'classic'
+    elif mode_raw in ('margin_aware', 'margin-aware', 'marginaware', 'ma', 'ma-cpm'):
+        mode = 'margin_aware'
+    else:
+        return jsonify({'success': False, 'error': 'mode must be "classic" or "margin_aware"'}), 400
 
     n = len(elements)
     if n < 2:
@@ -1672,6 +1676,65 @@ def pma_run_cpm():
         return jsonify({'success': False, 'error': 'Likelihood matrix shape does not match elements'}), 400
     if len(impact_matrix) != n or any(len(r) != n for r in impact_matrix):
         return jsonify({'success': False, 'error': 'Impact matrix shape does not match elements'}), 400
+
+    if mode == 'margin_aware':
+        margins = data.get('margins')
+        if margins is None:
+            margins = [0.0] * n
+        if not isinstance(margins, list):
+            return jsonify({'success': False, 'error': 'margins must be a list of length n'}), 400
+
+        try:
+            n_samples = int(data.get('nSamples', 400) or 400)
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'nSamples must be an integer'}), 400
+        n_samples = max(50, min(10000, n_samples))
+
+        try:
+            delta0 = float(data.get('delta0', 1.0) or 1.0)
+        except (ValueError, TypeError):
+            return jsonify({'success': False, 'error': 'delta0 must be numeric'}), 400
+
+        seed = data.get('seed', None)
+        if seed in ('', None):
+            seed = None
+        else:
+            try:
+                seed = int(seed)
+            except (ValueError, TypeError):
+                return jsonify({'success': False, 'error': 'seed must be an integer'}), 400
+
+        try:
+            ma_result = run_margin_aware_cpm(
+                likelihood_matrix=likelihood_matrix,
+                impact_matrix=impact_matrix,
+                margins=margins,
+                search_depth=search_depth,
+                instigator=instigator,
+                n_samples=n_samples,
+                delta0=delta0,
+                seed=seed,
+            )
+            return jsonify({
+                'success': True,
+                'mode': 'margin_aware',
+                'elements': elements,
+                'combinedRisk': ma_result['combinedRisk'],
+                'combinedLikelihood': ma_result['combinedLikelihood'],
+                'incoming': ma_result['incoming'],
+                'outgoing': ma_result['outgoing'],
+                'effectiveLikelihood': ma_result['effectiveLikelihood'],
+                'edgeActivation': ma_result['edgeActivation'],
+                'expectedTransmission': ma_result['expectedTransmission'],
+                'margins': [round(float(x), 6) for x in margins],
+                'nSamples': n_samples,
+                'delta0': round(float(delta0), 6),
+                'depth': search_depth,
+                'instigator': instigator,
+            })
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({'success': False, 'error': str(e)}), 400
 
     try:
         dsm_likelihood = DSM(matrix=likelihood_matrix, columns=list(elements), instigator=instigator)
@@ -1705,6 +1768,7 @@ def pma_run_cpm():
 
         return jsonify({
             'success': True,
+            'mode': 'classic',
             'elements': elements,
             'combinedRisk': risk_matrix,
             'combinedLikelihood': prob_matrix,
