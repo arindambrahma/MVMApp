@@ -5,6 +5,7 @@ import './index.css'
 import HomePage from './pages/HomePage'
 import App from './App.jsx'
 import CascadeAnalysis from './pages/CascadeAnalysis'
+import ProbabilisticMarginAnalysis from './pages/ProbabilisticMarginAnalysis'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -13,6 +14,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/" element={<HomePage />} />
         <Route path="/mvm" element={<App />} />
         <Route path="/cascade" element={<CascadeAnalysis />} />
+        <Route path="/pma" element={<ProbabilisticMarginAnalysis />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

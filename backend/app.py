@@ -1640,6 +1640,84 @@ def validate_function():
         return jsonify({'success': False, 'error': str(e)}), 400
 
 
+@app.route('/api/pma/run-cpm', methods=['POST'])
+def pma_run_cpm():
+    """Run Clarkson-style CPM propagation for the Probabilistic Margin Analysis module.
+
+    Request JSON:
+        elements: list[str]         — element names (n)
+        likelihood: list[list[float]]  — n×n L matrix (values in [0,1])
+        impact:     list[list[float]]  — n×n I matrix (values in [0,1])
+        depth:      int (optional, default 4)
+        instigator: 'column' | 'row' (optional, default 'column')
+    """
+    try:
+        from cpm_lib import DSM, ChangePropagationTree
+    except Exception as import_err:
+        return jsonify({'success': False, 'error': f'CPM library not available: {import_err}'}), 500
+
+    data = request.json or {}
+    elements = data.get('elements') or []
+    likelihood_matrix = data.get('likelihood') or []
+    impact_matrix = data.get('impact') or []
+    search_depth = int(data.get('depth', 4) or 4)
+    instigator = data.get('instigator', 'column')
+
+    n = len(elements)
+    if n < 2:
+        return jsonify({'success': False, 'error': 'Need at least 2 elements'}), 400
+    if instigator not in ('row', 'column'):
+        return jsonify({'success': False, 'error': 'instigator must be "row" or "column"'}), 400
+    if len(likelihood_matrix) != n or any(len(r) != n for r in likelihood_matrix):
+        return jsonify({'success': False, 'error': 'Likelihood matrix shape does not match elements'}), 400
+    if len(impact_matrix) != n or any(len(r) != n for r in impact_matrix):
+        return jsonify({'success': False, 'error': 'Impact matrix shape does not match elements'}), 400
+
+    try:
+        dsm_likelihood = DSM(matrix=likelihood_matrix, columns=list(elements), instigator=instigator)
+        dsm_impact = DSM(matrix=impact_matrix, columns=list(elements), instigator=instigator)
+
+        risk_matrix = [[0.0] * n for _ in range(n)]
+        prob_matrix = [[0.0] * n for _ in range(n)]
+
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    continue
+                cpt = ChangePropagationTree(i, j, dsm_impact=dsm_impact, dsm_likelihood=dsm_likelihood)
+                cpt.propagate(search_depth=search_depth)
+                try:
+                    risk_matrix[i][j] = round(float(cpt.get_risk() or 0), 6)
+                except Exception:
+                    risk_matrix[i][j] = 0.0
+                try:
+                    prob_matrix[i][j] = round(float(cpt.get_probability() or 0), 6)
+                except Exception:
+                    prob_matrix[i][j] = 0.0
+
+        incoming = [0.0] * n
+        outgoing = [0.0] * n
+        for i in range(n):
+            out_vals = [risk_matrix[i][j] for j in range(n) if i != j]
+            in_vals = [risk_matrix[j][i] for j in range(n) if i != j]
+            outgoing[i] = round(sum(out_vals) / max(len(out_vals), 1), 6)
+            incoming[i] = round(sum(in_vals) / max(len(in_vals), 1), 6)
+
+        return jsonify({
+            'success': True,
+            'elements': elements,
+            'combinedRisk': risk_matrix,
+            'combinedLikelihood': prob_matrix,
+            'incoming': incoming,
+            'outgoing': outgoing,
+            'depth': search_depth,
+            'instigator': instigator,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
 @app.route('/examples/<path:filename>', methods=['GET'])
 def serve_example(filename):
     if not os.path.exists(os.path.join(EXAMPLES_DIR, filename)):

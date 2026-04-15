@@ -39,6 +39,32 @@ const modules = [
     route: '/cascade',
     ready: true,
   },
+  {
+    id: 'pma',
+    title: 'Probabilistic Margin Analysis',
+    subtitle: 'Change-propagation based margin risk using DSMs',
+    description:
+      'Build element DSMs, assign likelihood and impact of change propagation, and run Clarkson\u2019s CPM to identify margin-critical couplings.',
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+        <rect x="6" y="6" width="36" height="36" rx="3" fill="#FFFFFF" stroke="#64748B" strokeWidth="1.5"/>
+        <line x1="6" y1="16" x2="42" y2="16" stroke="#CBD5E1" strokeWidth="1"/>
+        <line x1="6" y1="26" x2="42" y2="26" stroke="#CBD5E1" strokeWidth="1"/>
+        <line x1="6" y1="36" x2="42" y2="36" stroke="#CBD5E1" strokeWidth="1"/>
+        <line x1="16" y1="6" x2="16" y2="42" stroke="#CBD5E1" strokeWidth="1"/>
+        <line x1="26" y1="6" x2="26" y2="42" stroke="#CBD5E1" strokeWidth="1"/>
+        <line x1="36" y1="6" x2="36" y2="42" stroke="#CBD5E1" strokeWidth="1"/>
+        <rect x="7" y="7" width="8" height="8" fill="#BFDBFE"/>
+        <rect x="17" y="17" width="8" height="8" fill="#6B7280"/>
+        <rect x="27" y="7" width="8" height="8" fill="#F59E0B"/>
+        <rect x="7" y="27" width="8" height="8" fill="#DC2626"/>
+        <rect x="37" y="17" width="4" height="8" fill="#10B981"/>
+        <rect x="17" y="37" width="8" height="4" fill="#8B5CF6"/>
+      </svg>
+    ),
+    route: '/pma',
+    ready: true,
+  },
 ];
 
 export default function HomePage() {
