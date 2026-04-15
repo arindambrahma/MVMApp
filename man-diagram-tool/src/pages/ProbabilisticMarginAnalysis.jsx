@@ -247,19 +247,100 @@ function valueToRiskColor(value, maxValue) {
   return RISK_COLOR_SCALE[idx];
 }
 
+function clamp01(v) {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+
+// ForceAtlas-like layout: pairwise repulsion + weighted spring attraction + gravity.
+function computeForceAtlasLikeLayout(nodeCount, edges) {
+  if (nodeCount <= 0) return [];
+  if (nodeCount === 1) return [{ x: 0, y: 0 }];
+
+  const positions = Array.from({ length: nodeCount }, (_, i) => {
+    const angle = (i / nodeCount) * Math.PI * 2;
+    return { x: 0.85 * Math.cos(angle), y: 0.85 * Math.sin(angle) };
+  });
+  const velocity = Array.from({ length: nodeCount }, () => ({ x: 0, y: 0 }));
+
+  const iterations = 260;
+  const repulsion = 0.012;
+  const spring = 0.1;
+  const gravity = 0.012;
+  const damping = 0.84;
+  const speedLimit = 0.08;
+
+  for (let iter = 0; iter < iterations; iter++) {
+    const forces = Array.from({ length: nodeCount }, () => ({ x: 0, y: 0 }));
+
+    for (let i = 0; i < nodeCount; i++) {
+      for (let j = i + 1; j < nodeCount; j++) {
+        let dx = positions[j].x - positions[i].x;
+        let dy = positions[j].y - positions[i].y;
+        const d2 = Math.max(dx * dx + dy * dy, 1e-4);
+        const d = Math.sqrt(d2);
+        dx /= d;
+        dy /= d;
+        const f = repulsion / d2;
+        forces[i].x -= dx * f;
+        forces[i].y -= dy * f;
+        forces[j].x += dx * f;
+        forces[j].y += dy * f;
+      }
+    }
+
+    for (const e of edges) {
+      const from = e.from;
+      const to = e.to;
+      if (from === to) continue;
+      let dx = positions[to].x - positions[from].x;
+      let dy = positions[to].y - positions[from].y;
+      const d = Math.max(Math.sqrt(dx * dx + dy * dy), 1e-4);
+      dx /= d;
+      dy /= d;
+      const w = clamp01(e.weight ?? 0);
+      const desired = 0.25 + (1 - w) * 0.8;
+      const f = spring * (0.35 + w) * (d - desired);
+      forces[from].x += dx * f;
+      forces[from].y += dy * f;
+      forces[to].x -= dx * f;
+      forces[to].y -= dy * f;
+    }
+
+    for (let i = 0; i < nodeCount; i++) {
+      forces[i].x += -positions[i].x * gravity;
+      forces[i].y += -positions[i].y * gravity;
+      velocity[i].x = (velocity[i].x + forces[i].x) * damping;
+      velocity[i].y = (velocity[i].y + forces[i].y) * damping;
+      const speed = Math.sqrt(velocity[i].x * velocity[i].x + velocity[i].y * velocity[i].y);
+      if (speed > speedLimit) {
+        velocity[i].x = (velocity[i].x / speed) * speedLimit;
+        velocity[i].y = (velocity[i].y / speed) * speedLimit;
+      }
+      positions[i].x += velocity[i].x;
+      positions[i].y += velocity[i].y;
+    }
+  }
+
+  const maxAbs = Math.max(...positions.map((p) => Math.max(Math.abs(p.x), Math.abs(p.y))), 1e-6);
+  return positions.map((p) => ({ x: p.x / maxAbs, y: p.y / maxAbs }));
+}
+
 export default function ProbabilisticMarginAnalysis() {
   const navigate = useNavigate();
   const [dsm, setDsm] = useState(EMPTY_DSM);
   const [activeTab, setActiveTab] = useState('dependencies');
   const [selectedRow, setSelectedRow] = useState(-1);
+  const [editingIdx, setEditingIdx] = useState(-1);
   const [symmetric, setSymmetric] = useState(false);
   const [instigator, setInstigator] = useState('column'); // 'column' | 'row'
   const [depth, setDepth] = useState(4);
   const [analysisMode, setAnalysisMode] = useState('classic'); // 'classic' | 'margin_aware'
-  const [nSamples, setNSamples] = useState('400');
-  const [delta0, setDelta0] = useState('1.0');
   const [defaultMargin, setDefaultMargin] = useState('0');
   const [margins, setMargins] = useState([]);
+  const [distType, setDistType] = useState('normal');
+  const [distMu, setDistMu] = useState('0.3');
+  const [distSigma, setDistSigma] = useState('0.15');
   const [defaultL, setDefaultL] = useState('0.5');
   const [defaultI, setDefaultI] = useState('0.5');
   const elementCounterRef = useRef(0);
@@ -279,6 +360,7 @@ export default function ProbabilisticMarginAnalysis() {
   const scatterRef = useRef(null);
   const distanceRef = useRef(null);
   const riskNetworkRef = useRef(null);
+  const matrixNetworkRef = useRef(null);
   const treeRef = useRef(null);
   const centralityRef = useRef(null);
   const treemapRef = useRef(null);
@@ -311,8 +393,7 @@ export default function ProbabilisticMarginAnalysis() {
       const next = cloneDsm(prev);
       let label = name;
       if (!label || !label.trim()) {
-        elementCounterRef.current += 1;
-        label = `Element ${elementCounterRef.current}`;
+        label = `Element ${next.elements.length + 1}`;
       }
       const idx = next.elements.length;
       next.elements.splice(idx, 0, label);
@@ -372,21 +453,19 @@ export default function ProbabilisticMarginAnalysis() {
   }, []);
 
   const loadExample = useCallback(() => {
-    // Simple 5-element toy system (Clarkson-style).
-    const labels = ['Engine', 'Gearbox', 'Chassis', 'Electronics', 'Cooling'];
+    // 3-component serial chain A -> B -> C (matches MATLAB demo / paper).
+    // Margin on B = 0.30, distribution = truncated Normal(0.30, 0.15).
+    // Expected: baseline R(C,A) = 0.2400, with margin R(C,A) = 0.1228 (-48.8%).
+    const labels = ['A', 'B', 'C'];
     const L = [
-      [0,   0.6, 0.3, 0.5, 0.8],
-      [0.5, 0,   0.4, 0.2, 0.3],
-      [0.4, 0.6, 0,   0.1, 0.2],
-      [0.3, 0.2, 0.1, 0,   0.4],
-      [0.7, 0.2, 0.2, 0.3, 0  ],
+      [0,   0,   0  ],
+      [0.8, 0,   0  ],
+      [0,   0.6, 0  ],
     ];
     const I = [
-      [0,   0.7, 0.5, 0.4, 0.6],
-      [0.6, 0,   0.5, 0.2, 0.3],
-      [0.5, 0.5, 0,   0.1, 0.2],
-      [0.3, 0.2, 0.1, 0,   0.4],
-      [0.5, 0.2, 0.2, 0.3, 0  ],
+      [0,   0,   0  ],
+      [0.7, 0,   0  ],
+      [0,   0.5, 0  ],
     ];
     const dep = L.map(row => row.map(v => v > 0));
     setDsm({
@@ -395,10 +474,11 @@ export default function ProbabilisticMarginAnalysis() {
       likelihood: L.map(r => [...r]),
       impact: I.map(r => [...r]),
     });
-    setMargins(new Array(labels.length).fill(0));
+    setMargins([0, 0.30, 0]);
     elementCounterRef.current = labels.length;
     setResult(null);
     setError(null);
+    setAnalysisMode('margin_aware');
   }, []);
 
   /* ---------- Cell edits ---------- */
@@ -497,22 +577,15 @@ export default function ProbabilisticMarginAnalysis() {
     };
 
     if (analysisMode === 'margin_aware') {
-      const parsedSamples = Number.parseInt(String(nSamples), 10);
-      if (!Number.isFinite(parsedSamples) || parsedSamples < 1) {
-        setError('nSamples must be a positive integer.');
-        return;
-      }
-      const parsedDelta = parseNonNegative(delta0);
-      if (!parsedDelta.ok || parsedDelta.value <= 0) {
-        setError('delta0 must be a positive number.');
-        return;
-      }
-      payload.nSamples = parsedSamples;
-      payload.delta0 = parsedDelta.value;
       payload.margins = margins.map((m) => {
         const parsed = parseNonNegative(m);
         return parsed.ok ? parsed.value : 0;
       });
+      payload.distribution = {
+        type: distType,
+        mu: parseFloat(distMu) || 0.3,
+        sigma: parseFloat(distSigma) || 0.15,
+      };
     }
 
     setRunning(true);
@@ -551,7 +624,7 @@ export default function ProbabilisticMarginAnalysis() {
     } finally {
       setRunning(false);
     }
-  }, [analysisMode, delta0, dsm, n, depth, instigator, margins, nSamples]);
+  }, [analysisMode, dsm, n, depth, instigator, margins, distType, distMu, distSigma]);
 
   /* ---------- Keyboard escape ---------- */
   useEffect(() => {
@@ -596,6 +669,7 @@ export default function ProbabilisticMarginAnalysis() {
     const probMatrix = result.combinedLikelihood || [];
     const impactMatrix = buildCombinedImpactMatrix(riskMatrix, probMatrix);
     const edgeMatrix = edgeMetric === 'likelihood' ? probMatrix : (edgeMetric === 'impact' ? impactMatrix : riskMatrix);
+    const matrixEdgeMatrix = matrixMetric === 'likelihood' ? probMatrix : (matrixMetric === 'impact' ? impactMatrix : riskMatrix);
     const elem = dsm.elements;
     const nLocal = elem.length;
     const safeRoot = Math.min(Math.max(vizRoot, 0), Math.max(nLocal - 1, 0));
@@ -813,6 +887,89 @@ export default function ProbabilisticMarginAnalysis() {
       }, { responsive: true });
     }
 
+    if (matrixNetworkRef.current) {
+      const forceEdges = [];
+      const nodeSignal = new Array(nLocal).fill(0);
+      for (let r = 0; r < nLocal; r++) {
+        for (let c = 0; c < nLocal; c++) {
+          if (r === c) continue;
+          const rawVal = Number(matrixEdgeMatrix?.[r]?.[c] ?? 0);
+          if (!Number.isFinite(rawVal) || rawVal <= 0) continue;
+          const from = instigator === 'row' ? r : c;
+          const to = instigator === 'row' ? c : r;
+          forceEdges.push({ from, to, raw: rawVal, weight: clamp01(rawVal) });
+          nodeSignal[from] += rawVal;
+          nodeSignal[to] += rawVal;
+        }
+      }
+      const layout = computeForceAtlasLikeLayout(nLocal, forceEdges);
+      const marginVals = dsm.elements.map((_, i) => {
+        const parsed = parseNonNegative(margins[i]);
+        return parsed.ok ? parsed.value : 0;
+      });
+      const maxMargin = Math.max(...marginVals, 0);
+      const maxSignal = Math.max(...nodeSignal, 0);
+      const metricLabel = matrixMetric === 'likelihood' ? 'Combined Likelihood' : (matrixMetric === 'impact' ? 'Combined Impact' : 'Combined Risk');
+
+      const edgeBuckets = Array.from({ length: 12 }, () => ({ x: [], y: [] }));
+      forceEdges.forEach((e) => {
+        const p1 = layout[e.from];
+        const p2 = layout[e.to];
+        if (!p1 || !p2) return;
+        const t = clamp01(e.weight);
+        const bucket = Math.min(edgeBuckets.length - 1, Math.floor(t * (edgeBuckets.length - 1)));
+        edgeBuckets[bucket].x.push(p1.x, p2.x, null);
+        edgeBuckets[bucket].y.push(p1.y, p2.y, null);
+      });
+      const edgeTraces = edgeBuckets
+        .map((bucket, i) => {
+          if (!bucket.x.length) return null;
+          const t = edgeBuckets.length === 1 ? 0 : i / (edgeBuckets.length - 1);
+          const colorIdx = Math.min(RISK_COLOR_SCALE.length - 1, Math.floor(t * (RISK_COLOR_SCALE.length - 1)));
+          return {
+          x: bucket.x,
+          y: bucket.y,
+          mode: 'lines',
+          type: 'scatter',
+          line: { color: RISK_COLOR_SCALE[colorIdx], width: 0.6 + t * 3.8 },
+          hoverinfo: 'skip',
+          showlegend: false,
+        };
+        })
+        .filter(Boolean);
+
+      const nodeTrace = {
+        x: layout.map((p) => p.x),
+        y: layout.map((p) => p.y),
+        mode: 'markers+text',
+        type: 'scatter',
+        text: dsm.elements.map((_, i) => `${i + 1}`),
+        textposition: 'middle center',
+        textfont: { size: 9, color: '#0F172A' },
+        marker: {
+          size: marginVals.map((v) => {
+            const t = maxMargin > 0 ? (v / maxMargin) : 0;
+            return 11 + t * 24;
+          }),
+          color: nodeSignal.map((v) => valueToRiskColor(v, maxSignal)),
+          opacity: 0.95,
+          line: { color: '#FFFFFF', width: 1.1 },
+        },
+        customdata: dsm.elements.map((name, i) => `${i + 1}. ${name}<br>Margin: ${(marginVals[i] || 0).toFixed(3)}<br>${metricLabel}: ${(nodeSignal[i] || 0).toFixed(3)}`),
+        hovertemplate: '%{customdata}<extra></extra>',
+        showlegend: false,
+      };
+
+      plotly.react(matrixNetworkRef.current, [...edgeTraces, nodeTrace], {
+        title: `Matrix Network (Force-Directed, ${metricLabel})`,
+        margin: { t: 48, r: 10, b: 10, l: 10 },
+        xaxis: { showgrid: false, zeroline: false, showticklabels: false },
+        yaxis: { showgrid: false, zeroline: false, showticklabels: false, scaleanchor: 'x' },
+        paper_bgcolor: '#FFFFFF',
+        plot_bgcolor: '#FFFFFF',
+      }, { responsive: true });
+    }
+
     const treeNodes = [{ comp: safeRoot, depth: 0, parent: -1 }];
     const visited = new Set([safeRoot]);
     for (let idx = 0; idx < treeNodes.length; idx++) {
@@ -890,7 +1047,7 @@ export default function ProbabilisticMarginAnalysis() {
         margin: { t: 40, r: 10, b: 10, l: 10 },
       }, { responsive: true });
     }
-  }, [plotlyReady, result, activeTab, edgeMetric, vizRoot, dsm, instigator, depth, matrixMetric, scatterScale, showDirectOverlay]);
+  }, [plotlyReady, result, activeTab, edgeMetric, vizRoot, dsm, instigator, depth, matrixMetric, matrixView, scatterScale, showDirectOverlay, margins]);
 
   /* ---------- Render helpers ---------- */
 
@@ -972,15 +1129,31 @@ export default function ProbabilisticMarginAnalysis() {
                 {tab === 'dependencies' && (
                   <span className="pma-drag-handle" title="Drag to reorder">&#9776;</span>
                 )}
-                <span
-                  className="pma-element-name"
-                  onDoubleClick={() => {
-                    const newName = window.prompt('Rename element:', el);
-                    if (newName && newName.trim()) renameElement(i, newName.trim());
-                  }}
-                >
-                  {el}
-                </span>
+                {editingIdx === i ? (
+                  <input
+                    className="pma-element-name-input"
+                    defaultValue={el}
+                    autoFocus
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v && v !== el) renameElement(i, v);
+                      setEditingIdx(-1);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.target.blur(); }
+                      if (e.key === 'Escape') { setEditingIdx(-1); }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <span
+                    className="pma-element-name"
+                    onDoubleClick={() => setEditingIdx(i)}
+                    title="Double-click to rename"
+                  >
+                    {el}
+                  </span>
+                )}
               </td>
               <td className="pma-action-col">
                 <button
@@ -1186,12 +1359,6 @@ export default function ProbabilisticMarginAnalysis() {
           <span>Search depth: <strong>{result.depth}</strong></span>
           <span>Convention: <strong>{result.instigator === 'column' ? 'Column \u2192 Row' : 'Row \u2192 Column'}</strong></span>
           <span>Elements: <strong>{dsm.elements.length}</strong></span>
-          {isMarginAware && (
-            <>
-              <span>Samples: <strong>{result.nSamples || '-'}</strong></span>
-              <span>Initial \u0394: <strong>{Number(result.delta0 || 0).toFixed(3)}</strong></span>
-            </>
-          )}
         </div>
         <div className="pma-viz-card">
           <h3>Risk: Incoming vs Outgoing Propagation</h3>
@@ -1240,20 +1407,26 @@ export default function ProbabilisticMarginAnalysis() {
               <option value="numbers">Numeric</option>
             </select>
           </div>
-          {matrixView === 'numbers' && (
-            <div className="pma-viz-control">
-              <label>Numbers Show</label>
-              <select value={matrixMetric} onChange={(e) => setMatrixMetric(e.target.value)}>
-                <option value="risk">Combined Risk</option>
-                <option value="likelihood">Combined Likelihood</option>
-                <option value="impact">Combined Impact</option>
-              </select>
-            </div>
-          )}
+          <div className="pma-viz-control">
+            <label>Numbers Show (Matrix + Network Edges)</label>
+            <select value={matrixMetric} onChange={(e) => setMatrixMetric(e.target.value)}>
+              <option value="risk">Combined Risk</option>
+              <option value="likelihood">Combined Likelihood</option>
+              <option value="impact">Combined Impact</option>
+            </select>
+          </div>
         </div>
-        {matrixView === 'color'
-          ? renderClarksonMatrix(risk, likelihood, isMarginAware ? 'MA-CPM Combined Risk Plot' : 'Combined Risk Plot')
-          : renderResultsTable(numericRisk, `Risk Matrix - ${matrixMetric === 'risk' ? 'Combined Risk' : (matrixMetric === 'likelihood' ? 'Combined Likelihood' : 'Combined Impact')}`)}
+        <div className="pma-matrix-network-grid">
+          <div>
+            {matrixView === 'color'
+              ? renderClarksonMatrix(risk, likelihood, isMarginAware ? 'MA-CPM Combined Risk Plot' : 'Combined Risk Plot')
+              : renderResultsTable(numericRisk, `Risk Matrix - ${matrixMetric === 'risk' ? 'Combined Risk' : (matrixMetric === 'likelihood' ? 'Combined Likelihood' : 'Combined Impact')}`)}
+          </div>
+          <div className="pma-viz-card">
+            <h3>Matrix Network</h3>
+            <div ref={matrixNetworkRef} className="pma-plot-container pma-plot-container-sm" />
+          </div>
+        </div>
         {isMarginAware && effectiveLikelihood.length > 0
           ? renderResultsTable(effectiveLikelihood, 'MA-CPM Effective Likelihood (L*)')
           : null}
@@ -1390,62 +1563,6 @@ export default function ProbabilisticMarginAnalysis() {
               </label>
             </div>
 
-            {analysisMode === 'margin_aware' && (
-              <div className="pma-margin-controls">
-                <div className="pma-panel-field">
-                  <label>Monte Carlo Samples</label>
-                  <input
-                    type="number"
-                    min="50"
-                    step="50"
-                    value={nSamples}
-                    onChange={(e) => setNSamples(e.target.value)}
-                    placeholder="e.g. 400"
-                  />
-                </div>
-                <div className="pma-panel-field">
-                  <label>Initial Change (\u0394_0)</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={delta0}
-                    onChange={(e) => setDelta0(e.target.value)}
-                    placeholder="e.g. 1.0"
-                  />
-                </div>
-                <div className="pma-panel-field">
-                  <label>Default Margin</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={defaultMargin}
-                    onChange={(e) => setDefaultMargin(e.target.value)}
-                    placeholder="e.g. 0.15"
-                  />
-                </div>
-                <button type="button" className="pma-panel-btn" onClick={applyDefaultMarginToAll}>
-                  Apply Margin to All
-                </button>
-                <div className="pma-margin-list">
-                  {dsm.elements.length === 0 ? (
-                    <p className="pma-margin-empty">Add elements to set margins.</p>
-                  ) : (
-                    dsm.elements.map((el, idx) => (
-                      <label className="pma-margin-row" key={`${el}-${idx}`}>
-                        <span title={el}>{idx + 1}. {el}</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={margins[idx] ?? 0}
-                          onChange={(e) => setMarginAt(idx, e.target.value)}
-                        />
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
           </div>
           <div className="pma-panel-section">
             <h3 className="pma-panel-heading">Default Values</h3>
@@ -1505,6 +1622,102 @@ export default function ProbabilisticMarginAnalysis() {
             )}
           </div>
         </main>
+
+        {analysisMode === 'margin_aware' && (
+          <aside className="pma-margin-panel">
+            <div className="pma-panel-section">
+              <h3 className="pma-panel-heading">Margin Thresholds</h3>
+              <div className="pma-panel-field">
+                <label>Default Margin</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={defaultMargin}
+                  onChange={(e) => setDefaultMargin(e.target.value)}
+                  placeholder="e.g. 0.15"
+                />
+              </div>
+              <button type="button" className="pma-panel-btn" onClick={applyDefaultMarginToAll}>
+                Apply to All
+              </button>
+              <div className="pma-margin-list">
+                {dsm.elements.length === 0 ? (
+                  <p className="pma-margin-empty">Add elements first.</p>
+                ) : (
+                  dsm.elements.map((el, idx) => (
+                    <label className="pma-margin-row" key={`${el}-${idx}`}>
+                      <span title={el}>{idx + 1}. {el}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={margins[idx] ?? 0}
+                        onChange={(e) => setMarginAt(idx, e.target.value)}
+                      />
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+            <div className="pma-panel-section">
+              <h3 className="pma-panel-heading">Change Magnitude Distribution</h3>
+              <div className="pma-panel-field">
+                <label>Type</label>
+                <select value={distType} onChange={(e) => setDistType(e.target.value)}>
+                  <option value="normal">Truncated Normal</option>
+                  <option value="uniform">Uniform</option>
+                  <option value="beta">Beta</option>
+                  <option value="triangular">Triangular</option>
+                </select>
+              </div>
+              {distType === 'normal' && (
+                <>
+                  <div className="pma-panel-field">
+                    <label>{'\u03BC'} (typical change size)</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={distMu}
+                      onChange={(e) => setDistMu(e.target.value)}
+                      placeholder="0.3"
+                    />
+                  </div>
+                  <div className="pma-panel-field">
+                    <label>{'\u03C3'} (variability)</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={distSigma}
+                      onChange={(e) => setDistSigma(e.target.value)}
+                      placeholder="0.15"
+                    />
+                  </div>
+                </>
+              )}
+              {distType === 'uniform' && (
+                <p className="pma-dist-hint">P({'\u03B4'} &gt; m) = 1 &minus; m on [0, 1]</p>
+              )}
+              {distType === 'beta' && (
+                <>
+                  <div className="pma-panel-field">
+                    <label>{'\u03B1'}</label>
+                    <input type="text" inputMode="decimal" value={distMu} onChange={(e) => setDistMu(e.target.value)} placeholder="2" />
+                  </div>
+                  <div className="pma-panel-field">
+                    <label>{'\u03B2'}</label>
+                    <input type="text" inputMode="decimal" value={distSigma} onChange={(e) => setDistSigma(e.target.value)} placeholder="5" />
+                  </div>
+                </>
+              )}
+              {distType === 'triangular' && (
+                <div className="pma-panel-field">
+                  <label>Peak (c)</label>
+                  <input type="text" inputMode="decimal" value={distMu} onChange={(e) => setDistMu(e.target.value)} placeholder="0.3" />
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
       </div>
 
       <div className="pma-footer">

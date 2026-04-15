@@ -266,6 +266,35 @@
   text-align: center;
 }
 
+/* ----- Right margin panel ----- */
+.pma-margin-panel {
+  width: 200px;
+  min-width: 180px;
+  background: #1E293B;
+  overflow-y: auto;
+  padding: 18px 12px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  border-left: 1px solid #334155;
+}
+.pma-margin-panel select {
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  background: #0F172A;
+  color: #E2E8F0;
+  font-size: 12px;
+}
+.pma-dist-hint {
+  margin: 4px 0 0;
+  padding: 0 4px;
+  color: #94A3B8;
+  font-size: 11px;
+}
+
 /* ----- Main content ----- */
 .pma-main-content {
   flex: 1;
@@ -455,6 +484,19 @@
 .pma-drag-handle:active { cursor: grabbing; }
 .pma-element-name { cursor: text; }
 .pma-element-name:hover { text-decoration: underline dotted #94A3B8; }
+.pma-element-name-input {
+  width: 100%;
+  max-width: 120px;
+  font: inherit;
+  font-size: 12px;
+  padding: 1px 4px;
+  border: 1px solid #3B82F6;
+  border-radius: 3px;
+  outline: none;
+  background: #fff;
+  color: #1E293B;
+  box-sizing: border-box;
+}
 
 .pma-row[draggable="true"] { transition: opacity 0.15s; }
 .pma-row.pma-dragging { opacity: 0.35; }
@@ -670,6 +712,15 @@
   border-radius: 8px;
   background: #FFFFFF;
 }
+.pma-matrix-network-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.pma-matrix-network-grid > * {
+  min-width: 0;
+}
 .pma-clarkson-matrix .pma-clarkson-cell {
   width: 32px;
   height: 32px;
@@ -722,6 +773,18 @@
   .pma-panel-section {
     min-width: 240px;
   }
+  .pma-margin-panel {
+    width: 100%;
+    min-width: 100%;
+    max-height: 280px;
+    flex-direction: row;
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 10px;
+    border-left: none;
+    border-top: 1px solid #334155;
+  }
   .pma-main-content {
     padding: 10px;
   }
@@ -733,5 +796,8 @@
     flex-direction: column;
     gap: 4px;
     align-items: flex-start;
+  }
+  .pma-matrix-network-grid {
+    grid-template-columns: 1fr;
   }
 }
