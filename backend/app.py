@@ -1684,25 +1684,9 @@ def pma_run_cpm():
         if not isinstance(margins, list):
             return jsonify({'success': False, 'error': 'margins must be a list of length n'}), 400
 
-        try:
-            n_samples = int(data.get('nSamples', 400) or 400)
-        except (ValueError, TypeError):
-            return jsonify({'success': False, 'error': 'nSamples must be an integer'}), 400
-        n_samples = max(50, min(10000, n_samples))
-
-        try:
-            delta0 = float(data.get('delta0', 1.0) or 1.0)
-        except (ValueError, TypeError):
-            return jsonify({'success': False, 'error': 'delta0 must be numeric'}), 400
-
-        seed = data.get('seed', None)
-        if seed in ('', None):
-            seed = None
-        else:
-            try:
-                seed = int(seed)
-            except (ValueError, TypeError):
-                return jsonify({'success': False, 'error': 'seed must be an integer'}), 400
+        # Distribution config: single dict (same for all nodes) or list of dicts (per-node)
+        # Default: truncated Normal(mu=0.3, sigma=0.15)
+        distribution = data.get('distribution', None)
 
         try:
             ma_result = run_margin_aware_cpm(
@@ -1711,9 +1695,7 @@ def pma_run_cpm():
                 margins=margins,
                 search_depth=search_depth,
                 instigator=instigator,
-                n_samples=n_samples,
-                delta0=delta0,
-                seed=seed,
+                distribution=distribution,
             )
             return jsonify({
                 'success': True,
@@ -1724,13 +1706,11 @@ def pma_run_cpm():
                 'incoming': ma_result['incoming'],
                 'outgoing': ma_result['outgoing'],
                 'effectiveLikelihood': ma_result['effectiveLikelihood'],
-                'edgeActivation': ma_result['edgeActivation'],
-                'expectedTransmission': ma_result['expectedTransmission'],
-                'margins': [round(float(x), 6) for x in margins],
-                'nSamples': n_samples,
-                'delta0': round(float(delta0), 6),
+                'exceedance': ma_result['exceedance'],
+                'margins': ma_result['margins'],
                 'depth': search_depth,
                 'instigator': instigator,
+                'distribution': ma_result['distribution'],
             })
         except Exception as e:
             traceback.print_exc()

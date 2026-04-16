@@ -31,18 +31,72 @@
   align-items: center;
   gap: 12px;
 }
-.pma-home-btn {
-  background: rgba(255, 255, 255, 0.08);
-  color: #F8FAFC;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 16px;
-  cursor: pointer;
-  line-height: 1;
-  transition: background 0.15s;
+/* ----- File menu dropdown ----- */
+.pma-file-menu {
+  position: relative;
+  padding-bottom: 6px;
+  margin-bottom: -6px;
 }
-.pma-home-btn:hover { background: rgba(255, 255, 255, 0.18); }
+.pma-file-menu-btn {
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #E2E8F0;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.pma-file-menu-btn:hover,
+.pma-file-menu-btn.active {
+  background: #334155;
+}
+.pma-file-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.18);
+  z-index: 100;
+}
+.pma-file-section {
+  margin-top: 0;
+}
+.pma-file-section + .pma-file-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #E2E8F0;
+}
+.pma-file-section-label {
+  margin-bottom: 4px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.pma-file-item {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #F8FAFC;
+  color: #1E293B;
+  text-align: left;
+  padding: 7px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+.pma-file-item:hover {
+  background: #E0E7FF;
+  border-color: #93C5FD;
+}
 .pma-title {
   font-size: 16px;
   font-weight: 700;
@@ -266,6 +320,35 @@
   text-align: center;
 }
 
+/* ----- Right margin panel ----- */
+.pma-margin-panel {
+  width: 200px;
+  min-width: 180px;
+  background: #1E293B;
+  overflow-y: auto;
+  padding: 18px 12px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  border-left: 1px solid #334155;
+}
+.pma-margin-panel select {
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  background: #0F172A;
+  color: #E2E8F0;
+  font-size: 12px;
+}
+.pma-dist-hint {
+  margin: 4px 0 0;
+  padding: 0 4px;
+  color: #94A3B8;
+  font-size: 11px;
+}
+
 /* ----- Main content ----- */
 .pma-main-content {
   flex: 1;
@@ -455,6 +538,19 @@
 .pma-drag-handle:active { cursor: grabbing; }
 .pma-element-name { cursor: text; }
 .pma-element-name:hover { text-decoration: underline dotted #94A3B8; }
+.pma-element-name-input {
+  width: 100%;
+  max-width: 120px;
+  font: inherit;
+  font-size: 12px;
+  padding: 1px 4px;
+  border: 1px solid #3B82F6;
+  border-radius: 3px;
+  outline: none;
+  background: #fff;
+  color: #1E293B;
+  box-sizing: border-box;
+}
 
 .pma-row[draggable="true"] { transition: opacity 0.15s; }
 .pma-row.pma-dragging { opacity: 0.35; }
@@ -634,6 +730,29 @@
   margin: 0 0 8px;
   color: #475569;
 }
+.pma-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.pma-card-title-row h3 {
+  margin: 0;
+}
+.pma-export-plot-btn {
+  border: 1px solid #93C5FD;
+  border-radius: 6px;
+  background: #EFF6FF;
+  color: #1E3A8A;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pma-export-plot-btn:hover {
+  background: #DBEAFE;
+}
 .pma-viz-mode {
   display: inline-flex;
   border: 1px solid #CBD5E1;
@@ -669,6 +788,15 @@
   border: 1px solid #E2E8F0;
   border-radius: 8px;
   background: #FFFFFF;
+}
+.pma-matrix-network-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.pma-matrix-network-grid > * {
+  min-width: 0;
 }
 .pma-clarkson-matrix .pma-clarkson-cell {
   width: 32px;
@@ -722,6 +850,18 @@
   .pma-panel-section {
     min-width: 240px;
   }
+  .pma-margin-panel {
+    width: 100%;
+    min-width: 100%;
+    max-height: 280px;
+    flex-direction: row;
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 10px;
+    border-left: none;
+    border-top: 1px solid #334155;
+  }
   .pma-main-content {
     padding: 10px;
   }
@@ -733,5 +873,8 @@
     flex-direction: column;
     gap: 4px;
     align-items: flex-start;
+  }
+  .pma-matrix-network-grid {
+    grid-template-columns: 1fr;
   }
 }
