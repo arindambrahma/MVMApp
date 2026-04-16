@@ -1347,20 +1347,17 @@ export default function ProbabilisticMarginAnalysis() {
                   return <td key={j} className="pma-no-dep-cell"></td>;
                 }
                 const val = matrix[i][j];
-                const display = val === 0 ? '' : val;
+                const display = val === 0 ? '' : String(val);
                 return (
                   <td key={j} className="pma-value-cell">
                     <input
+                      key={`${i}-${j}-${val}`}
                       type="text"
                       inputMode="decimal"
                       className="pma-cell-input"
-                      value={display}
+                      defaultValue={display}
                       placeholder="0-1"
                       onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        // Keep the typed value in DOM; commit on blur
-                        e.target.dataset.typed = e.target.value;
-                      }}
                       onBlur={(e) => {
                         const raw = e.target.value.trim();
                         if (raw === '') {
