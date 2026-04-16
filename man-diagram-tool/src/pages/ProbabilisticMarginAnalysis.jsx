@@ -756,11 +756,14 @@ export default function ProbabilisticMarginAnalysis() {
       if (!data || data.success === false) {
         throw new Error(data?.error || 'Backend returned an empty response. Make sure the backend is running on port 5001.');
       }
-      // Transpose risk/likelihood matrices to match the Column→Row input convention
-      const T = (m) => m.map((_, i) => m.map((row) => row[i]));
-      if (data.combinedRisk?.length) data.combinedRisk = T(data.combinedRisk);
-      if (data.combinedLikelihood?.length) data.combinedLikelihood = T(data.combinedLikelihood);
-      if (data.effectiveLikelihood?.length) data.effectiveLikelihood = T(data.effectiveLikelihood);
+      // Classic CPM returns matrices in [source][target] (Row→Column) convention.
+      // MA-CPM returns them in [target][source] (Column→Row), already matching the input.
+      // Transpose only for classic mode.
+      if (data.mode === 'classic') {
+        const T = (m) => m.map((_, i) => m.map((row) => row[i]));
+        if (data.combinedRisk?.length) data.combinedRisk = T(data.combinedRisk);
+        if (data.combinedLikelihood?.length) data.combinedLikelihood = T(data.combinedLikelihood);
+      }
       setResult(data);
       setActiveTab('results');
     } catch (e) {
