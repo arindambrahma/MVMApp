@@ -458,19 +458,27 @@ export default function ProbabilisticMarginAnalysis() {
   }, []);
 
   const loadExample = useCallback(() => {
-    // 3-component serial chain A -> B -> C (matches MATLAB demo / paper).
-    // Margin on B = 0.30, distribution = truncated Normal(0.30, 0.15).
-    // Expected: baseline R(C,A) = 0.2400, with margin R(C,A) = 0.1228 (-48.8%).
-    const labels = ['A', 'B', 'C'];
+    // Vacuum cleaner system — 5 modules (MF, PS, HD, FB, CS).
+    const labels = [
+      'Motor and fan unit',
+      'Power supply and cord / battery pack',
+      'Housing and air duct',
+      'Filter and dust bin',
+      'Control switch and speed electronics',
+    ];
     const L = [
-      [0,   0,   0  ],
-      [0.8, 0,   0  ],
-      [0,   0.6, 0  ],
+      [0.00, 0.45, 0.50, 0.25, 0.60],
+      [0.70, 0.00, 0.10, 0.00, 0.50],
+      [0.75, 0.10, 0.00, 0.65, 0.15],
+      [0.35, 0.00, 0.80, 0.00, 0.00],
+      [0.55, 0.65, 0.25, 0.00, 0.00],
     ];
     const I = [
-      [0,   0,   0  ],
-      [0.7, 0,   0  ],
-      [0,   0.5, 0  ],
+      [0.00, 0.30, 0.40, 0.20, 0.35],
+      [0.40, 0.00, 0.10, 0.00, 0.25],
+      [0.55, 0.10, 0.00, 0.35, 0.15],
+      [0.25, 0.00, 0.45, 0.00, 0.00],
+      [0.30, 0.35, 0.15, 0.00, 0.00],
     ];
     const dep = L.map(row => row.map(v => v > 0));
     setDsm({
@@ -479,7 +487,7 @@ export default function ProbabilisticMarginAnalysis() {
       likelihood: L.map(r => [...r]),
       impact: I.map(r => [...r]),
     });
-    setMargins([0, 0.30, 0]);
+    setMargins([0.15, 0.35, 0.30, 0.10, 0.20]);
     elementCounterRef.current = labels.length;
     setResult(null);
     setError(null);
@@ -1287,6 +1295,7 @@ export default function ProbabilisticMarginAnalysis() {
                     className="pma-element-name-input"
                     defaultValue={el}
                     autoFocus
+                    onFocus={(e) => e.target.select()}
                     onBlur={(e) => {
                       const v = e.target.value.trim();
                       if (v && v !== el) renameElement(i, v);
