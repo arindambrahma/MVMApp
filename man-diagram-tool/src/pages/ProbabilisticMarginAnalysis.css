@@ -31,18 +31,56 @@
   align-items: center;
   gap: 12px;
 }
-.pma-home-btn {
-  background: rgba(255, 255, 255, 0.08);
-  color: #F8FAFC;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 16px;
-  cursor: pointer;
-  line-height: 1;
-  transition: background 0.15s;
+.pma-logo {
+  flex-shrink: 0;
 }
-.pma-home-btn:hover { background: rgba(255, 255, 255, 0.18); }
+.pma-header-menu {
+  position: relative;
+}
+.pma-header-menu-btn {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.55);
+  color: #F8FAFC;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pma-header-menu-btn:hover {
+  background: rgba(30, 41, 59, 0.9);
+}
+.pma-header-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 190px;
+  border: 1px solid #CBD5E1;
+  border-radius: 8px;
+  background: #FFFFFF;
+  box-shadow: 0 14px 26px rgba(15, 23, 42, 0.26);
+  padding: 6px;
+  z-index: 20;
+}
+.pma-header-menu-item {
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #0F172A;
+  font-size: 12px;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+.pma-header-menu-item:hover {
+  background: #EFF6FF;
+}
+.pma-header-menu-sep {
+  height: 1px;
+  background: #E2E8F0;
+  margin: 4px 0;
+}
 .pma-title {
   font-size: 16px;
   font-weight: 700;
@@ -675,6 +713,29 @@
   font-size: 13px;
   margin: 0 0 8px;
   color: #475569;
+}
+.pma-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.pma-card-title-row h3 {
+  margin: 0;
+}
+.pma-export-plot-btn {
+  border: 1px solid #93C5FD;
+  border-radius: 6px;
+  background: #EFF6FF;
+  color: #1E3A8A;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pma-export-plot-btn:hover {
+  background: #DBEAFE;
 }
 .pma-viz-mode {
   display: inline-flex;
