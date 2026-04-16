@@ -31,18 +31,72 @@
   align-items: center;
   gap: 12px;
 }
-.pma-home-btn {
-  background: rgba(255, 255, 255, 0.08);
-  color: #F8FAFC;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 16px;
-  cursor: pointer;
-  line-height: 1;
-  transition: background 0.15s;
+/* ----- File menu dropdown ----- */
+.pma-file-menu {
+  position: relative;
+  padding-bottom: 6px;
+  margin-bottom: -6px;
 }
-.pma-home-btn:hover { background: rgba(255, 255, 255, 0.18); }
+.pma-file-menu-btn {
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #E2E8F0;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.pma-file-menu-btn:hover,
+.pma-file-menu-btn.active {
+  background: #334155;
+}
+.pma-file-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.18);
+  z-index: 100;
+}
+.pma-file-section {
+  margin-top: 0;
+}
+.pma-file-section + .pma-file-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #E2E8F0;
+}
+.pma-file-section-label {
+  margin-bottom: 4px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.pma-file-item {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #F8FAFC;
+  color: #1E293B;
+  text-align: left;
+  padding: 7px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+.pma-file-item:hover {
+  background: #E0E7FF;
+  border-color: #93C5FD;
+}
 .pma-title {
   font-size: 16px;
   font-weight: 700;

@@ -349,6 +349,7 @@ export default function ProbabilisticMarginAnalysis() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
   const [plotlyReady, setPlotlyReady] = useState(false);
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [vizRoot, setVizRoot] = useState(0);
   const [edgeMetric, setEdgeMetric] = useState('risk');
   const [matrixView, setMatrixView] = useState('color');
@@ -356,6 +357,7 @@ export default function ProbabilisticMarginAnalysis() {
   const [scatterScale, setScatterScale] = useState('fixed');
   const [showDirectOverlay, setShowDirectOverlay] = useState(false);
 
+  const fileMenuRef = useRef(null);
   const dragFromIdx = useRef(-1);
   const scatterRef = useRef(null);
   const distanceRef = useRef(null);
@@ -626,10 +628,19 @@ export default function ProbabilisticMarginAnalysis() {
     }
   }, [analysisMode, dsm, n, depth, instigator, margins, distType, distMu, distSigma]);
 
+  /* ---------- File menu outside-click close ---------- */
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (!fileMenuRef.current?.contains(e.target)) setFileMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
   /* ---------- Keyboard escape ---------- */
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape') setSelectedRow(-1);
+      if (e.key === 'Escape') { setSelectedRow(-1); setFileMenuOpen(false); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -1465,13 +1476,47 @@ export default function ProbabilisticMarginAnalysis() {
     <div className="pma-app">
       <header className="pma-header">
         <div className="pma-header-left">
-          <button type="button" className="pma-home-btn" onClick={() => navigate('/')} title="Back to MARVIN home">&larr;</button>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="26" height="26" fill="none" style={{ flexShrink: 0 }}>
+            <rect x="6" y="6" width="36" height="36" rx="3" fill="#FFFFFF" stroke="#64748B" strokeWidth="1.5"/>
+            <line x1="6" y1="16" x2="42" y2="16" stroke="#CBD5E1" strokeWidth="1"/>
+            <line x1="6" y1="26" x2="42" y2="26" stroke="#CBD5E1" strokeWidth="1"/>
+            <line x1="6" y1="36" x2="42" y2="36" stroke="#CBD5E1" strokeWidth="1"/>
+            <line x1="16" y1="6" x2="16" y2="42" stroke="#CBD5E1" strokeWidth="1"/>
+            <line x1="26" y1="6" x2="26" y2="42" stroke="#CBD5E1" strokeWidth="1"/>
+            <line x1="36" y1="6" x2="36" y2="42" stroke="#CBD5E1" strokeWidth="1"/>
+            <rect x="7" y="7" width="8" height="8" fill="#BFDBFE"/>
+            <rect x="17" y="17" width="8" height="8" fill="#6B7280"/>
+            <rect x="27" y="7" width="8" height="8" fill="#F59E0B"/>
+            <rect x="7" y="27" width="8" height="8" fill="#DC2626"/>
+            <rect x="37" y="17" width="4" height="8" fill="#10B981"/>
+            <rect x="17" y="37" width="8" height="4" fill="#8B5CF6"/>
+          </svg>
           <h1 className="pma-title">MARVIN &middot; Probabilistic Margin Analysis</h1>
-          <span className="pma-subtitle">
-            {analysisMode === 'margin_aware'
-              ? 'Phase 2 — Margin-Aware Change Propagation Method'
-              : 'Phase 1 — Clarkson Change Propagation Method'}
-          </span>
+          <div className="pma-file-menu" ref={fileMenuRef}>
+            <button
+              type="button"
+              className={`pma-file-menu-btn${fileMenuOpen ? ' active' : ''}`}
+              onClick={() => setFileMenuOpen(prev => !prev)}
+            >
+              File &#x25BE;
+            </button>
+            {fileMenuOpen && (
+              <div className="pma-file-dropdown">
+                <div className="pma-file-section">
+                  <div className="pma-file-section-label">Example</div>
+                  <button type="button" className="pma-file-item" onClick={() => { loadExample(); setFileMenuOpen(false); }}>Load Example</button>
+                </div>
+                <div className="pma-file-section">
+                  <div className="pma-file-section-label">Reset</div>
+                  <button type="button" className="pma-file-item" onClick={() => { clearAll(); setFileMenuOpen(false); }}>Clear All</button>
+                </div>
+                <div className="pma-file-section">
+                  <div className="pma-file-section-label">Navigation</div>
+                  <button type="button" className="pma-file-item" onClick={() => navigate('/')}>Exit to Main Menu</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         <div className="pma-header-right">
           <label>Depth</label>
@@ -1559,7 +1604,7 @@ export default function ProbabilisticMarginAnalysis() {
                   checked={analysisMode === 'margin_aware'}
                   onChange={() => setAnalysisMode('margin_aware')}
                 />
-                <span>Margin-Aware CPM</span>
+                <span>CPM with Margin</span>
               </label>
             </div>
 
