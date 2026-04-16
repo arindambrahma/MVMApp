@@ -83,8 +83,6 @@ function computeDirectRisk(likelihoodMatrix, impactMatrix, instigator = 'column'
   const n = likelihoodMatrix.length;
   const incoming = new Array(n).fill(0);
   const outgoing = new Array(n).fill(0);
-  const inCount = new Array(n).fill(0);
-  const outCount = new Array(n).fill(0);
   for (let row = 0; row < n; row++) {
     for (let col = 0; col < n; col++) {
       if (row === col) continue;
@@ -93,18 +91,18 @@ function computeDirectRisk(likelihoodMatrix, impactMatrix, instigator = 'column'
       if (L > 0 && I > 0) {
         const v = L * I;
         if (instigator === 'column') {
-          outgoing[col] += v; outCount[col] += 1;
-          incoming[row] += v; inCount[row] += 1;
+          outgoing[col] += v;
+          incoming[row] += v;
         } else {
-          outgoing[row] += v; outCount[row] += 1;
-          incoming[col] += v; inCount[col] += 1;
+          outgoing[row] += v;
+          incoming[col] += v;
         }
       }
     }
   }
   for (let i = 0; i < n; i++) {
-    outgoing[i] = outCount[i] ? outgoing[i] / outCount[i] : 0;
-    incoming[i] = inCount[i] ? incoming[i] / inCount[i] : 0;
+    outgoing[i] = outgoing[i] / n;
+    incoming[i] = incoming[i] / n;
   }
   return { incoming, outgoing };
 }

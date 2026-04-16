@@ -485,8 +485,8 @@ def run_margin_aware_cpm(
     for i in range(n):
         out_vals = [risk_matrix[j][i] for j in range(n) if i != j]
         in_vals = [risk_matrix[i][j] for j in range(n) if i != j]
-        outgoing[i] = round(sum(out_vals) / max(len(out_vals), 1), 6)
-        incoming[i] = round(sum(in_vals) / max(len(in_vals), 1), 6)
+        outgoing[i] = round(sum(out_vals) / n, 6)
+        incoming[i] = round(sum(in_vals) / n, 6)
 
     # Round matrices
     def _round_matrix(m):
