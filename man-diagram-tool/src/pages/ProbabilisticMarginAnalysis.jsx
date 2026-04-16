@@ -455,6 +455,7 @@ export default function ProbabilisticMarginAnalysis() {
     setResult(null);
     setError(null);
     elementCounterRef.current = 0;
+    setActiveTab('dependencies');
   }, []);
 
   const loadExample = useCallback(() => {
@@ -687,6 +688,30 @@ export default function ProbabilisticMarginAnalysis() {
       return;
     }
 
+    // Validate at least one dependency exists
+    const hasDependency = dsm.dependency.some((row, i) => row.some((v, j) => i !== j && v));
+    if (!hasDependency) {
+      setError('No dependencies defined. Add at least one dependency in the Dependencies tab before running.');
+      return;
+    }
+
+    // Validate likelihood and impact are set for every dependency
+    const missing = [];
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        if (i === j || !dsm.dependency[i]?.[j]) continue;
+        const l = dsm.likelihood[i]?.[j] ?? 0;
+        const imp = dsm.impact[i]?.[j] ?? 0;
+        if (l <= 0 || imp <= 0) {
+          missing.push(`${dsm.elements[i]} → ${dsm.elements[j]}${l <= 0 && imp <= 0 ? ' (L, I)' : l <= 0 ? ' (L)' : ' (I)'}`);
+        }
+      }
+    }
+    if (missing.length > 0) {
+      setError(`Missing likelihood/impact values for: ${missing.join('; ')}`);
+      return;
+    }
+
     const payload = {
       elements: dsm.elements,
       likelihood: dsm.likelihood,
@@ -731,6 +756,11 @@ export default function ProbabilisticMarginAnalysis() {
       if (!data || data.success === false) {
         throw new Error(data?.error || 'Backend returned an empty response. Make sure the backend is running on port 5001.');
       }
+      // Transpose risk/likelihood matrices to match the Column→Row input convention
+      const T = (m) => m.map((_, i) => m.map((row) => row[i]));
+      if (data.combinedRisk?.length) data.combinedRisk = T(data.combinedRisk);
+      if (data.combinedLikelihood?.length) data.combinedLikelihood = T(data.combinedLikelihood);
+      if (data.effectiveLikelihood?.length) data.effectiveLikelihood = T(data.effectiveLikelihood);
       setResult(data);
       setActiveTab('results');
     } catch (e) {
@@ -1392,17 +1422,8 @@ export default function ProbabilisticMarginAnalysis() {
 
   const renderResultsTable = (matrix, title) => {
     if (!matrix || matrix.length === 0) return null;
-    // Colour-scale 0..max (low=green, high=red)
-    let max = 0;
-    for (const row of matrix) for (const v of row) if (v > max) max = v;
-    if (max === 0) max = 1;
-    const colorFor = (v) => {
-      if (v === 0) return 'transparent';
-      const t = Math.min(1, v / max);
-      const hue = (1 - t) * 120; // 120=green, 0=red
-      const alpha = 0.18 + 0.72 * t;
-      return `hsla(${hue.toFixed(1)}, 70%, 48%, ${alpha.toFixed(3)})`;
-    };
+    // Colour-scale against absolute 0–1 risk range (low=green, high=red) — same scale as network graph
+    const colorFor = (v) => v === 0 ? 'transparent' : valueToRiskColor(v, 1);
     return (
       <div className="pma-result-block">
         <h3>{title}</h3>
@@ -1475,16 +1496,18 @@ export default function ProbabilisticMarginAnalysis() {
                     const impact = Math.max(0, Math.min(1, impactMatrix[i]?.[j] ?? 0));
                     const risk = Math.max(0, Math.min(1, riskMatrix[i]?.[j] ?? 0));
                     return (
-                      <td key={j} className="pma-clarkson-cell" title={`L=${likelihood.toFixed(3)}, I=${impact.toFixed(3)}, R=${risk.toFixed(3)}`}>
-                        <div
-                          className="pma-clarkson-box"
-                          style={{
-                            width: `${Math.max(2, likelihood * 26)}px`,
-                            height: `${Math.max(2, impact * 26)}px`,
-                            background: `hsla(${(1 - risk) * 120}, 72%, 48%, 0.55)`,
-                            borderColor: `hsl(${(1 - risk) * 120}, 72%, 36%)`,
-                          }}
-                        />
+                      <td key={j} className="pma-clarkson-cell" title={risk > 0 ? `L=${likelihood.toFixed(3)}, I=${impact.toFixed(3)}, R=${risk.toFixed(3)}` : ''}>
+                        {risk > 0 && (
+                          <div
+                            className="pma-clarkson-box"
+                            style={{
+                              width: `${Math.max(2, likelihood * 26)}px`,
+                              height: `${Math.max(2, impact * 26)}px`,
+                              background: `hsla(${(1 - risk) * 120}, 72%, 48%, 0.55)`,
+                              borderColor: `hsl(${(1 - risk) * 120}, 72%, 36%)`,
+                            }}
+                          />
+                        )}
                       </td>
                     );
                   })}
