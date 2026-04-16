@@ -31,55 +31,71 @@
   align-items: center;
   gap: 12px;
 }
-.pma-logo {
-  flex-shrink: 0;
-}
-.pma-header-menu {
+/* ----- File menu dropdown ----- */
+.pma-file-menu {
   position: relative;
+  padding-bottom: 6px;
+  margin-bottom: -6px;
 }
-.pma-header-menu-btn {
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: rgba(15, 23, 42, 0.55);
-  color: #F8FAFC;
-  border-radius: 6px;
-  padding: 5px 12px;
+.pma-file-menu-btn {
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #E2E8F0;
+  padding: 6px 10px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  font-family: inherit;
 }
-.pma-header-menu-btn:hover {
-  background: rgba(30, 41, 59, 0.9);
+.pma-file-menu-btn:hover,
+.pma-file-menu-btn.active {
+  background: #334155;
 }
-.pma-header-menu-dropdown {
+.pma-file-dropdown {
   position: absolute;
-  top: calc(100% + 6px);
+  top: 100%;
   left: 0;
-  min-width: 190px;
-  border: 1px solid #CBD5E1;
+  min-width: 200px;
+  padding: 8px;
   border-radius: 8px;
-  background: #FFFFFF;
-  box-shadow: 0 14px 26px rgba(15, 23, 42, 0.26);
-  padding: 6px;
-  z-index: 20;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.18);
+  z-index: 100;
 }
-.pma-header-menu-item {
+.pma-file-section {
+  margin-top: 0;
+}
+.pma-file-section + .pma-file-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #E2E8F0;
+}
+.pma-file-section-label {
+  margin-bottom: 4px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.pma-file-item {
   width: 100%;
-  text-align: left;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 6px;
-  background: transparent;
-  color: #0F172A;
+  background: #F8FAFC;
+  color: #1E293B;
+  text-align: left;
+  padding: 7px 8px;
   font-size: 12px;
-  padding: 7px 9px;
   cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
 }
-.pma-header-menu-item:hover {
-  background: #EFF6FF;
-}
-.pma-header-menu-sep {
-  height: 1px;
-  background: #E2E8F0;
-  margin: 4px 0;
+.pma-file-item:hover {
+  background: #E0E7FF;
+  border-color: #93C5FD;
 }
 .pma-title {
   font-size: 16px;
