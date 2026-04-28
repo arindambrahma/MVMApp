@@ -63,6 +63,93 @@ const PLOTLY_SRC = 'https://cdn.plot.ly/plotly-2.27.0.min.js';
 const DOMAIN_COLOR = '#2563EB';
 const RISK_COLOR_SCALE = ['#2E7D32', '#66BB6A', '#A5D6A7', '#FEE08B', '#F46D43', '#C62828'];
 
+function downloadBlob(filename, mimeType, text) {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function buildPmaReportHtml({ result, dsm, isMarginAware, risk, likelihood, impact, effectiveLikelihood }) {
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const fmtV = v => (typeof v === 'number' && Number.isFinite(v)) ? v.toFixed(4) : '—';
+  const elements = dsm.elements;
+  const n = elements.length;
+
+  const method = isMarginAware ? 'MA-CPM (Phase 2)' : 'Classic CPM (Phase 1)';
+  const convention = result.instigator === 'column' ? 'Column → Row' : 'Row → Column';
+
+  const matrixTableHtml = (title, matrix) => {
+    if (!matrix?.length) return '';
+    const headerCols = elements.map((_, j) => `<th style="text-align:center;padding:5px 8px;font-size:11px">${j + 1}</th>`).join('');
+    const bodyRows = elements.map((el, i) => {
+      const cells = elements.map((__, j) => {
+        if (i === j) return `<td style="background:#f1f5f9;text-align:center;padding:5px 8px">—</td>`;
+        const v = matrix[i]?.[j] ?? 0;
+        const heat = v > 0 ? `background:hsla(${(1 - Math.min(1, v)) * 120},60%,88%,0.8)` : '';
+        return `<td style="text-align:center;padding:5px 8px;${heat}">${v > 0 ? v.toFixed(3) : ''}</td>`;
+      }).join('');
+      return `<tr><td style="font-weight:600;padding:5px 8px;font-size:11px;white-space:nowrap">${esc(el)}</td>${cells}</tr>`;
+    }).join('');
+    return `<h2>${esc(title)}</h2>
+<div style="overflow-x:auto;margin-bottom:20px">
+<table style="border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+  <thead><tr><th style="padding:5px 8px;text-align:left">Element</th>${headerCols}</tr></thead>
+  <tbody>${bodyRows}</tbody>
+</table></div>`;
+  };
+
+  const riskTableRows = elements.map((el, i) => `<tr>
+    <td style="padding:6px 10px;font-weight:600">${i + 1}</td>
+    <td style="padding:6px 10px">${esc(el)}</td>
+    <td style="padding:6px 10px;text-align:right">${fmtV(result.incoming[i])}</td>
+    <td style="padding:6px 10px;text-align:right">${fmtV(result.outgoing[i])}</td>
+  </tr>`).join('');
+
+  return `<!doctype html>
+<html><head><meta charset="utf-8"/>
+<title>PMA Report – ${esc(method)}</title>
+<style>
+  body{font-family:Arial,sans-serif;margin:32px;color:#111827;background:#f8fafc}
+  h1{margin:0 0 6px;font-size:22px;color:#1e293b}
+  h2{margin:24px 0 8px;font-size:15px;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px}
+  .meta{color:#64748b;font-size:12px;margin-bottom:4px}
+  .summary-bar{display:flex;gap:24px;flex-wrap:wrap;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#475569;margin-bottom:20px}
+  .summary-bar strong{color:#0f172a}
+  table{border-collapse:collapse;font-size:12px;background:#fff;margin-bottom:16px}
+  th{background:#f1f5f9;padding:6px 10px;font-weight:700;color:#334155;border:1px solid #e2e8f0;font-size:11px}
+  td{padding:6px 10px;border:1px solid #e2e8f0;color:#1f2937}
+  tr:nth-child(even) td{background:#f8fafc}
+  @media print{body{margin:16px}h2{break-before:avoid}}
+</style></head><body>
+<h1>Probabilistic Margin Analysis Report</h1>
+<div class="meta">Generated: ${new Date().toLocaleString()}</div>
+<div class="summary-bar">
+  <span>Method: <strong>${esc(method)}</strong></span>
+  <span>Search depth: <strong>${result.depth}</strong></span>
+  <span>Convention: <strong>${esc(convention)}</strong></span>
+  <span>Elements: <strong>${n}</strong></span>
+</div>
+
+<h2>Incoming vs Outgoing Risk</h2>
+<table>
+  <thead><tr><th>#</th><th>Element</th><th style="text-align:right">Incoming</th><th style="text-align:right">Outgoing</th></tr></thead>
+  <tbody>${riskTableRows}</tbody>
+</table>
+
+${matrixTableHtml('Combined Risk Matrix', risk)}
+${matrixTableHtml('Combined Likelihood Matrix', likelihood)}
+${matrixTableHtml('Combined Impact Matrix', impact)}
+${isMarginAware && effectiveLikelihood.length ? matrixTableHtml('MA-CPM Effective Likelihood (L*)', effectiveLikelihood) : ''}
+
+</body></html>`;
+}
+
 function buildCombinedImpactMatrix(riskMatrix, probMatrix) {
   if (!riskMatrix || !probMatrix) return [];
   const n = riskMatrix.length;
@@ -1554,6 +1641,29 @@ export default function ProbabilisticMarginAnalysis() {
           <span>Search depth: <strong>{result.depth}</strong></span>
           <span>Convention: <strong>{result.instigator === 'column' ? 'Column \u2192 Row' : 'Row \u2192 Column'}</strong></span>
           <span>Elements: <strong>{dsm.elements.length}</strong></span>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            <button
+              type="button"
+              className="pma-export-plot-btn"
+              onClick={() => downloadBlob('pma_report.html', 'text/html;charset=utf-8', buildPmaReportHtml({ result, dsm, isMarginAware, risk, likelihood, impact, effectiveLikelihood }))}
+            >
+              Export HTML
+            </button>
+            <button
+              type="button"
+              className="pma-export-plot-btn"
+              style={{ borderColor: '#6EE7B7', background: '#ECFDF5', color: '#065F46' }}
+              onClick={() => {
+                const win = window.open('', '_blank', 'width=1100,height=900');
+                if (!win) return;
+                win.document.write(buildPmaReportHtml({ result, dsm, isMarginAware, risk, likelihood, impact, effectiveLikelihood }));
+                win.document.close();
+                setTimeout(() => { try { win.focus(); win.print(); } catch { /* no-op */ } }, 120);
+              }}
+            >
+              Print / Save PDF
+            </button>
+          </div>
         </div>
         <div className="pma-viz-card">
           {cardTitle('Risk: Incoming vs Outgoing Propagation', scatterRef, 'pma_risk_incoming_vs_outgoing')}
