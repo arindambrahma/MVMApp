@@ -75,79 +75,70 @@ function downloadBlob(filename, mimeType, text) {
   URL.revokeObjectURL(url);
 }
 
-function buildPmaReportHtml({ result, dsm, isMarginAware, risk, likelihood, impact, effectiveLikelihood }) {
+function buildPmaReportHtml({
+  result,
+  dsm,
+  isMarginAware,
+  risk,
+  likelihood,
+  impact,
+  effectiveLikelihood,
+  inputs,
+  visualizationImages,
+}) {
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const fmtV = v => (typeof v === 'number' && Number.isFinite(v)) ? v.toFixed(4) : '—';
+  const fmtV = v => (typeof v === 'number' && Number.isFinite(v)) ? v.toFixed(4) : '-';
   const elements = dsm.elements;
   const n = elements.length;
-
   const method = isMarginAware ? 'MA-CPM (Phase 2)' : 'Classic CPM (Phase 1)';
-  const convention = result.instigator === 'column' ? 'Column → Row' : 'Row → Column';
+  const convention = result.instigator === 'column' ? 'Column -> Row' : 'Row -> Column';
 
   const matrixTableHtml = (title, matrix) => {
     if (!matrix?.length) return '';
     const headerCols = elements.map((_, j) => `<th style="text-align:center;padding:5px 8px;font-size:11px">${j + 1}</th>`).join('');
     const bodyRows = elements.map((el, i) => {
       const cells = elements.map((__, j) => {
-        if (i === j) return `<td style="background:#f1f5f9;text-align:center;padding:5px 8px">—</td>`;
+        if (i === j) return `<td style="background:#f1f5f9;text-align:center;padding:5px 8px">-</td>`;
         const v = matrix[i]?.[j] ?? 0;
         const heat = v > 0 ? `background:hsla(${(1 - Math.min(1, v)) * 120},60%,88%,0.8)` : '';
         return `<td style="text-align:center;padding:5px 8px;${heat}">${v > 0 ? v.toFixed(3) : ''}</td>`;
       }).join('');
       return `<tr><td style="font-weight:600;padding:5px 8px;font-size:11px;white-space:nowrap">${esc(el)}</td>${cells}</tr>`;
     }).join('');
-    return `<h2>${esc(title)}</h2>
-<div style="overflow-x:auto;margin-bottom:20px">
-<table style="border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
-  <thead><tr><th style="padding:5px 8px;text-align:left">Element</th>${headerCols}</tr></thead>
-  <tbody>${bodyRows}</tbody>
-</table></div>`;
+    return `<h2>${esc(title)}</h2><div style="overflow-x:auto;margin-bottom:20px"><table style="border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden"><thead><tr><th style="padding:5px 8px;text-align:left">Element</th>${headerCols}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
   };
 
-  const riskTableRows = elements.map((el, i) => `<tr>
-    <td style="padding:6px 10px;font-weight:600">${i + 1}</td>
-    <td style="padding:6px 10px">${esc(el)}</td>
-    <td style="padding:6px 10px;text-align:right">${fmtV(result.incoming[i])}</td>
-    <td style="padding:6px 10px;text-align:right">${fmtV(result.outgoing[i])}</td>
-  </tr>`).join('');
+  const dependencyMatrixHtml = (title, matrix) => {
+    if (!matrix?.length) return '';
+    const headerCols = elements.map((_, j) => `<th style="text-align:center;padding:5px 8px;font-size:11px">${j + 1}</th>`).join('');
+    const bodyRows = elements.map((el, i) => {
+      const cells = elements.map((__, j) => {
+        if (i === j) return `<td style="background:#f1f5f9;text-align:center;padding:5px 8px">-</td>`;
+        const v = Boolean(matrix[i]?.[j]);
+        return `<td style="text-align:center;padding:5px 8px;background:${v ? '#DBEAFE' : '#fff'}">${v ? 'Yes' : ''}</td>`;
+      }).join('');
+      return `<tr><td style="font-weight:600;padding:5px 8px;font-size:11px;white-space:nowrap">${esc(el)}</td>${cells}</tr>`;
+    }).join('');
+    return `<h2>${esc(title)}</h2><div style="overflow-x:auto;margin-bottom:20px"><table style="border-collapse:collapse;font-size:11px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden"><thead><tr><th style="padding:5px 8px;text-align:left">Element</th>${headerCols}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
+  };
 
-  return `<!doctype html>
-<html><head><meta charset="utf-8"/>
-<title>PMA Report – ${esc(method)}</title>
-<style>
-  body{font-family:Arial,sans-serif;margin:32px;color:#111827;background:#f8fafc}
-  h1{margin:0 0 6px;font-size:22px;color:#1e293b}
-  h2{margin:24px 0 8px;font-size:15px;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px}
-  .meta{color:#64748b;font-size:12px;margin-bottom:4px}
-  .summary-bar{display:flex;gap:24px;flex-wrap:wrap;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#475569;margin-bottom:20px}
-  .summary-bar strong{color:#0f172a}
-  table{border-collapse:collapse;font-size:12px;background:#fff;margin-bottom:16px}
-  th{background:#f1f5f9;padding:6px 10px;font-weight:700;color:#334155;border:1px solid #e2e8f0;font-size:11px}
-  td{padding:6px 10px;border:1px solid #e2e8f0;color:#1f2937}
-  tr:nth-child(even) td{background:#f8fafc}
-  @media print{body{margin:16px}h2{break-before:avoid}}
-</style></head><body>
-<h1>Probabilistic Margin Analysis Report</h1>
-<div class="meta">Generated: ${new Date().toLocaleString()}</div>
-<div class="summary-bar">
-  <span>Method: <strong>${esc(method)}</strong></span>
-  <span>Search depth: <strong>${result.depth}</strong></span>
-  <span>Convention: <strong>${esc(convention)}</strong></span>
-  <span>Elements: <strong>${n}</strong></span>
-</div>
+  const settingsRows = [['Method', method], ['Search depth', result.depth], ['Instigator convention', convention], ['Elements', n], ['Dependencies', inputs?.dependencyCount ?? 0]];
+  if (isMarginAware) {
+    settingsRows.push(['Distribution type', inputs?.distribution?.type ?? 'n/a']);
+    settingsRows.push(['Distribution mu', inputs?.distribution?.mu ?? 'n/a']);
+    settingsRows.push(['Distribution sigma', inputs?.distribution?.sigma ?? 'n/a']);
+  }
+  const settingsTable = `<h2>Analysis Configuration</h2><table><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>${settingsRows.map(([k, v]) => `<tr><td style="padding:6px 10px;font-weight:600">${esc(k)}</td><td style="padding:6px 10px">${esc(v)}</td></tr>`).join('')}</tbody></table>`;
+  const marginsTable = isMarginAware ? `<h2>Input Margins</h2><table><thead><tr><th>#</th><th>Element</th><th style="text-align:right">Margin</th></tr></thead><tbody>${elements.map((el, i) => `<tr><td style="padding:6px 10px">${i + 1}</td><td style="padding:6px 10px">${esc(el)}</td><td style="padding:6px 10px;text-align:right">${fmtV(inputs?.margins?.[i])}</td></tr>`).join('')}</tbody></table>` : '';
+  const imageSection = (title, key) => {
+    const src = visualizationImages?.[key];
+    if (!src) return '';
+    return `<h3 style="margin:16px 0 8px;font-size:13px;color:#334155">${esc(title)}</h3><div style="margin-bottom:14px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:8px"><img alt="${esc(title)}" src="${src}" style="width:100%;height:auto;border-radius:6px"/></div>`;
+  };
 
-<h2>Incoming vs Outgoing Risk</h2>
-<table>
-  <thead><tr><th>#</th><th>Element</th><th style="text-align:right">Incoming</th><th style="text-align:right">Outgoing</th></tr></thead>
-  <tbody>${riskTableRows}</tbody>
-</table>
+  const riskTableRows = elements.map((el, i) => `<tr><td style="padding:6px 10px;font-weight:600">${i + 1}</td><td style="padding:6px 10px">${esc(el)}</td><td style="padding:6px 10px;text-align:right">${fmtV(result.incoming[i])}</td><td style="padding:6px 10px;text-align:right">${fmtV(result.outgoing[i])}</td></tr>`).join('');
 
-${matrixTableHtml('Combined Risk Matrix', risk)}
-${matrixTableHtml('Combined Likelihood Matrix', likelihood)}
-${matrixTableHtml('Combined Impact Matrix', impact)}
-${isMarginAware && effectiveLikelihood.length ? matrixTableHtml('MA-CPM Effective Likelihood (L*)', effectiveLikelihood) : ''}
-
-</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>PMA Report - ${esc(method)}</title><style>body{font-family:Arial,sans-serif;margin:32px;color:#111827;background:#f8fafc}h1{margin:0 0 6px;font-size:22px;color:#1e293b}h2{margin:24px 0 8px;font-size:15px;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px}.meta{color:#64748b;font-size:12px;margin-bottom:4px}.summary-bar{display:flex;gap:24px;flex-wrap:wrap;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#475569;margin-bottom:20px}.summary-bar strong{color:#0f172a}table{border-collapse:collapse;font-size:12px;background:#fff;margin-bottom:16px}th{background:#f1f5f9;padding:6px 10px;font-weight:700;color:#334155;border:1px solid #e2e8f0;font-size:11px}td{padding:6px 10px;border:1px solid #e2e8f0;color:#1f2937}tr:nth-child(even) td{background:#f8fafc}@media print{body{margin:16px}h2{break-before:avoid}}</style></head><body><h1>Probabilistic Margin Analysis Report</h1><div class="meta">Generated: ${new Date().toLocaleString()}</div><div class="summary-bar"><span>Method: <strong>${esc(method)}</strong></span><span>Search depth: <strong>${result.depth}</strong></span><span>Convention: <strong>${esc(convention)}</strong></span><span>Elements: <strong>${n}</strong></span></div><h2>Incoming vs Outgoing Risk</h2><table><thead><tr><th>#</th><th>Element</th><th style="text-align:right">Incoming</th><th style="text-align:right">Outgoing</th></tr></thead><tbody>${riskTableRows}</tbody></table><h2>Input Data</h2>${settingsTable}${marginsTable}${dependencyMatrixHtml('Dependency Matrix', dsm.dependency)}${matrixTableHtml('Input Likelihood Matrix (L)', dsm.likelihood)}${matrixTableHtml('Input Impact Matrix (I)', dsm.impact)}<h2>Visualizations</h2>${imageSection('Risk: Incoming vs Outgoing Propagation', 'scatter')}${imageSection('Distance Network', 'distance')}${imageSection('Risk Network', 'riskNetwork')}${imageSection('Propagation Tree', 'tree')}${imageSection('Critical Components (Betweenness)', 'centrality')}${imageSection('Risk Distribution (Treemap)', 'treemap')}${imageSection('Matrix Network', 'matrixNetwork')}<h2>Computed Outputs</h2>${matrixTableHtml('Combined Risk Matrix', risk)}${matrixTableHtml('Combined Likelihood Matrix', likelihood)}${matrixTableHtml('Combined Impact Matrix', impact)}${isMarginAware && effectiveLikelihood.length ? matrixTableHtml('MA-CPM Effective Likelihood (L*)', effectiveLikelihood) : ''}</body></html>`;
 }
 
 function buildCombinedImpactMatrix(riskMatrix, probMatrix) {
@@ -1332,6 +1323,66 @@ export default function ProbabilisticMarginAnalysis() {
     }
   }, [plotlyReady]);
 
+  const capturePlotDataUrl = useCallback(async (plotRef) => {
+    if (!plotlyReady || !window.Plotly || !plotRef?.current) return null;
+    try {
+      const plotElement = plotRef.current.querySelector('.js-plotly-plot') || plotRef.current;
+      const width = Math.max(900, plotElement.clientWidth || 900);
+      const height = Math.max(620, plotElement.clientHeight || 620);
+      return await window.Plotly.toImage(plotElement, {
+        format: 'png',
+        width,
+        height,
+        scale: 2,
+      });
+    } catch {
+      return null;
+    }
+  }, [plotlyReady]);
+
+  const exportPmaReport = useCallback(async (mode) => {
+    if (!result) return;
+    const risk = result.combinedRisk || [];
+    const likelihood = result.combinedLikelihood || [];
+    const impact = buildCombinedImpactMatrix(risk, likelihood);
+    const isMarginAware = result.mode === 'margin_aware';
+    const effectiveLikelihood = result.effectiveLikelihood || [];
+    const visuals = {
+      scatter: await capturePlotDataUrl(scatterRef),
+      distance: await capturePlotDataUrl(distanceRef),
+      riskNetwork: await capturePlotDataUrl(riskNetworkRef),
+      tree: await capturePlotDataUrl(treeRef),
+      centrality: await capturePlotDataUrl(centralityRef),
+      treemap: await capturePlotDataUrl(treemapRef),
+      matrixNetwork: await capturePlotDataUrl(matrixNetworkRef),
+    };
+    const html = buildPmaReportHtml({
+      result,
+      dsm,
+      isMarginAware,
+      risk,
+      likelihood,
+      impact,
+      effectiveLikelihood,
+      inputs: {
+        dependencyCount: depCount,
+        margins,
+        distribution: { type: distType, mu: distMu, sigma: distSigma },
+      },
+      visualizationImages: visuals,
+    });
+
+    if (mode === 'html') {
+      downloadBlob('pma_report.html', 'text/html;charset=utf-8', html);
+      return;
+    }
+    const win = window.open('', '_blank', 'width=1100,height=900');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => { try { win.focus(); win.print(); } catch { /* no-op */ } }, 120);
+  }, [result, capturePlotDataUrl, dsm, depCount, margins, distType, distMu, distSigma]);
+
   /* ---------- Render helpers ---------- */
 
   const renderMatrixTable = () => {
@@ -1624,7 +1675,6 @@ export default function ProbabilisticMarginAnalysis() {
     const likelihood = result.combinedLikelihood || [];
     const impact = buildCombinedImpactMatrix(risk, likelihood);
     const isMarginAware = result.mode === 'margin_aware';
-    const effectiveLikelihood = result.effectiveLikelihood || [];
     const numericRisk = matrixMetric === 'likelihood' ? likelihood : (matrixMetric === 'impact' ? impact : risk);
     const cardTitle = (title, ref, exportName) => (
       <div className="pma-card-title-row">
@@ -1665,7 +1715,7 @@ export default function ProbabilisticMarginAnalysis() {
             <button
               type="button"
               className="pma-export-plot-btn"
-              onClick={() => downloadBlob('pma_report.html', 'text/html;charset=utf-8', buildPmaReportHtml({ result, dsm, isMarginAware, risk, likelihood, impact, effectiveLikelihood }))}
+              onClick={() => { exportPmaReport('html'); }}
             >
               Export HTML
             </button>
@@ -1673,13 +1723,7 @@ export default function ProbabilisticMarginAnalysis() {
               type="button"
               className="pma-export-plot-btn"
               style={{ borderColor: '#6EE7B7', background: '#ECFDF5', color: '#065F46' }}
-              onClick={() => {
-                const win = window.open('', '_blank', 'width=1100,height=900');
-                if (!win) return;
-                win.document.write(buildPmaReportHtml({ result, dsm, isMarginAware, risk, likelihood, impact, effectiveLikelihood }));
-                win.document.close();
-                setTimeout(() => { try { win.focus(); win.print(); } catch { /* no-op */ } }, 120);
-              }}
+              onClick={() => { exportPmaReport('pdf'); }}
             >
               Print / Save PDF
             </button>
@@ -2094,3 +2138,4 @@ export default function ProbabilisticMarginAnalysis() {
     </div>
   );
 }
+
