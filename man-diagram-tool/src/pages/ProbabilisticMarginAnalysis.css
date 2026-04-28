@@ -652,6 +652,27 @@
   color: #475569;
 }
 .pma-result-summary strong { color: #0F172A; }
+.pma-summary-decimals {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pma-summary-decimals label {
+  color: #64748B;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-size: 11px;
+}
+.pma-summary-decimals input {
+  width: 72px;
+  padding: 5px 8px;
+  border: 1px solid #CBD5E1;
+  border-radius: 4px;
+  background: #FFFFFF;
+  color: #1E293B;
+  font-size: 12px;
+}
 .pma-result-block {
   background: #FFFFFF;
   border: 1px solid #E2E8F0;
@@ -714,6 +735,15 @@
 }
 .pma-viz-control select {
   min-width: 220px;
+  padding: 6px 8px;
+  border: 1px solid #CBD5E1;
+  border-radius: 4px;
+  background: #FFFFFF;
+  color: #1E293B;
+  font-size: 12px;
+}
+.pma-viz-control input {
+  min-width: 120px;
   padding: 6px 8px;
   border: 1px solid #CBD5E1;
   border-radius: 4px;

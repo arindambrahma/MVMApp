@@ -441,6 +441,7 @@ export default function ProbabilisticMarginAnalysis() {
   const [matrixMetric, setMatrixMetric] = useState('risk');
   const [scatterScale, setScatterScale] = useState('fixed');
   const [showDirectOverlay, setShowDirectOverlay] = useState(false);
+  const [resultsDecimals, setResultsDecimals] = useState(3);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
 
   const fileMenuRef = useRef(null);
@@ -931,6 +932,7 @@ export default function ProbabilisticMarginAnalysis() {
     const nLocal = elem.length;
     const safeRoot = Math.min(Math.max(vizRoot, 0), Math.max(nLocal - 1, 0));
     const labels = elem.map((e, i) => `${i + 1}. ${e}`);
+    const fixedFmt = `.${resultsDecimals}f`;
     const plotly = window.Plotly;
 
     if (scatterRef.current) {
@@ -963,7 +965,7 @@ export default function ProbabilisticMarginAnalysis() {
           line: { color: '#fff', width: 1 },
           colorbar: { title: 'Risk', thickness: 10 },
         },
-        hovertemplate: '%{text}<br>Outgoing: %{x:.3f}<br>Incoming: %{y:.3f}<extra></extra>',
+        hovertemplate: `%{text}<br>Outgoing: %{x:${fixedFmt}}<br>Incoming: %{y:${fixedFmt}}<extra></extra>`,
         name: 'Combined',
       }];
       if (showDirectOverlay) {
@@ -975,7 +977,7 @@ export default function ProbabilisticMarginAnalysis() {
           mode: 'markers',
           type: 'scatter',
           marker: { color: '#94A3B8', symbol: 'circle-open', size: 9, line: { color: '#64748B', width: 1.2 } },
-          hovertemplate: '%{text}<br>Direct Outgoing: %{x:.3f}<br>Direct Incoming: %{y:.3f}<extra></extra>',
+          hovertemplate: `%{text}<br>Direct Outgoing: %{x:${fixedFmt}}<br>Direct Incoming: %{y:${fixedFmt}}<extra></extra>`,
           name: 'Direct (1-hop)',
         });
       }
@@ -1010,6 +1012,7 @@ export default function ProbabilisticMarginAnalysis() {
           tickcolor: '#334155',
           ticklen: 5,
           tickfont: { color: '#1E293B' },
+          tickformat: fixedFmt,
           titlefont: { color: '#0F172A' },
           zeroline: false,
           showgrid: true,
@@ -1026,6 +1029,7 @@ export default function ProbabilisticMarginAnalysis() {
           tickcolor: '#334155',
           ticklen: 5,
           tickfont: { color: '#1E293B' },
+          tickformat: fixedFmt,
           titlefont: { color: '#0F172A' },
           zeroline: false,
           showgrid: true,
@@ -1212,7 +1216,7 @@ export default function ProbabilisticMarginAnalysis() {
           opacity: 0.95,
           line: { color: '#FFFFFF', width: 1.1 },
         },
-        customdata: dsm.elements.map((name, i) => `${i + 1}. ${name}<br>Margin: ${(marginVals[i] || 0).toFixed(3)}<br>${metricLabel}: ${(nodeSignal[i] || 0).toFixed(3)}`),
+        customdata: dsm.elements.map((name, i) => `${i + 1}. ${name}<br>Margin: ${(marginVals[i] || 0).toFixed(resultsDecimals)}<br>${metricLabel}: ${(nodeSignal[i] || 0).toFixed(resultsDecimals)}`),
         hovertemplate: '%{customdata}<extra></extra>',
         showlegend: false,
       };
@@ -1282,11 +1286,11 @@ export default function ProbabilisticMarginAnalysis() {
         type: 'bar',
         orientation: 'h',
         marker: { color: '#0EA5E9' },
-        hovertemplate: '%{y}<br>Betweenness: %{x:.4f}<extra></extra>',
+        hovertemplate: `%{y}<br>Betweenness: %{x:${fixedFmt}}<extra></extra>`,
       }], {
         title: 'Critical Components (Betweenness)',
         margin: { t: 40, r: 10, b: 40, l: 220 },
-        xaxis: { title: 'Weighted Betweenness' },
+        xaxis: { title: 'Weighted Betweenness', tickformat: fixedFmt },
       }, { responsive: true });
     }
 
@@ -1298,13 +1302,13 @@ export default function ProbabilisticMarginAnalysis() {
         parents: new Array(labels.length).fill(''),
         values: totals,
         marker: { colors: totals, colorscale: 'YlOrRd' },
-        hovertemplate: '%{label}<br>Total: %{value:.4f}<extra></extra>',
+        hovertemplate: `%{label}<br>Total: %{value:${fixedFmt}}<extra></extra>`,
       }], {
         title: 'Risk Distribution (Treemap)',
         margin: { t: 40, r: 10, b: 10, l: 10 },
       }, { responsive: true });
     }
-  }, [plotlyReady, result, activeTab, edgeMetric, vizRoot, dsm, instigator, depth, matrixMetric, matrixView, scatterScale, showDirectOverlay, margins]);
+  }, [plotlyReady, result, activeTab, edgeMetric, vizRoot, dsm, instigator, depth, matrixMetric, matrixView, scatterScale, showDirectOverlay, margins, resultsDecimals]);
 
   const exportPlotImage = useCallback(async (plotRef, exportName) => {
     if (!plotlyReady || !window.Plotly || !plotRef?.current) {
@@ -1541,9 +1545,9 @@ export default function ProbabilisticMarginAnalysis() {
                         key={j}
                         className="pma-result-cell"
                         style={{ background: colorFor(v) }}
-                        title={`${el} \u2192 ${dsm.elements[j]}: ${v.toFixed(3)}`}
+                        title={`${el} \u2192 ${dsm.elements[j]}: ${v.toFixed(resultsDecimals)}`}
                       >
-                        {v > 0 ? v.toFixed(2) : ''}
+                        {v > 0 ? v.toFixed(resultsDecimals) : ''}
                       </td>
                     );
                   })}
@@ -1584,7 +1588,7 @@ export default function ProbabilisticMarginAnalysis() {
                     const impact = Math.max(0, Math.min(1, impactMatrix[i]?.[j] ?? 0));
                     const risk = Math.max(0, Math.min(1, riskMatrix[i]?.[j] ?? 0));
                     return (
-                      <td key={j} className="pma-clarkson-cell" title={risk > 0 ? `L=${likelihood.toFixed(3)}, I=${impact.toFixed(3)}, R=${risk.toFixed(3)}` : ''}>
+                      <td key={j} className="pma-clarkson-cell" title={risk > 0 ? `L=${likelihood.toFixed(resultsDecimals)}, I=${impact.toFixed(resultsDecimals)}, R=${risk.toFixed(resultsDecimals)}` : ''}>
                         {risk > 0 && (
                           <div
                             className="pma-clarkson-box"
@@ -1641,6 +1645,22 @@ export default function ProbabilisticMarginAnalysis() {
           <span>Search depth: <strong>{result.depth}</strong></span>
           <span>Convention: <strong>{result.instigator === 'column' ? 'Column \u2192 Row' : 'Row \u2192 Column'}</strong></span>
           <span>Elements: <strong>{dsm.elements.length}</strong></span>
+          <span className="pma-summary-decimals">
+            <label htmlFor="pma-results-decimals">Decimals:</label>
+            <input
+              id="pma-results-decimals"
+              type="number"
+              min="0"
+              max="8"
+              step="1"
+              value={resultsDecimals}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                if (!Number.isFinite(next)) return;
+                setResultsDecimals(Math.max(0, Math.min(8, Math.round(next))));
+              }}
+            />
+          </span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             <button
               type="button"
@@ -1708,10 +1728,10 @@ export default function ProbabilisticMarginAnalysis() {
           <div className="pma-viz-control">
             <label>Matrix View</label>
             <select value={matrixView} onChange={(e) => setMatrixView(e.target.value)}>
-              <option value="color">Coloured (Clarkson)</option>
-              <option value="numbers">Numeric</option>
-            </select>
-          </div>
+                <option value="color">Coloured</option>
+                <option value="numbers">Numeric</option>
+              </select>
+            </div>
           <div className="pma-viz-control">
             <label>Numbers Show (Matrix + Network Edges)</label>
             <select value={matrixMetric} onChange={(e) => setMatrixMetric(e.target.value)}>
@@ -1732,9 +1752,6 @@ export default function ProbabilisticMarginAnalysis() {
             <div ref={matrixNetworkRef} className="pma-plot-container pma-plot-container-sm" />
           </div>
         </div>
-        {isMarginAware && effectiveLikelihood.length > 0
-          ? renderResultsTable(effectiveLikelihood, 'MA-CPM Effective Likelihood (L*)')
-          : null}
         <div className="pma-result-block">
           <h3>Incoming vs Outgoing Risk</h3>
           <div className="pma-result-scroll">
@@ -1754,8 +1771,8 @@ export default function ProbabilisticMarginAnalysis() {
                     <td className="pma-row-header" title={el}>
                       <span className="pma-element-name">{el}</span>
                     </td>
-                    <td className="pma-result-numcol">{(result.incoming[i] || 0).toFixed(3)}</td>
-                    <td className="pma-result-numcol">{(result.outgoing[i] || 0).toFixed(3)}</td>
+                    <td className="pma-result-numcol">{(result.incoming[i] || 0).toFixed(resultsDecimals)}</td>
+                    <td className="pma-result-numcol">{(result.outgoing[i] || 0).toFixed(resultsDecimals)}</td>
                   </tr>
                 ))}
               </tbody>
