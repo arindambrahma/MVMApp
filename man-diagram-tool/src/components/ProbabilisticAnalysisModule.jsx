@@ -1,5 +1,244 @@
 import { useMemo, useState } from 'react';
 
+// ─── export helpers ───────────────────────────────────────────────────────────
+
+function downloadBlob(filename, mimeType, text) {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function buildHistogramSvgStr(values, baseline, width = 200, height = 64, color = '#3B82F6') {
+  if (!values || values.length === 0) return `<svg width="${width}" height="${height}"><text x="${width / 2}" y="${height / 2}" text-anchor="middle" fill="#94A3B8" font-size="10">No data</text></svg>`;
+  const N_BINS = 20;
+  const min_v = Math.min(...values);
+  const max_v = Math.max(...values);
+  const range = max_v - min_v || 1;
+  const binWidth = range / N_BINS;
+  const bins = Array(N_BINS).fill(0);
+  values.forEach(v => { bins[Math.min(N_BINS - 1, Math.floor((v - min_v) / binWidth))]++; });
+  const maxCount = Math.max(...bins);
+  const barW = width / N_BINS;
+  const pad = 2;
+  const zeroX = max_v <= 0 ? 0 : min_v >= 0 ? width : ((0 - min_v) / range) * width;
+  const baselineX = baseline !== null && baseline !== undefined ? ((baseline - min_v) / range) * width : null;
+
+  let inner = bins.map((count, i) => {
+    const barH = maxCount > 0 ? (count / maxCount) * (height - 12) : 0;
+    const x = i * barW + pad / 2;
+    const binRight = min_v + (i + 1) * binWidth;
+    const fill = binRight <= 0 ? '#EF4444' : color;
+    return `<rect x="${x.toFixed(1)}" y="${(height - 12 - barH).toFixed(1)}" width="${(barW - pad).toFixed(1)}" height="${Math.max(1, barH).toFixed(1)}" fill="${fill}" opacity="0.75"/>`;
+  }).join('');
+
+  if (zeroX > 0 && zeroX < width) inner += `<line x1="${zeroX.toFixed(1)}" y1="0" x2="${zeroX.toFixed(1)}" y2="${height - 12}" stroke="#1F2937" stroke-width="1.5" stroke-dasharray="3,2"/>`;
+  if (baselineX !== null) inner += `<line x1="${baselineX.toFixed(1)}" y1="0" x2="${baselineX.toFixed(1)}" y2="${height - 12}" stroke="#F59E0B" stroke-width="1.5"/>`;
+  inner += `<text x="0" y="${height}" font-size="9" fill="#64748B" text-anchor="start">${(min_v * 100).toFixed(0)}%</text>`;
+  inner += `<text x="${width}" y="${height}" font-size="9" fill="#64748B" text-anchor="end">${(max_v * 100).toFixed(0)}%</text>`;
+  inner += `<text x="${width / 2}" y="${height}" font-size="9" fill="#64748B" text-anchor="middle">Excess</text>`;
+  return `<svg width="${width}" height="${height}" style="display:block">${inner}</svg>`;
+}
+
+function buildMvmPlotSvgStr(statistics) {
+  if (!statistics?.margins) return '';
+  const W = 480, H = 380, PAD = { top: 20, right: 20, bottom: 48, left: 52 };
+  const plotW = W - PAD.left - PAD.right;
+  const plotH = H - PAD.top - PAD.bottom;
+  const marginNames = Object.keys(statistics.margins);
+  if (!marginNames.length) return '';
+
+  const xVals = marginNames.map(m => statistics.margins[m].weighted_impact?.mean ?? 0);
+  const yVals = marginNames.map(m => statistics.margins[m].weighted_absorption?.mean ?? 0);
+  const xP5s = marginNames.map(m => statistics.margins[m].weighted_impact?.p5 ?? 0);
+  const xP95s = marginNames.map(m => statistics.margins[m].weighted_impact?.p95 ?? 0);
+  const yP5s = marginNames.map(m => statistics.margins[m].weighted_absorption?.p5 ?? 0);
+  const yP95s = marginNames.map(m => statistics.margins[m].weighted_absorption?.p95 ?? 0);
+  const xMin = Math.min(0, ...xVals, ...xP5s);
+  const xMax = Math.max(0.001, ...xVals, ...xP95s);
+  const yMin = Math.min(0, ...yVals, ...yP5s);
+  const yMax = Math.max(0.001, ...yVals, ...yP95s);
+  const xRange = xMax - xMin || 1;
+  const yRange = yMax - yMin || 1;
+  const px = v => PAD.left + ((v - xMin) / xRange) * plotW;
+  const py = v => PAD.top + plotH - ((v - yMin) / yRange) * plotH;
+  const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
+
+  let svg = `<svg width="${W}" height="${H}" style="display:block;overflow:visible">`;
+  [0.25, 0.5, 0.75].forEach(t => {
+    svg += `<line x1="${PAD.left}" y1="${(PAD.top + t * plotH).toFixed(1)}" x2="${PAD.left + plotW}" y2="${(PAD.top + t * plotH).toFixed(1)}" stroke="#E5E7EB" stroke-width="1"/>`;
+    svg += `<line x1="${(PAD.left + t * plotW).toFixed(1)}" y1="${PAD.top}" x2="${(PAD.left + t * plotW).toFixed(1)}" y2="${PAD.top + plotH}" stroke="#E5E7EB" stroke-width="1"/>`;
+  });
+  svg += `<line x1="${PAD.left + plotW / 2}" y1="${PAD.top}" x2="${PAD.left + plotW / 2}" y2="${PAD.top + plotH}" stroke="#9CA3AF" stroke-width="1" stroke-dasharray="4,3"/>`;
+  svg += `<line x1="${PAD.left}" y1="${PAD.top + plotH / 2}" x2="${PAD.left + plotW}" y2="${PAD.top + plotH / 2}" stroke="#9CA3AF" stroke-width="1" stroke-dasharray="4,3"/>`;
+  [
+    { tx: 0.25, ty: 0.25, lines: ['High absorption', 'Low impact', '(High value)'] },
+    { tx: 0.75, ty: 0.25, lines: ['High absorption', 'High impact', '(Trade-off)'] },
+    { tx: 0.25, ty: 0.75, lines: ['Low absorption', 'Low impact', '(Negligible)'] },
+    { tx: 0.75, ty: 0.75, lines: ['Low absorption', 'High impact', '(Reduce margin)'] },
+  ].forEach(({ tx, ty, lines }) => {
+    lines.forEach((line, i) => {
+      svg += `<text x="${(PAD.left + tx * plotW).toFixed(1)}" y="${(PAD.top + ty * plotH + (i - 1) * 11).toFixed(1)}" text-anchor="middle" font-size="8" fill="#9CA3AF" font-style="italic">${line}</text>`;
+    });
+  });
+  marginNames.forEach((m, i) => {
+    const stats = statistics.margins[m];
+    const cx = px(stats.weighted_impact?.mean ?? 0);
+    const cy = py(stats.weighted_absorption?.mean ?? 0);
+    const ex_lo = px(stats.weighted_impact?.p5 ?? stats.weighted_impact?.mean ?? 0);
+    const ex_hi = px(stats.weighted_impact?.p95 ?? stats.weighted_impact?.mean ?? 0);
+    const ey_lo = py(stats.weighted_absorption?.p5 ?? stats.weighted_absorption?.mean ?? 0);
+    const ey_hi = py(stats.weighted_absorption?.p95 ?? stats.weighted_absorption?.mean ?? 0);
+    const col = colors[i % colors.length];
+    const r = Math.max(8, Math.min(20, Math.abs(stats.excess?.mean ?? 0) * 200));
+    const label = m.replace('E_', 'E');
+    svg += `<line x1="${ex_lo.toFixed(1)}" y1="${cy.toFixed(1)}" x2="${ex_hi.toFixed(1)}" y2="${cy.toFixed(1)}" stroke="${col}" stroke-width="1.5" opacity="0.5"/>`;
+    svg += `<line x1="${ex_lo.toFixed(1)}" y1="${(cy - 4).toFixed(1)}" x2="${ex_lo.toFixed(1)}" y2="${(cy + 4).toFixed(1)}" stroke="${col}" stroke-width="1.5" opacity="0.5"/>`;
+    svg += `<line x1="${ex_hi.toFixed(1)}" y1="${(cy - 4).toFixed(1)}" x2="${ex_hi.toFixed(1)}" y2="${(cy + 4).toFixed(1)}" stroke="${col}" stroke-width="1.5" opacity="0.5"/>`;
+    svg += `<line x1="${cx.toFixed(1)}" y1="${ey_lo.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${ey_hi.toFixed(1)}" stroke="${col}" stroke-width="1.5" opacity="0.5"/>`;
+    svg += `<line x1="${(cx - 4).toFixed(1)}" y1="${ey_lo.toFixed(1)}" x2="${(cx + 4).toFixed(1)}" y2="${ey_lo.toFixed(1)}" stroke="${col}" stroke-width="1.5" opacity="0.5"/>`;
+    svg += `<line x1="${(cx - 4).toFixed(1)}" y1="${ey_hi.toFixed(1)}" x2="${(cx + 4).toFixed(1)}" y2="${ey_hi.toFixed(1)}" stroke="${col}" stroke-width="1.5" opacity="0.5"/>`;
+    svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${col}" opacity="0.7" stroke="#1F2937" stroke-width="0.8"/>`;
+    svg += `<text x="${(cx + r + 4).toFixed(1)}" y="${(cy + 4).toFixed(1)}" font-size="10" font-weight="700" fill="#1F2937">${label}</text>`;
+  });
+  svg += `<line x1="${PAD.left}" y1="${PAD.top + plotH}" x2="${PAD.left + plotW}" y2="${PAD.top + plotH}" stroke="#1F2937" stroke-width="1.5"/>`;
+  svg += `<line x1="${PAD.left}" y1="${PAD.top}" x2="${PAD.left}" y2="${PAD.top + plotH}" stroke="#1F2937" stroke-width="1.5"/>`;
+  [0, 0.25, 0.5, 0.75, 1].forEach(t => {
+    svg += `<line x1="${(PAD.left + t * plotW).toFixed(1)}" y1="${PAD.top + plotH}" x2="${(PAD.left + t * plotW).toFixed(1)}" y2="${PAD.top + plotH + 4}" stroke="#6B7280" stroke-width="1"/>`;
+    svg += `<text x="${(PAD.left + t * plotW).toFixed(1)}" y="${PAD.top + plotH + 14}" font-size="8" fill="#6B7280" text-anchor="middle">${((xMin + t * xRange) * 100).toFixed(1)}%</text>`;
+    svg += `<line x1="${PAD.left - 4}" y1="${(PAD.top + plotH - t * plotH).toFixed(1)}" x2="${PAD.left}" y2="${(PAD.top + plotH - t * plotH).toFixed(1)}" stroke="#6B7280" stroke-width="1"/>`;
+    svg += `<text x="${PAD.left - 6}" y="${(PAD.top + plotH - t * plotH + 4).toFixed(1)}" font-size="8" fill="#6B7280" text-anchor="end">${((yMin + t * yRange) * 100).toFixed(1)}%</text>`;
+  });
+  svg += `<text x="${(PAD.left + plotW / 2).toFixed(1)}" y="${H - 4}" font-size="11" font-weight="600" fill="#374151" text-anchor="middle">Impact on Performance (%)</text>`;
+  svg += `<text transform="translate(12,${(PAD.top + plotH / 2).toFixed(1)}) rotate(-90)" font-size="11" font-weight="600" fill="#374151" text-anchor="middle">Change Absorption Potential (%)</text>`;
+  svg += '</svg>';
+  return svg;
+}
+
+function buildProbHtml(result) {
+  const { statistics, samples, n_samples, n_failed, baseline: baselineData } = result;
+  const marginNames = statistics?.margins ? Object.keys(statistics.margins) : [];
+  const perfNames = statistics?.performance ? Object.keys(statistics.performance) : [];
+  const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const fmtP = v => (v === null || v === undefined || !Number.isFinite(Number(v))) ? '—' : (Number(v) * 100).toFixed(3) + '%';
+  const fmtR = v => (v === null || v === undefined || !Number.isFinite(Number(v))) ? '—' : Number(v).toFixed(4);
+
+  const reliabilityRows = marginNames.map(m => {
+    const ms = statistics.margins[m];
+    const prob = ms.excess?.prob_positive;
+    const pct = prob !== null && prob !== undefined && Number.isFinite(prob) ? Math.round(prob * 100) + '%' : '—';
+    const bg = !Number.isFinite(prob) ? '#f9fafb' : prob >= 0.9 ? '#d1fae5' : prob >= 0.7 ? '#fef3c7' : '#fee2e2';
+    return `<tr>
+      <td>${esc(m.replace('E_', 'E'))}</td>
+      <td style="text-align:center;background:${bg};font-weight:700">${pct}</td>
+      <td style="text-align:center">${fmtP(ms.excess?.mean)}</td>
+      <td style="text-align:center">${fmtP(ms.excess?.std)}</td>
+      <td style="text-align:center">${fmtP(ms.excess?.p5)}</td>
+      <td style="text-align:center">${fmtP(ms.excess?.p95)}</td>
+      <td style="text-align:center">${fmtP(ms.weighted_impact?.mean)}</td>
+      <td style="text-align:center">${fmtP(ms.weighted_absorption?.mean)}</td>
+    </tr>`;
+  }).join('');
+
+  const histogramsHtml = marginNames.map(m => {
+    const ms = statistics.margins[m];
+    const rawSamples = samples?.excess?.[m] || [];
+    const baselineExcess = baselineData?.result?.excess?.[m];
+    const label = m.replace('E_', 'E');
+    const prob = ms.excess?.prob_positive;
+    const pct = Number.isFinite(prob) ? Math.round(prob * 100) + '%' : '—';
+    const bg = !Number.isFinite(prob) ? '#f9fafb' : prob >= 0.9 ? '#d1fae5' : prob >= 0.7 ? '#fef3c7' : '#fee2e2';
+    return `<div style="display:inline-block;vertical-align:top;margin:8px;padding:12px 14px;border:1px solid #e2e8f0;border-radius:8px;background:#fff">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:13px;font-weight:700;color:#1e293b">${esc(label)}</span>
+        <span style="display:inline-block;padding:2px 8px;border-radius:20px;background:${bg};font-size:11px;font-weight:700">${pct}</span>
+      </div>
+      ${buildHistogramSvgStr(rawSamples, baselineExcess, 220, 72)}
+      <div style="margin-top:6px;display:flex;justify-content:space-between;font-size:10px;color:#64748b">
+        <span>Mean: ${fmtP(ms.excess?.mean)}</span>
+        <span>Std: ${fmtP(ms.excess?.std)}</span>
+        <span>p5–p95: [${fmtP(ms.excess?.p5)}, ${fmtP(ms.excess?.p95)}]</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  const perfRows = perfNames.map(p => {
+    const s = statistics.performance[p];
+    return `<tr>
+      <td>${esc(p)}</td>
+      <td style="text-align:right">${fmtR(s?.mean)}</td>
+      <td style="text-align:right">${fmtR(s?.std)}</td>
+      <td style="text-align:right">${fmtR(s?.p5)}</td>
+      <td style="text-align:right">${fmtR(s?.p25)}</td>
+      <td style="text-align:right">${fmtR(s?.p75)}</td>
+      <td style="text-align:right">${fmtR(s?.p95)}</td>
+      <td style="text-align:right">${(samples?.performance?.[p] || []).length.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+
+  const mvmSvg = buildMvmPlotSvgStr(statistics);
+  const legendHtml = marginNames.map((m, i) => {
+    const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
+    return `<span style="display:inline-flex;align-items:center;gap:4px;margin:2px 6px;font-size:11px;color:#475569">
+      <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${colors[i % colors.length]};border:1px solid #1f2937"></span>
+      ${esc(m.replace('E_', 'E'))}
+    </span>`;
+  }).join('');
+
+  return `<!doctype html>
+<html><head><meta charset="utf-8"/>
+<title>Probabilistic Analysis Report</title>
+<style>
+  body{font-family:Arial,sans-serif;margin:32px;color:#111827;background:#f8fafc}
+  h1{margin:0 0 4px;font-size:22px;color:#1e293b}
+  h2{margin:24px 0 8px;font-size:16px;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px}
+  .meta{color:#64748b;font-size:12px;margin-bottom:8px}
+  .info-box{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:12px;color:#475569;margin-bottom:12px}
+  table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.07);margin-bottom:16px}
+  th{background:#f1f5f9;padding:8px 12px;font-weight:700;color:#334155;font-size:11px;border-bottom:1px solid #e2e8f0}
+  td{padding:7px 12px;border-bottom:1px solid #f1f5f9;color:#1f2937}
+  tr:nth-child(even) td{background:#f8fafc}
+  .chart-box{background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 6px rgba(0,0,0,.08);border:1px solid #e2e8f0;display:inline-block;margin-bottom:16px}
+  @media print{body{margin:16px}h2{break-before:avoid}}
+</style></head><body>
+<h1>Probabilistic Analysis Report</h1>
+<div class="meta">Generated: ${new Date().toLocaleString()} &nbsp;|&nbsp; Monte Carlo &middot; ${n_samples.toLocaleString()} successful samples${n_failed > 0 ? ` &nbsp;<span style="color:#ef4444">(${n_failed} failed)</span>` : ''}</div>
+
+<h2>Reliability Table</h2>
+<div class="info-box"><strong>P(excess &gt; 0)</strong> is the probability that the margin stays positive under uncertainty. Green &ge; 90%, yellow 70&ndash;90%, red &lt; 70%.</div>
+<table>
+  <thead><tr>
+    <th>Margin</th><th>P(excess &gt; 0)</th><th>Mean Excess</th><th>Std</th><th>5th pct</th><th>95th pct</th><th>Mean Impact</th><th>Mean Absorption</th>
+  </tr></thead>
+  <tbody>${reliabilityRows || '<tr><td colspan="8" style="text-align:center;color:#94a3b8">No margins found.</td></tr>'}</tbody>
+</table>
+
+<h2>Excess Histograms</h2>
+<div class="info-box">Distribution of excess across ${n_samples.toLocaleString()} Monte Carlo samples. Dashed line = 0% (failure threshold). Amber line = deterministic baseline. Red bars = negative excess.</div>
+<div>${histogramsHtml || '<p style="color:#94a3b8">No histogram data.</p>'}</div>
+
+<h2>Probabilistic MVM Plot</h2>
+<div class="info-box">Each bubble is placed at mean (Impact, Absorption). Error bars show the 5th&ndash;95th percentile range. Bubble size reflects mean excess magnitude.</div>
+<div class="chart-box">
+  ${mvmSvg}
+  <div style="margin-top:8px;text-align:center">${legendHtml}</div>
+</div>
+
+${perfNames.length ? `<h2>Performance Distributions</h2>
+<div class="info-box">Distribution of performance parameter values across Monte Carlo samples.</div>
+<table>
+  <thead><tr><th>Parameter</th><th style="text-align:right">Mean</th><th style="text-align:right">Std</th><th style="text-align:right">p5</th><th style="text-align:right">p25</th><th style="text-align:right">p75</th><th style="text-align:right">p95</th><th style="text-align:right">n samples</th></tr></thead>
+  <tbody>${perfRows}</tbody>
+</table>` : ''}
+
+</body></html>`;
+}
+
 // ─── tiny helpers ────────────────────────────────────────────────────────────
 
 function fmt(v, decimals = 3) {
@@ -314,15 +553,37 @@ export default function ProbabilisticAnalysisModule({ result, baseline, nodes })
             {n_failed > 0 && <span style={{ color: '#EF4444', marginLeft: 8 }}> ({n_failed} failed)</span>}
           </div>
         </div>
-        <div>
-          {[
-            { id: 'reliability', label: 'Reliability Table' },
-            { id: 'histograms', label: 'Histograms' },
-            { id: 'mvmplot', label: 'MVM Plot' },
-            { id: 'performance', label: 'Performance' },
-          ].map(({ id, label }) => (
-            <button key={id} style={panelBtnStyle(id)} onClick={() => setActivePanel(id)}>{label}</button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div>
+            {[
+              { id: 'reliability', label: 'Reliability Table' },
+              { id: 'histograms', label: 'Histograms' },
+              { id: 'mvmplot', label: 'MVM Plot' },
+              { id: 'performance', label: 'Performance' },
+            ].map(({ id, label }) => (
+              <button key={id} style={panelBtnStyle(id)} onClick={() => setActivePanel(id)}>{label}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 6, borderLeft: '1px solid #E2E8F0', paddingLeft: 16 }}>
+            <button
+              onClick={() => downloadBlob('probabilistic_report.html', 'text/html;charset=utf-8', buildProbHtml(result))}
+              style={{ padding: '6px 12px', border: '1px solid #93C5FD', background: '#EFF6FF', color: '#1E3A8A', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Export HTML
+            </button>
+            <button
+              onClick={() => {
+                const win = window.open('', '_blank', 'width=1100,height=900');
+                if (!win) return;
+                win.document.write(buildProbHtml(result));
+                win.document.close();
+                setTimeout(() => { try { win.focus(); win.print(); } catch { /* no-op */ } }, 120);
+              }}
+              style={{ padding: '6px 12px', border: '1px solid #6EE7B7', background: '#ECFDF5', color: '#065F46', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Print / Save PDF
+            </button>
+          </div>
         </div>
       </div>
 
