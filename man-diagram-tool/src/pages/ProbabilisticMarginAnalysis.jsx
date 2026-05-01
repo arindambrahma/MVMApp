@@ -422,6 +422,7 @@ export default function ProbabilisticMarginAnalysis() {
   const elementCounterRef = useRef(0);
 
   const [result, setResult] = useState(null);
+  const [classicResult, setClassicResult] = useState(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
   const [plotlyReady, setPlotlyReady] = useState(false);
@@ -812,36 +813,53 @@ export default function ProbabilisticMarginAnalysis() {
 
     setRunning(true);
     setError(null);
-    try {
+
+    const fetchCpm = async (fetchPayload) => {
       const res = await fetch('/api/pma/run-cpm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(fetchPayload),
       });
       const raw = await res.text();
       let data = null;
       if (raw && raw.trim()) {
-        try {
-          data = JSON.parse(raw);
-        } catch {
+        try { data = JSON.parse(raw); } catch {
           throw new Error(`Backend returned non-JSON response (HTTP ${res.status}). Check backend server logs.`);
         }
       }
-      if (!res.ok) {
-        throw new Error(data?.error || `HTTP ${res.status}: backend request failed`);
-      }
-      if (!data || data.success === false) {
-        throw new Error(data?.error || 'Backend returned an empty response. Make sure the backend is running on port 5001.');
-      }
-      // Classic CPM returns matrices in [source][target] (Row→Column) convention.
-      // MA-CPM returns them in [target][source] (Column→Row), already matching the input.
-      // Transpose only for classic mode.
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}: backend request failed`);
+      if (!data || data.success === false) throw new Error(data?.error || 'Backend returned an empty response. Make sure the backend is running on port 5001.');
+      // Transpose classic CPM matrices to match column→row convention
       if (data.mode === 'classic') {
         const T = (m) => m.map((_, i) => m.map((row) => row[i]));
         if (data.combinedRisk?.length) data.combinedRisk = T(data.combinedRisk);
         if (data.combinedLikelihood?.length) data.combinedLikelihood = T(data.combinedLikelihood);
       }
-      setResult(data);
+      return data;
+    };
+
+    try {
+      if (analysisMode === 'margin_aware') {
+        // Run MA-CPM and baseline classic CPM in parallel for comparison table
+        const classicPayload = {
+          elements: dsm.elements,
+          likelihood: dsm.likelihood,
+          impact: dsm.impact,
+          depth: Number(depth) || 4,
+          instigator,
+          mode: 'classic',
+        };
+        const [maData, classicData] = await Promise.all([
+          fetchCpm(payload),
+          fetchCpm(classicPayload),
+        ]);
+        setResult(maData);
+        setClassicResult(classicData);
+      } else {
+        const data = await fetchCpm(payload);
+        setResult(data);
+        setClassicResult(null);
+      }
       setActiveTab('results');
     } catch (e) {
       const msg = e?.message || 'Failed to run CPM';
@@ -851,6 +869,7 @@ export default function ProbabilisticMarginAnalysis() {
         setError(msg);
       }
       setResult(null);
+      setClassicResult(null);
     } finally {
       setRunning(false);
     }
@@ -1828,6 +1847,66 @@ export default function ProbabilisticMarginAnalysis() {
                         <td className="pma-result-numcol" style={{ color: guColor, fontWeight: 600 }}>
                           {gu.toFixed(resultsDecimals)}
                         </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        {isMarginAware && classicResult && (
+          <div className="pma-result-block">
+            <h3>CPM vs MA-CPM Comparison</h3>
+            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 8 }}>
+              Δ shows the percentage change from CPM to MA-CPM.
+              Ratio = Incoming / Outgoing (higher values indicate elements that receive more risk than they propagate).
+            </div>
+            <div className="pma-result-scroll">
+              <table className="pma-table pma-result-table">
+                <thead>
+                  <tr>
+                    <th className="pma-sn-col" rowSpan={2}>#</th>
+                    <th className="pma-corner" rowSpan={2}>Sub-system</th>
+                    <th colSpan={3} style={{ textAlign: 'center', borderBottom: '1px solid #E2E8F0' }}>Incoming</th>
+                    <th colSpan={3} style={{ textAlign: 'center', borderBottom: '1px solid #E2E8F0' }}>Outgoing</th>
+                    <th colSpan={2} style={{ textAlign: 'center', borderBottom: '1px solid #E2E8F0' }}>Ratio In/Out</th>
+                  </tr>
+                  <tr>
+                    <th className="pma-result-numcol">CPM</th>
+                    <th className="pma-result-numcol">MA-CPM</th>
+                    <th className="pma-result-numcol">Δ</th>
+                    <th className="pma-result-numcol">CPM</th>
+                    <th className="pma-result-numcol">MA-CPM</th>
+                    <th className="pma-result-numcol">Δ</th>
+                    <th className="pma-result-numcol">CPM</th>
+                    <th className="pma-result-numcol">MA-CPM</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dsm.elements.map((el, i) => {
+                    const cIn  = classicResult.incoming[i] ?? 0;
+                    const mIn  = result.incoming[i] ?? 0;
+                    const cOut = classicResult.outgoing[i] ?? 0;
+                    const mOut = result.outgoing[i] ?? 0;
+                    const dIn  = cIn  > 0 ? ((mIn  - cIn)  / cIn)  * 100 : null;
+                    const dOut = cOut > 0 ? ((mOut - cOut) / cOut) * 100 : null;
+                    const ratioC = cOut > 0 ? cIn  / cOut : null;
+                    const ratioM = mOut > 0 ? mIn  / mOut : null;
+                    const fmtDelta = (d) => d === null ? '—' : `${d >= 0 ? '+' : ''}${d.toFixed(0)}%`;
+                    const deltaColor = (d) => d === null ? '#64748B' : d < 0 ? '#16A34A' : '#DC2626';
+                    return (
+                      <tr key={i}>
+                        <td className="pma-sn-cell">{i + 1}</td>
+                        <td className="pma-row-header" title={el}><span className="pma-element-name">{el}</span></td>
+                        <td className="pma-result-numcol">{cIn.toFixed(resultsDecimals)}</td>
+                        <td className="pma-result-numcol">{mIn.toFixed(resultsDecimals)}</td>
+                        <td className="pma-result-numcol" style={{ color: deltaColor(dIn), fontWeight: 600 }}>{fmtDelta(dIn)}</td>
+                        <td className="pma-result-numcol">{cOut.toFixed(resultsDecimals)}</td>
+                        <td className="pma-result-numcol">{mOut.toFixed(resultsDecimals)}</td>
+                        <td className="pma-result-numcol" style={{ color: deltaColor(dOut), fontWeight: 600 }}>{fmtDelta(dOut)}</td>
+                        <td className="pma-result-numcol">{ratioC === null ? '—' : ratioC.toFixed(resultsDecimals)}</td>
+                        <td className="pma-result-numcol">{ratioM === null ? '—' : ratioM.toFixed(resultsDecimals)}</td>
                       </tr>
                     );
                   })}

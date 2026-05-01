@@ -701,6 +701,17 @@
   color: #1E293B;
   font-size: 11.5px;
 }
+.pma-result-table th[colspan] {
+  text-align: center;
+  background: #EFF6FF;
+  color: #1E3A8A;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-bottom: 2px solid #BFDBFE;
+}
+.pma-result-table th[rowspan] {
+  vertical-align: middle;
+}
 .pma-plot-container {
   background: #FFFFFF;
   border: 1px solid #E2E8F0;
