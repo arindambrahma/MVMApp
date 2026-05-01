@@ -433,6 +433,7 @@ export default function ProbabilisticMarginAnalysis() {
   const [matrixMetric, setMatrixMetric] = useState('risk');
   const [scatterScale, setScatterScale] = useState('fixed');
   const [showDirectOverlay, setShowDirectOverlay] = useState(false);
+  const [showClassicOverlay, setShowClassicOverlay] = useState(false);
   const [resultsDecimals, setResultsDecimals] = useState(3);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
 
@@ -950,6 +951,7 @@ export default function ProbabilisticMarginAnalysis() {
       const outgoing = result.outgoing || [];
       const scatterRisk = incoming.map((v, i) => (v || 0) + (outgoing[i] || 0));
       const maxScatterRisk = Math.max(...scatterRisk, 0);
+      const isMA = result.mode === 'margin_aware';
       const traces = [{
         x: outgoing,
         y: incoming,
@@ -975,9 +977,33 @@ export default function ProbabilisticMarginAnalysis() {
           line: { color: '#fff', width: 1 },
           colorbar: { title: 'Risk', thickness: 10 },
         },
-        hovertemplate: `%{text}<br>Outgoing: %{x:${fixedFmt}}<br>Incoming: %{y:${fixedFmt}}<extra></extra>`,
-        name: 'Combined',
+        hovertemplate: `%{text}<br>${isMA && showClassicOverlay ? 'MA-CPM — ' : ''}Outgoing: %{x:${fixedFmt}}<br>Incoming: %{y:${fixedFmt}}<extra></extra>`,
+        name: isMA && showClassicOverlay ? 'MA-CPM' : 'Combined',
       }];
+      // Classic CPM overlay — dotted connectors + open-square markers
+      if (isMA && showClassicOverlay && classicResult) {
+        const cIn  = classicResult.incoming  || [];
+        const cOut = classicResult.outgoing  || [];
+        // Connector lines: one null-separated polyline per element
+        const lineX = [], lineY = [];
+        cOut.forEach((co, i) => { lineX.push(co, outgoing[i] ?? 0, null); lineY.push(cIn[i] ?? 0, incoming[i] ?? 0, null); });
+        traces.push({
+          x: lineX, y: lineY,
+          mode: 'lines', type: 'scatter',
+          line: { color: '#94A3B8', width: 1.2, dash: 'dot' },
+          hoverinfo: 'skip', showlegend: false, name: '_connectors',
+        });
+        // Classic CPM points
+        traces.push({
+          x: cOut, y: cIn, text: labels,
+          mode: 'markers+text', type: 'scatter',
+          textposition: 'bottom center',
+          textfont: { size: 9, color: '#94A3B8' },
+          marker: { color: '#1D4ED8', symbol: 'square-open', size: 11, line: { color: '#1D4ED8', width: 2 } },
+          hovertemplate: `%{text}<br>Classic CPM — Outgoing: %{x:${fixedFmt}}<br>Incoming: %{y:${fixedFmt}}<extra></extra>`,
+          name: 'Classic CPM',
+        });
+      }
       if (showDirectOverlay) {
         const direct = computeDirectRisk(dsm.likelihood, dsm.impact, instigator);
         traces.push({
@@ -1318,7 +1344,7 @@ export default function ProbabilisticMarginAnalysis() {
         margin: { t: 40, r: 10, b: 10, l: 10 },
       }, { responsive: true });
     }
-  }, [plotlyReady, result, activeTab, edgeMetric, vizRoot, dsm, instigator, depth, matrixMetric, matrixView, scatterScale, showDirectOverlay, margins, resultsDecimals]);
+  }, [plotlyReady, result, classicResult, activeTab, edgeMetric, vizRoot, dsm, instigator, depth, matrixMetric, matrixView, scatterScale, showDirectOverlay, showClassicOverlay, margins, resultsDecimals]);
 
   const exportPlotImage = useCallback(async (plotRef, exportName) => {
     if (!plotlyReady || !window.Plotly || !plotRef?.current) {
@@ -1755,6 +1781,12 @@ export default function ProbabilisticMarginAnalysis() {
               <input type="checkbox" checked={showDirectOverlay} onChange={(e) => setShowDirectOverlay(e.target.checked)} />
               <span>Show direct (1-hop) overlay</span>
             </label>
+            {isMarginAware && classicResult && (
+              <label className="pma-panel-checkbox">
+                <input type="checkbox" checked={showClassicOverlay} onChange={(e) => setShowClassicOverlay(e.target.checked)} />
+                <span>Show Classic CPM comparison</span>
+              </label>
+            )}
             <div className="pma-viz-mode">
               <button type="button" className={`pma-viz-mode-btn ${scatterScale === 'fixed' ? 'active' : ''}`} onClick={() => setScatterScale('fixed')}>0 - 1</button>
               <button type="button" className={`pma-viz-mode-btn ${scatterScale === 'auto' ? 'active' : ''}`} onClick={() => setScatterScale('auto')}>Auto</button>
