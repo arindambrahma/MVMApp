@@ -77,6 +77,7 @@ function ImageExportDialog({
   plotData,
   plotOverlayPoints,
   plotPoints,
+  exportPreset = null,
   forcePlotMode = false,
   defaultTitle = 'Margin Value Plot',
   defaultName = 'margin_value_plot',
@@ -147,11 +148,12 @@ function ImageExportDialog({
   const [yAxisValuePadding, setYAxisValuePadding] = useState(15);
   const [xAxisDecimals, setXAxisDecimals] = useState(0);
   const [yAxisDecimals, setYAxisDecimals] = useState(0);
+  const [axisScaleMode, setAxisScaleMode] = useState('fixed01'); // fixed01 | auto | custom
   const [useCustomBounds, setUseCustomBounds] = useState(true);
   const [xMin, setXMin] = useState('0');
-  const [xMax, setXMax] = useState('10');
-  const [yMin, setYMin] = useState('15');
-  const [yMax, setYMax] = useState('55');
+  const [xMax, setXMax] = useState('1');
+  const [yMin, setYMin] = useState('0');
+  const [yMax, setYMax] = useState('1');
   const [pointLabelSize, setPointLabelSize] = useState(10);
   const [bubbleOpacity, setBubbleOpacity] = useState(100);
   const [pointLabelOpacity, setPointLabelOpacity] = useState(100);
@@ -182,6 +184,7 @@ function ImageExportDialog({
   const [transparentBackground, setTransparentBackground] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(100);
   const [settingsTab, setSettingsTab] = useState('layout');
+  const [plotStyleMode, setPlotStyleMode] = useState('default');
   const previewCanvasRef = useRef(null);
   const settingsFileInputRef = useRef(null);
   const isPlotMode = Boolean(plotData) || forcePlotMode;
@@ -191,6 +194,42 @@ function ImageExportDialog({
     setFilename(defaultName);
     setTitle(defaultTitle);
   }, [open, defaultName, defaultTitle]);
+
+  useEffect(() => {
+    if (!open || !exportPreset) return;
+    if (typeof exportPreset.title === 'string') setTitle(exportPreset.title);
+    if (typeof exportPreset.titleFont === 'string') setTitleFont(exportPreset.titleFont);
+    if (typeof exportPreset.titleSize === 'number') setTitleSize(clamp(exportPreset.titleSize, 6, 90));
+    if (typeof exportPreset.xAxisLabel === 'string') setXAxisLabel(exportPreset.xAxisLabel);
+    if (typeof exportPreset.yAxisLabel === 'string') setYAxisLabel(exportPreset.yAxisLabel);
+    if (typeof exportPreset.axisFont === 'string') setAxisFont(exportPreset.axisFont);
+    if (typeof exportPreset.axisHeaderFontSize === 'number') setAxisHeaderFontSize(clamp(exportPreset.axisHeaderFontSize, 6, 64));
+    if (typeof exportPreset.axisValueFontSize === 'number') setAxisValueFontSize(clamp(exportPreset.axisValueFontSize, 6, 42));
+    if (typeof exportPreset.pointLabelSize === 'number') setPointLabelSize(clamp(exportPreset.pointLabelSize, 6, 64));
+    if (typeof exportPreset.xAxisLabelPadding === 'number') setXAxisLabelPadding(clamp(exportPreset.xAxisLabelPadding, -1000, 1000));
+    if (typeof exportPreset.yAxisLabelPadding === 'number') setYAxisLabelPadding(clamp(exportPreset.yAxisLabelPadding, -1000, 1000));
+    if (typeof exportPreset.xAxisValuePadding === 'number') setXAxisValuePadding(clamp(exportPreset.xAxisValuePadding, -1000, 1000));
+    if (typeof exportPreset.yAxisValuePadding === 'number') setYAxisValuePadding(clamp(exportPreset.yAxisValuePadding, -1000, 1000));
+    if (typeof exportPreset.showQuadrants === 'boolean') setShowQuadrants(exportPreset.showQuadrants);
+    if (typeof exportPreset.showQuadrantText === 'boolean') setShowQuadrantText(exportPreset.showQuadrantText);
+    if (typeof exportPreset.showColorScale === 'boolean') setShowColorScale(exportPreset.showColorScale);
+    if (typeof exportPreset.showMidlines === 'boolean') setShowMidlines(exportPreset.showMidlines);
+    if (typeof exportPreset.showAxisLabels === 'boolean') setShowAxisLabels(exportPreset.showAxisLabels);
+    if (typeof exportPreset.showPointLabels === 'boolean') setShowPointLabels(exportPreset.showPointLabels);
+    if (typeof exportPreset.useCustomBounds === 'boolean') setUseCustomBounds(exportPreset.useCustomBounds);
+    if (typeof exportPreset.axisScaleMode === 'string') setAxisScaleMode(exportPreset.axisScaleMode);
+    if (typeof exportPreset.showGridlines === 'boolean') setShowGridlines(exportPreset.showGridlines);
+    if (typeof exportPreset.xMin === 'number') setXMin(String(exportPreset.xMin));
+    if (typeof exportPreset.xMax === 'number') setXMax(String(exportPreset.xMax));
+    if (typeof exportPreset.yMin === 'number') setYMin(String(exportPreset.yMin));
+    if (typeof exportPreset.yMax === 'number') setYMax(String(exportPreset.yMax));
+    if (typeof exportPreset.scaleStartColor === 'string') setScaleStartColor(exportPreset.scaleStartColor);
+    if (typeof exportPreset.scaleEndColor === 'string') setScaleEndColor(exportPreset.scaleEndColor);
+    if (typeof exportPreset.scaleCaption === 'string') setScaleCaption(exportPreset.scaleCaption);
+    if (typeof exportPreset.plotStyleMode === 'string') setPlotStyleMode(exportPreset.plotStyleMode);
+    if (typeof exportPreset.xAxisDecimals === 'number') setXAxisDecimals(clamp(exportPreset.xAxisDecimals, 0, 6));
+    if (typeof exportPreset.yAxisDecimals === 'number') setYAxisDecimals(clamp(exportPreset.yAxisDecimals, 0, 6));
+  }, [open, exportPreset]);
 
   useEffect(() => {
     if (!open || isPlotMode) return;
@@ -355,6 +394,8 @@ function ImageExportDialog({
         x: Number(p?.x),
         y: Number(p?.y),
         r: Number(p?.r),
+        pointType: String(p?.pointType || 'overlay'),
+        excess: Number.isFinite(Number(p?.excess)) ? Number(p?.excess) : 0,
       }))
       .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
       .map((p) => ({
@@ -403,14 +444,23 @@ function ImageExportDialog({
     const userMaxX = Number(xMax);
     const userMinY = Number(yMin);
     const userMaxY = Number(yMax);
-    const customMinX = useCustomBounds && Number.isFinite(userMinX) ? userMinX : null;
-    const customMaxX = useCustomBounds && Number.isFinite(userMaxX) ? userMaxX : null;
-    const customMinY = useCustomBounds && Number.isFinite(userMinY) ? userMinY : null;
-    const customMaxY = useCustomBounds && Number.isFinite(userMaxY) ? userMaxY : null;
-    const minX = customMinX !== null && customMaxX !== null && customMinX < customMaxX ? customMinX : autoMinX;
-    const maxX = customMinX !== null && customMaxX !== null && customMinX < customMaxX ? customMaxX : autoMaxX;
-    const minY = customMinY !== null && customMaxY !== null && customMinY < customMaxY ? customMinY : autoMinY;
-    const maxY = customMinY !== null && customMaxY !== null && customMinY < customMaxY ? customMaxY : autoMaxY;
+    let minX = autoMinX;
+    let maxX = autoMaxX;
+    let minY = autoMinY;
+    let maxY = autoMaxY;
+    if (axisScaleMode === 'fixed01') {
+      minX = 0; maxX = 1;
+      minY = 0; maxY = 1;
+    } else if (axisScaleMode === 'custom') {
+      const customMinX = Number.isFinite(userMinX) ? userMinX : null;
+      const customMaxX = Number.isFinite(userMaxX) ? userMaxX : null;
+      const customMinY = Number.isFinite(userMinY) ? userMinY : null;
+      const customMaxY = Number.isFinite(userMaxY) ? userMaxY : null;
+      minX = customMinX !== null && customMaxX !== null && customMinX < customMaxX ? customMinX : autoMinX;
+      maxX = customMinX !== null && customMaxX !== null && customMinX < customMaxX ? customMaxX : autoMaxX;
+      minY = customMinY !== null && customMaxY !== null && customMinY < customMaxY ? customMinY : autoMinY;
+      maxY = customMinY !== null && customMaxY !== null && customMinY < customMaxY ? customMaxY : autoMaxY;
+    }
     const midX = (minX + maxX) / 2;
     const midY = (minY + maxY) / 2;
     return { points, minX, maxX, minY, maxY, midX, midY };
@@ -596,12 +646,55 @@ function ImageExportDialog({
       ctx.fillText(minAbs.toFixed(clamp(scaleDecimals, 0, 6)), barX + barW + 6 + labelPad, barY + barH);
       ctx.fillText(maxAbs.toFixed(clamp(scaleDecimals, 0, 6)), barX + barW + 6 + labelPad, barY + 8);
     }
+
+    if (plotStyleMode === 'pma_scatter') {
+      const hasClassic = overlayPoints.some((p) => p.pointType === 'classic');
+      const hasDirect = overlayPoints.some((p) => p.pointType === 'direct');
+      const legendItems = [
+        { key: 'mcpm', label: 'M-CPM' },
+        ...(hasClassic ? [{ key: 'classic', label: 'Classic CPM' }] : []),
+        ...(hasDirect ? [{ key: 'direct', label: 'Direct (1-hop)' }] : []),
+      ];
+      const lx = plot.x + plot.w + 42;
+      let ly = plot.y + 12;
+      ctx.save();
+      ctx.font = `600 ${fontPx(10, 6, 28)}px ${axisFont}, Arial, sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      legendItems.forEach((item) => {
+        if (item.key === 'mcpm') {
+          ctx.beginPath();
+          ctx.fillStyle = '#F4A261';
+          ctx.arc(lx, ly, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#FFFFFF';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        } else if (item.key === 'classic') {
+          ctx.strokeStyle = '#2563EB';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(lx - 5, ly - 5, 10, 10);
+        } else {
+          ctx.strokeStyle = '#64748B';
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.arc(lx, ly, 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#0F172A';
+        ctx.fillText(item.label, lx + 14, ly);
+        ly += 20;
+      });
+      ctx.restore();
+    }
     points.forEach((p) => {
       const cx = xScale(p.x);
       const cy = yScale(p.y);
       const r = clamp(p.r * scaleRef, minR, maxR);
       ctx.beginPath();
-      ctx.fillStyle = overlayPoints.length ? baselineFillColor : pickPointColor(Math.abs(p.excess), minAbs, maxAbs);
+      ctx.fillStyle = plotStyleMode === 'pma_scatter'
+        ? pickPointColor(Math.abs(p.excess), minAbs, maxAbs)
+        : (overlayPoints.length ? baselineFillColor : pickPointColor(Math.abs(p.excess), minAbs, maxAbs));
       ctx.globalAlpha = clamp(bubbleOpacity, 0, 100) / 100;
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
@@ -616,6 +709,22 @@ function ImageExportDialog({
         const cx = xScale(p.x);
         const cy = yScale(p.y);
         const r = clamp(p.r * scaleRef, minR, maxR);
+        if (plotStyleMode === 'pma_scatter' && p.pointType === 'classic') {
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = '#2563EB';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(cx - r, cy - r, r * 2, r * 2);
+          return;
+        }
+        if (plotStyleMode === 'pma_scatter' && p.pointType === 'direct') {
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = '#64748B';
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.stroke();
+          return;
+        }
         ctx.beginPath();
         ctx.fillStyle = overlayFillColor;
         ctx.globalAlpha = 0.32;
@@ -641,7 +750,7 @@ function ImageExportDialog({
       });
       if (overlayPoints.length) {
         ctx.font = `700 ${fontPx(pointLabelSize, 6, 64)}px ${axisFont}, Arial, sans-serif`;
-        ctx.fillStyle = '#9A3412';
+        ctx.fillStyle = plotStyleMode === 'pma_scatter' ? '#334155' : '#9A3412';
         overlayPoints.forEach((p) => {
           const cx = xScale(p.x);
           const cy = yScale(p.y);
@@ -652,7 +761,7 @@ function ImageExportDialog({
       ctx.globalAlpha = 1;
     }
 
-    if (showArrows && overlayPoints.length) {
+    if (showArrows && overlayPoints.length && plotStyleMode !== 'pma_scatter') {
       ctx.save();
       ctx.strokeStyle = arrowColor;
       ctx.fillStyle = arrowColor;
@@ -678,6 +787,25 @@ function ImageExportDialog({
         ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
         ctx.closePath();
         ctx.fill();
+      });
+      ctx.restore();
+    }
+
+    if (plotStyleMode === 'pma_scatter' && overlayPoints.length) {
+      const classicByLabel = new Map(
+        overlayPoints.filter((p) => p.pointType === 'classic').map((p) => [p.label, p]),
+      );
+      ctx.save();
+      ctx.strokeStyle = '#94A3B8';
+      ctx.lineWidth = 1.1;
+      ctx.setLineDash([4, 4]);
+      points.forEach((p) => {
+        const classic = classicByLabel.get(p.label);
+        if (!classic) return;
+        ctx.beginPath();
+        ctx.moveTo(xScale(classic.x), yScale(classic.y));
+        ctx.lineTo(xScale(p.x), yScale(p.y));
+        ctx.stroke();
       });
       ctx.restore();
     }
@@ -832,10 +960,35 @@ function ImageExportDialog({
       svg.push(`<text x="${barX + barW + 6 + labelPad}" y="${barY + barH}" text-anchor="start" font-size="${labelPx}" fill="${escape(axisColor)}" font-family="${escape(axisFont)}, Arial, sans-serif">${minAbs.toFixed(clamp(scaleDecimals, 0, 6))}</text>`);
       svg.push(`<text x="${barX + barW + 6 + labelPad}" y="${barY + 8}" text-anchor="start" font-size="${labelPx}" fill="${escape(axisColor)}" font-family="${escape(axisFont)}, Arial, sans-serif">${maxAbs.toFixed(clamp(scaleDecimals, 0, 6))}</text>`);
     }
+    if (plotStyleMode === 'pma_scatter') {
+      const hasClassic = overlayPoints.some((p) => p.pointType === 'classic');
+      const hasDirect = overlayPoints.some((p) => p.pointType === 'direct');
+      const legendItems = [
+        { key: 'mcpm', label: 'M-CPM' },
+        ...(hasClassic ? [{ key: 'classic', label: 'Classic CPM' }] : []),
+        ...(hasDirect ? [{ key: 'direct', label: 'Direct (1-hop)' }] : []),
+      ];
+      const lx = plot.x + plot.w + 42;
+      let ly = plot.y + 12;
+      const legFont = fontPx(10, 6, 28);
+      legendItems.forEach((item) => {
+        if (item.key === 'mcpm') {
+          svg.push(`<circle cx="${lx}" cy="${ly}" r="5" fill="#F4A261" stroke="#FFFFFF" stroke-width="1"/>`);
+        } else if (item.key === 'classic') {
+          svg.push(`<rect x="${lx - 5}" y="${ly - 5}" width="10" height="10" fill="none" stroke="#2563EB" stroke-width="2"/>`);
+        } else {
+          svg.push(`<circle cx="${lx}" cy="${ly}" r="5" fill="none" stroke="#64748B" stroke-width="1.3"/>`);
+        }
+        svg.push(`<text x="${lx + 14}" y="${ly + 0.5}" text-anchor="start" dominant-baseline="middle" font-size="${legFont}" font-family="${escape(axisFont)}, Arial, sans-serif" fill="#0F172A">${escape(item.label)}</text>`);
+        ly += 20;
+      });
+    }
     points.forEach((p) => {
       const cx = xScale(p.x);
       const cy = yScale(p.y);
-      const fill = overlayPoints.length ? baselineFillColor : pickPointColor(Math.abs(p.excess), minAbs, maxAbs);
+      const fill = plotStyleMode === 'pma_scatter'
+        ? pickPointColor(Math.abs(p.excess), minAbs, maxAbs)
+        : (overlayPoints.length ? baselineFillColor : pickPointColor(Math.abs(p.excess), minAbs, maxAbs));
       const r = clamp(p.r * scaleRef, minR, maxR);
       svg.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" fill-opacity="${(clamp(bubbleOpacity, 0, 100) / 100).toFixed(3)}" stroke="${escape(overlayPoints.length ? baselineStrokeColor : '#0f172a')}" stroke-width="0.9"/>`);
     });
@@ -845,6 +998,14 @@ function ImageExportDialog({
         const cx = xScale(p.x);
         const cy = yScale(p.y);
         const r = clamp(p.r * scaleRef, minR, maxR);
+        if (plotStyleMode === 'pma_scatter' && p.pointType === 'classic') {
+          svg.push(`<rect x="${cx - r}" y="${cy - r}" width="${r * 2}" height="${r * 2}" fill="none" stroke="#2563EB" stroke-width="2"/>`);
+          return;
+        }
+        if (plotStyleMode === 'pma_scatter' && p.pointType === 'direct') {
+          svg.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#64748B" stroke-width="1.3"/>`);
+          return;
+        }
         svg.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${escape(overlayFillColor)}" fill-opacity="0.32" stroke="${escape(overlayStrokeColor)}" stroke-width="1.4"/>`);
       });
     }
@@ -868,7 +1029,7 @@ function ImageExportDialog({
       }
     }
 
-    if (showArrows && overlayPoints.length) {
+    if (showArrows && overlayPoints.length && plotStyleMode !== 'pma_scatter') {
       overlayPoints.forEach((p) => {
         const base = baselineByLabel.get(p.label);
         if (!base) return;
@@ -878,6 +1039,16 @@ function ImageExportDialog({
         const y2 = yScale(p.y);
         if (Math.hypot(x2 - x1, y2 - y1) < 1e-3) return;
         svg.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${escape(arrowColor)}" stroke-opacity="0.45" stroke-width="${clamp(arrowThickness, 0.2, 12)}" marker-end="url(#mvm-overlay-arrow)"/>`);
+      });
+    }
+    if (plotStyleMode === 'pma_scatter' && overlayPoints.length) {
+      const classicByLabel = new Map(
+        overlayPoints.filter((p) => p.pointType === 'classic').map((p) => [p.label, p]),
+      );
+      points.forEach((p) => {
+        const classic = classicByLabel.get(p.label);
+        if (!classic) return;
+        svg.push(`<line x1="${xScale(classic.x)}" y1="${yScale(classic.y)}" x2="${xScale(p.x)}" y2="${yScale(p.y)}" stroke="#94A3B8" stroke-width="1.1" stroke-dasharray="4 4"/>`);
       });
     }
     svg.push(`</svg>`);
@@ -970,6 +1141,7 @@ function ImageExportDialog({
     yAxisValuePadding,
     xAxisDecimals,
     yAxisDecimals,
+    axisScaleMode,
     useCustomBounds,
     xMin,
     xMax,
@@ -978,6 +1150,7 @@ function ImageExportDialog({
     pointLabelSize,
     bubbleOpacity,
     pointLabelOpacity,
+    plotStyleMode,
     baselineLabelOffsetX,
     baselineLabelOffsetY,
     overlayLabelOffsetX,
@@ -1186,7 +1359,13 @@ function ImageExportDialog({
     if (has('yAxisValuePadding')) setYAxisValuePadding(num(data.yAxisValuePadding, -1000, 1000));
     if (has('xAxisDecimals')) setXAxisDecimals(num(data.xAxisDecimals, 0, 6));
     if (has('yAxisDecimals')) setYAxisDecimals(num(data.yAxisDecimals, 0, 6));
-    if (has('useCustomBounds')) setUseCustomBounds(Boolean(data.useCustomBounds));
+    const hasAxisScaleMode = has('axisScaleMode');
+    if (hasAxisScaleMode) {
+      const mode = ['fixed01', 'auto', 'custom'].includes(data.axisScaleMode) ? data.axisScaleMode : 'fixed01';
+      setAxisScaleMode(mode);
+      setUseCustomBounds(mode === 'custom');
+    }
+    if (!hasAxisScaleMode && has('useCustomBounds')) setUseCustomBounds(Boolean(data.useCustomBounds));
     if (has('xMin')) setXMin(data.xMin === '' ? '' : String(data.xMin));
     if (has('xMax')) setXMax(data.xMax === '' ? '' : String(data.xMax));
     if (has('yMin')) setYMin(data.yMin === '' ? '' : String(data.yMin));
@@ -1634,28 +1813,40 @@ function ImageExportDialog({
           <label style={{ marginBottom: 8 }}><span style={{ fontSize: 11, color: '#64748b' }}>Y-axis value padding (px)</span><input type="number" value={yAxisValuePadding} onChange={(e) => setYAxisValuePadding(e.target.value)} onBlur={(e) => setYAxisValuePadding(clamp(e.target.value, -1000, 1000))} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1' }} /></label>
           <label style={{ marginBottom: 8 }}><span style={{ fontSize: 11, color: '#64748b' }}>Y-axis label padding (px)</span><input type="number" value={yAxisLabelPadding} onChange={(e) => setYAxisLabelPadding(e.target.value)} onBlur={(e) => setYAxisLabelPadding(clamp(e.target.value, -1000, 1000))} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1' }} /></label>
           <div style={{ fontSize: 11, color: '#475569', margin: '10px 0 6px' }}>Axis Bounds</div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, marginBottom: 8 }}>
-            <input type="checkbox" checked={useCustomBounds} onChange={(e) => setUseCustomBounds(e.target.checked)} />
-            Use custom bounds
+          <label style={{ marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: '#64748b' }}>Scale mode</span>
+            <select
+              value={axisScaleMode}
+              onChange={(e) => {
+                const mode = e.target.value;
+                setAxisScaleMode(mode);
+                setUseCustomBounds(mode === 'custom');
+              }}
+              style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4 }}
+            >
+              <option value="fixed01">Fixed 0-1</option>
+              <option value="auto">Auto (max values)</option>
+              <option value="custom">Custom bounds</option>
+            </select>
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
             <label>
               <span style={{ fontSize: 11, color: '#64748b' }}>X min</span>
-            <input type="text" inputMode="decimal" value={xMin} onChange={(e) => setXMin(e.target.value)} disabled={!useCustomBounds} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomBounds ? '#fff' : '#f8fafc' }} />
+            <input type="text" inputMode="decimal" value={xMin} onChange={(e) => setXMin(e.target.value)} disabled={axisScaleMode !== 'custom'} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: axisScaleMode === 'custom' ? '#fff' : '#f8fafc' }} />
           </label>
           <label>
             <span style={{ fontSize: 11, color: '#64748b' }}>X max</span>
-            <input type="text" inputMode="decimal" value={xMax} onChange={(e) => setXMax(e.target.value)} disabled={!useCustomBounds} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomBounds ? '#fff' : '#f8fafc' }} />
+            <input type="text" inputMode="decimal" value={xMax} onChange={(e) => setXMax(e.target.value)} disabled={axisScaleMode !== 'custom'} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: axisScaleMode === 'custom' ? '#fff' : '#f8fafc' }} />
           </label>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
             <label>
               <span style={{ fontSize: 11, color: '#64748b' }}>Y min</span>
-            <input type="text" inputMode="decimal" value={yMin} onChange={(e) => setYMin(e.target.value)} disabled={!useCustomBounds} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomBounds ? '#fff' : '#f8fafc' }} />
+            <input type="text" inputMode="decimal" value={yMin} onChange={(e) => setYMin(e.target.value)} disabled={axisScaleMode !== 'custom'} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: axisScaleMode === 'custom' ? '#fff' : '#f8fafc' }} />
           </label>
           <label>
             <span style={{ fontSize: 11, color: '#64748b' }}>Y max</span>
-            <input type="text" inputMode="decimal" value={yMax} onChange={(e) => setYMax(e.target.value)} disabled={!useCustomBounds} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: useCustomBounds ? '#fff' : '#f8fafc' }} />
+            <input type="text" inputMode="decimal" value={yMax} onChange={(e) => setYMax(e.target.value)} disabled={axisScaleMode !== 'custom'} style={{ width: '100%', padding: 6, borderRadius: 6, border: '1px solid #cbd5e1', marginTop: 4, background: axisScaleMode === 'custom' ? '#fff' : '#f8fafc' }} />
           </label>
           </div>
             </>

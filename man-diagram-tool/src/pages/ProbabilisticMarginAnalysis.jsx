@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import { useNavigate } from 'react-router-dom';
+import ImageExportDialog from '../components/ImageExportDialog';
 import './ProbabilisticMarginAnalysis.css';
 
 const TABS = [
@@ -436,7 +437,14 @@ export default function ProbabilisticMarginAnalysis() {
   const [showDirectOverlay, setShowDirectOverlay] = useState(false);
   const [showClassicOverlay, setShowClassicOverlay] = useState(false);
   const [resultsDecimals, setResultsDecimals] = useState(3);
-  const [plotExportFormat, setPlotExportFormat] = useState('svg');
+  const [showImageExportDialog, setShowImageExportDialog] = useState(false);
+  const [imageExportSrc, setImageExportSrc] = useState('');
+  const [imageExportTitle, setImageExportTitle] = useState('PMA Graph');
+  const [imageExportName, setImageExportName] = useState('pma_graph');
+  const [imageExportPlotPoints, setImageExportPlotPoints] = useState([]);
+  const [imageExportOverlayPoints, setImageExportOverlayPoints] = useState([]);
+  const [imageExportPlotData, setImageExportPlotData] = useState(null);
+  const [imageExportPreset, setImageExportPreset] = useState(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
 
   const fileMenuRef = useRef(null);
@@ -1345,31 +1353,6 @@ export default function ProbabilisticMarginAnalysis() {
     }
   }, [plotlyReady, result, classicResult, activeTab, edgeMetric, vizRoot, dsm, instigator, depth, matrixMetric, matrixView, scatterScale, showDirectOverlay, showClassicOverlay, margins, resultsDecimals]);
 
-  const exportPlotImage = useCallback(async (plotRef, exportName, format = 'png') => {
-    if (!plotlyReady || !window.Plotly || !plotRef?.current) {
-      setError('Plot export is not available yet. Please run CPM and wait for the graph to render.');
-      return;
-    }
-    try {
-      const plotElement = plotRef.current.querySelector('.js-plotly-plot') || plotRef.current;
-      const width = Math.max(900, plotElement.clientWidth || 900);
-      const height = Math.max(620, plotElement.clientHeight || 620);
-      if (format === 'svg') {
-        await window.Plotly.downloadImage(plotElement, { format: 'svg', filename: exportName, width, height });
-      } else if (format === 'pdf') {
-        const dataUrl = await window.Plotly.toImage(plotElement, { format: 'png', width, height, scale: 2 });
-        const pdf = new jsPDF({ orientation: width >= height ? 'landscape' : 'portrait', unit: 'px', format: [width, height] });
-        pdf.addImage(dataUrl, 'PNG', 0, 0, width, height);
-        pdf.save(`${exportName}.pdf`);
-      } else {
-        await window.Plotly.downloadImage(plotElement, { format: 'png', filename: exportName, width, height, scale: 2 });
-      }
-      setError(null);
-    } catch {
-      setError('Could not export the selected graph image. Please try again.');
-    }
-  }, [plotlyReady]);
-
   const capturePlotDataUrl = useCallback(async (plotRef) => {
     if (!plotlyReady || !window.Plotly || !plotRef?.current) return null;
     try {
@@ -1386,6 +1369,125 @@ export default function ProbabilisticMarginAnalysis() {
       return null;
     }
   }, [plotlyReady]);
+
+  const extractScatterExportPoints = useCallback((plotRef) => {
+    if (!plotRef?.current) return { baseline: [], overlay: [] };
+    const plotElement = plotRef.current.querySelector('.js-plotly-plot') || plotRef.current;
+    const traces = Array.isArray(plotElement?.data) ? plotElement.data : [];
+    const markerTraces = traces.filter((trace) => {
+      const mode = String(trace?.mode || '').toLowerCase();
+      return Array.isArray(trace?.x)
+        && Array.isArray(trace?.y)
+        && trace.x.length === trace.y.length
+        && mode.includes('markers');
+    });
+    if (!markerTraces.length) return { baseline: [], overlay: [] };
+
+    const toPoints = (trace, traceIdx, pointType = 'overlay') => {
+      const xs = trace.x || [];
+      const ys = trace.y || [];
+      const textArr = Array.isArray(trace.text) ? trace.text : [];
+      const markerSize = trace?.marker?.size;
+      const markerColor = trace?.marker?.color;
+      return xs
+        .map((x, i) => {
+          const y = ys[i];
+          if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) return null;
+          const maybeSize = Array.isArray(markerSize) ? markerSize[i] : markerSize;
+          const maybeColor = Array.isArray(markerColor) ? markerColor[i] : markerColor;
+          const riskValue = Number.isFinite(Number(maybeColor))
+            ? Number(maybeColor)
+            : (Math.max(0, Number(x) || 0) + Math.max(0, Number(y) || 0));
+          const r = Number.isFinite(Number(maybeSize)) ? Math.max(4, Number(maybeSize) / 2) : 8;
+          const label = String(textArr[i] || `${trace.name || 'Point'} ${i + 1}`).replace(/<[^>]*>/g, '');
+          return {
+            key: `t${traceIdx}_${i}`,
+            label,
+            x: Number(x) / 100,
+            y: Number(y) / 100,
+            excess: riskValue / 100,
+            r,
+            pointType,
+          };
+        })
+        .filter(Boolean);
+    };
+
+    const primaryTrace = markerTraces.find((trace) => !String(trace?.name || '').toLowerCase().includes('classic') && !String(trace?.name || '').toLowerCase().includes('direct')) || markerTraces[0];
+    const classicTrace = markerTraces.find((trace) => String(trace?.name || '').toLowerCase().includes('classic'));
+    const directTrace = markerTraces.find((trace) => String(trace?.name || '').toLowerCase().includes('direct'));
+
+    const baseline = primaryTrace ? toPoints(primaryTrace, 0, 'primary') : [];
+    const classic = classicTrace ? toPoints(classicTrace, 1, 'classic') : [];
+    const direct = directTrace ? toPoints(directTrace, 2, 'direct') : [];
+    const overlay = [...classic, ...direct];
+    return { baseline, overlay };
+  }, []);
+
+  const openPlotExportDialog = useCallback(async (plotRef, exportTitle, exportName, withEditablePlot = false) => {
+    const src = await capturePlotDataUrl(plotRef);
+    if (!src) {
+      setError('Could not prepare the graph for export. Please try again.');
+      return;
+    }
+    if (withEditablePlot) {
+      const { baseline, overlay } = extractScatterExportPoints(plotRef);
+      if (baseline.length) {
+        setImageExportPlotPoints(baseline);
+        setImageExportOverlayPoints(overlay);
+        setImageExportPlotData({ mode: 'pma_scatter' });
+        setImageExportPreset({
+          title: `PMA Export: ${exportTitle}`,
+          titleFont: 'Aptos Narrow',
+          titleSize: 12,
+          xAxisLabel: 'Average Outgoing Risk',
+          yAxisLabel: 'Average Incoming Risk',
+          axisFont: 'Aptos Narrow',
+          axisHeaderFontSize: 11,
+          axisValueFontSize: 10,
+          pointLabelSize: 10,
+          xAxisLabelPadding: -18,
+          yAxisLabelPadding: -44,
+          xAxisValuePadding: -2,
+          yAxisValuePadding: 14,
+          showQuadrants: false,
+          showQuadrantText: false,
+          showColorScale: true,
+          showMidlines: false,
+          showGridlines: true,
+          showAxisLabels: true,
+          showPointLabels: true,
+          axisScaleMode: scatterScale === 'auto' ? 'auto' : 'fixed01',
+          useCustomBounds: false,
+          xMin: 0,
+          xMax: 1,
+          yMin: 0,
+          yMax: 1,
+          scaleStartColor: '#2E7D32',
+          scaleEndColor: '#C62828',
+          scaleCaption: 'Risk',
+          plotStyleMode: 'pma_scatter',
+          xAxisDecimals: resultsDecimals,
+          yAxisDecimals: resultsDecimals,
+        });
+      } else {
+        setImageExportPlotPoints([]);
+        setImageExportOverlayPoints([]);
+        setImageExportPlotData(null);
+        setImageExportPreset(null);
+      }
+    } else {
+      setImageExportPlotPoints([]);
+      setImageExportOverlayPoints([]);
+      setImageExportPlotData(null);
+      setImageExportPreset(null);
+    }
+    setImageExportSrc(src);
+    setImageExportTitle(withEditablePlot ? `PMA Export: ${exportTitle}` : exportTitle);
+    setImageExportName(exportName);
+    setShowImageExportDialog(true);
+    setError(null);
+  }, [capturePlotDataUrl, extractScatterExportPoints]);
 
   const exportPmaReport = useCallback(async (mode) => {
     if (!result) return;
@@ -1723,26 +1825,14 @@ export default function ProbabilisticMarginAnalysis() {
     const impact = buildCombinedImpactMatrix(risk, likelihood);
     const isMarginAware = result.mode === 'margin_aware';
     const numericRisk = matrixMetric === 'likelihood' ? likelihood : (matrixMetric === 'impact' ? impact : risk);
-    const cardTitle = (title, ref, exportName) => (
+    const cardTitle = (title, ref, exportName, withEditablePlot = false) => (
       <div className="pma-card-title-row">
         <h3>{title}</h3>
         <div className="pma-export-format-row">
-          <div className="pma-viz-mode">
-            {['svg', 'pdf', 'png'].map(fmt => (
-              <button
-                key={fmt}
-                type="button"
-                className={`pma-viz-mode-btn${plotExportFormat === fmt ? ' active' : ''}`}
-                onClick={() => setPlotExportFormat(fmt)}
-              >
-                {fmt.toUpperCase()}
-              </button>
-            ))}
-          </div>
           <button
             type="button"
             className="pma-export-plot-btn"
-            onClick={() => exportPlotImage(ref, exportName, plotExportFormat)}
+            onClick={() => openPlotExportDialog(ref, title, exportName, withEditablePlot)}
           >
             Export
           </button>
@@ -1791,7 +1881,7 @@ export default function ProbabilisticMarginAnalysis() {
           </div>
         </div>
         <div className="pma-viz-card">
-          {cardTitle('Risk: Incoming vs Outgoing Propagation', scatterRef, 'pma_risk_incoming_vs_outgoing')}
+          {cardTitle('Risk: Incoming vs Outgoing Propagation', scatterRef, 'pma_risk_incoming_vs_outgoing', true)}
           <div className="pma-scatter-controls">
             <label className="pma-panel-checkbox">
               <input type="checkbox" checked={showDirectOverlay} onChange={(e) => setShowDirectOverlay(e.target.checked)} />
@@ -2302,6 +2392,17 @@ export default function ProbabilisticMarginAnalysis() {
           &copy; {new Date().getFullYear()} Arindam Brahma &nbsp;&middot;&nbsp; {analysisMode === 'margin_aware' ? 'M-CPM (phase 2)' : 'Clarkson CPM (phase 1)'} via cpm-lib
         </span>
       </div>
+      <ImageExportDialog
+        open={showImageExportDialog}
+        onClose={() => setShowImageExportDialog(false)}
+        imageSrc={imageExportSrc}
+        plotData={imageExportPlotData}
+        plotPoints={imageExportPlotPoints}
+        plotOverlayPoints={imageExportOverlayPoints}
+        exportPreset={imageExportPreset}
+        defaultTitle={imageExportTitle}
+        defaultName={imageExportName}
+      />
     </div>
   );
 }
