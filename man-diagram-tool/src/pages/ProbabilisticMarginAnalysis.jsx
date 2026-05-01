@@ -538,27 +538,23 @@ export default function ProbabilisticMarginAnalysis() {
   }, []);
 
   const loadExample = useCallback(() => {
-    // Vacuum cleaner system — 5 modules (MF, PS, HD, FB, CS).
-    const labels = [
-      'Motor and fan unit',
-      'Power supply and cord / battery pack',
-      'Housing and air duct',
-      'Filter and dust bin',
-      'Control switch and speed electronics',
-    ];
+    // Fan system — 6 subsystems (Fan, Motor, Heating, Casing, Control, Power).
+    const labels = ['Fan', 'Motor', 'Heating', 'Casing', 'Control', 'Power'];
     const L = [
-      [0.00, 0.45, 0.50, 0.25, 0.60],
-      [0.70, 0.00, 0.10, 0.00, 0.50],
-      [0.75, 0.10, 0.00, 0.65, 0.15],
-      [0.35, 0.00, 0.80, 0.00, 0.00],
-      [0.55, 0.65, 0.25, 0.00, 0.00],
+      [0,   0.6, 0.9, 0.9, 0,   0.3],
+      [0.6, 0,   0,   0.6, 0.3, 0.9],
+      [0.6, 0,   0,   0.6, 0.3, 0.9],
+      [0.9, 0.9, 0.6, 0,   0,   0.3],
+      [0.6, 0,   0.3, 0.3, 0,   0  ],
+      [0,   0.3, 0.3, 0,   0,   0  ],
     ];
     const I = [
-      [0.00, 0.30, 0.40, 0.20, 0.35],
-      [0.40, 0.00, 0.10, 0.00, 0.25],
-      [0.55, 0.10, 0.00, 0.35, 0.15],
-      [0.25, 0.00, 0.45, 0.00, 0.00],
-      [0.30, 0.35, 0.15, 0.00, 0.00],
+      [0,   0.6, 0.6, 0.3, 0,   0.3],
+      [0.3, 0,   0,   0.3, 0.3, 0.9],
+      [0.3, 0,   0,   0.3, 0.3, 0.6],
+      [0.9, 0.6, 0.6, 0,   0,   0.3],
+      [0.3, 0,   0.3, 0.3, 0,   0  ],
+      [0,   0.9, 0.9, 0,   0,   0  ],
     ];
     const dep = L.map(row => row.map(v => v > 0));
     setDsm({
@@ -567,9 +563,10 @@ export default function ProbabilisticMarginAnalysis() {
       likelihood: L.map(r => [...r]),
       impact: I.map(r => [...r]),
     });
-    setMargins([0.15, 0.35, 0.30, 0.10, 0.20]);
+    setMargins([0.2, 0.4, 0.55, 0.5, 0.6, 0.3]);
     elementCounterRef.current = labels.length;
     setResult(null);
+    setClassicResult(null);
     setError(null);
     setAnalysisMode('margin_aware');
   }, []);
