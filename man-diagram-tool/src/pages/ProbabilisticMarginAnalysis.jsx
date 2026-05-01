@@ -1,5 +1,4 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { jsPDF } from 'jspdf';
 import { useNavigate } from 'react-router-dom';
 import ImageExportDialog from '../components/ImageExportDialog';
 import './ProbabilisticMarginAnalysis.css';
@@ -86,10 +85,13 @@ function buildPmaReportHtml({
   impact,
   effectiveLikelihood,
   inputs,
+  classicResult,
+  allocationResult,
   visualizationImages,
 }) {
   const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const fmtV = v => (typeof v === 'number' && Number.isFinite(v)) ? v.toFixed(4) : '-';
+  const fmtPct = v => (typeof v === 'number' && Number.isFinite(v)) ? `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` : '-';
   const elements = dsm.elements;
   const n = elements.length;
   const method = isMarginAware ? 'M-CPM (Phase 2)' : 'Classic CPM (Phase 1)';
@@ -126,12 +128,17 @@ function buildPmaReportHtml({
 
   const settingsRows = [['Method', method], ['Search depth', result.depth], ['Instigator convention', convention], ['Elements', n], ['Dependencies', inputs?.dependencyCount ?? 0]];
   if (isMarginAware) {
-    settingsRows.push(['Distribution type', inputs?.distribution?.type ?? 'n/a']);
-    settingsRows.push(['Distribution mu', inputs?.distribution?.mu ?? 'n/a']);
-    settingsRows.push(['Distribution sigma', inputs?.distribution?.sigma ?? 'n/a']);
+    settingsRows.push(['Distribution', distributionSummary(inputs?.distribution)]);
+    if (allocationResult) {
+      settingsRows.push(['Allocation margin step', allocationResult.step]);
+      settingsRows.push(['Baseline expected propagation risk', fmtV(allocationResult.baselineExpectedRisk)]);
+    }
   }
   const settingsTable = `<h2>Analysis Configuration</h2><table><thead><tr><th>Setting</th><th>Value</th></tr></thead><tbody>${settingsRows.map(([k, v]) => `<tr><td style="padding:6px 10px;font-weight:600">${esc(k)}</td><td style="padding:6px 10px">${esc(v)}</td></tr>`).join('')}</tbody></table>`;
   const marginsTable = isMarginAware ? `<h2>Input Margins</h2><table><thead><tr><th>#</th><th>Element</th><th style="text-align:right">Margin</th></tr></thead><tbody>${elements.map((el, i) => `<tr><td style="padding:6px 10px">${i + 1}</td><td style="padding:6px 10px">${esc(el)}</td><td style="padding:6px 10px;text-align:right">${fmtV(inputs?.margins?.[i])}</td></tr>`).join('')}</tbody></table>` : '';
+  const distributionTable = isMarginAware && Array.isArray(inputs?.distribution)
+    ? `<h2>Per-node Change Magnitude Distribution</h2><table><thead><tr><th>#</th><th>Element</th><th>Distribution</th></tr></thead><tbody>${elements.map((el, i) => `<tr><td style="padding:6px 10px">${i + 1}</td><td style="padding:6px 10px">${esc(el)}</td><td style="padding:6px 10px">${esc(distributionSummary(inputs.distribution[i]))}</td></tr>`).join('')}</tbody></table>`
+    : '';
   const imageSection = (title, key) => {
     const src = visualizationImages?.[key];
     if (!src) return '';
@@ -139,8 +146,27 @@ function buildPmaReportHtml({
   };
 
   const riskTableRows = elements.map((el, i) => `<tr><td style="padding:6px 10px;font-weight:600">${i + 1}</td><td style="padding:6px 10px">${esc(el)}</td><td style="padding:6px 10px;text-align:right">${fmtV(result.incoming[i])}</td><td style="padding:6px 10px;text-align:right">${fmtV(result.outgoing[i])}</td></tr>`).join('');
+  const gatesTable = isMarginAware && Array.isArray(result.margins) && Array.isArray(result.exceedance)
+    ? `<h2>Margin Thresholds and Exceedance Gates</h2><table><thead><tr><th>#</th><th>Element</th><th>Distribution</th><th style="text-align:right">m_u</th><th style="text-align:right">g_u = P(delta &gt; m_u)</th></tr></thead><tbody>${elements.map((el, i) => `<tr><td style="padding:6px 10px">${i + 1}</td><td style="padding:6px 10px">${esc(el)}</td><td style="padding:6px 10px">${esc(distributionSummary(Array.isArray(result.distribution) ? result.distribution[i] : result.distribution))}</td><td style="padding:6px 10px;text-align:right">${fmtV(result.margins[i])}</td><td style="padding:6px 10px;text-align:right">${fmtV(result.exceedance[i])}</td></tr>`).join('')}</tbody></table>`
+    : '';
+  const allocationTable = isMarginAware && allocationResult?.rows?.length
+    ? `<h2>Margin Allocation Sensitivity</h2><p class="note">Expected propagation risk is weighted by source-change probabilities. Benefit is the reduction from adding ${fmtV(allocationResult.step)} margin to one subsystem; value divides benefit by relative margin cost.</p><table><thead><tr><th>Rank</th><th>Element</th><th style="text-align:right">q_s</th><th style="text-align:right">Cost</th><th style="text-align:right">m -> m'</th><th style="text-align:right">Risk Reduction</th><th style="text-align:right">Benefit / Cost</th></tr></thead><tbody>${allocationResult.rows.map((row, rank) => `<tr><td style="padding:6px 10px">${rank + 1}</td><td style="padding:6px 10px">${esc(row.element)}</td><td style="padding:6px 10px;text-align:right">${fmtV(row.sourceProbability)}</td><td style="padding:6px 10px;text-align:right">${fmtV(row.cost)}</td><td style="padding:6px 10px;text-align:right">${fmtV(row.currentMargin)} -> ${fmtV(row.testedMargin)}</td><td style="padding:6px 10px;text-align:right">${fmtV(row.benefit)}</td><td style="padding:6px 10px;text-align:right;font-weight:${rank === 0 ? 700 : 500};color:${rank === 0 ? '#166534' : '#1f2937'}">${fmtV(row.benefitCost)}</td></tr>`).join('')}</tbody></table>`
+    : '';
+  const comparisonTable = isMarginAware && classicResult
+    ? `<h2>CPM vs M-CPM Comparison</h2><table><thead><tr><th rowspan="2">#</th><th rowspan="2">Sub-system</th><th colspan="3">Incoming</th><th colspan="3">Outgoing</th><th colspan="2">Ratio In/Out</th></tr><tr><th>CPM</th><th>M-CPM</th><th>Change</th><th>CPM</th><th>M-CPM</th><th>Change</th><th>CPM</th><th>M-CPM</th></tr></thead><tbody>${elements.map((el, i) => {
+      const cIn = classicResult.incoming?.[i] ?? 0;
+      const mIn = result.incoming?.[i] ?? 0;
+      const cOut = classicResult.outgoing?.[i] ?? 0;
+      const mOut = result.outgoing?.[i] ?? 0;
+      const dIn = cIn > 0 ? ((mIn - cIn) / cIn) * 100 : null;
+      const dOut = cOut > 0 ? ((mOut - cOut) / cOut) * 100 : null;
+      const ratioC = cOut > 0 ? cIn / cOut : null;
+      const ratioM = mOut > 0 ? mIn / mOut : null;
+      return `<tr><td style="padding:6px 10px">${i + 1}</td><td style="padding:6px 10px">${esc(el)}</td><td style="padding:6px 10px;text-align:right">${fmtV(cIn)}</td><td style="padding:6px 10px;text-align:right">${fmtV(mIn)}</td><td style="padding:6px 10px;text-align:right">${fmtPct(dIn)}</td><td style="padding:6px 10px;text-align:right">${fmtV(cOut)}</td><td style="padding:6px 10px;text-align:right">${fmtV(mOut)}</td><td style="padding:6px 10px;text-align:right">${fmtPct(dOut)}</td><td style="padding:6px 10px;text-align:right">${fmtV(ratioC)}</td><td style="padding:6px 10px;text-align:right">${fmtV(ratioM)}</td></tr>`;
+    }).join('')}</tbody></table>`
+    : '';
 
-  return `<!doctype html><html><head><meta charset="utf-8"/><title>PMA Report - ${esc(method)}</title><style>body{font-family:Arial,sans-serif;margin:32px;color:#111827;background:#f8fafc}h1{margin:0 0 6px;font-size:22px;color:#1e293b}h2{margin:24px 0 8px;font-size:15px;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px}.meta{color:#64748b;font-size:12px;margin-bottom:4px}.summary-bar{display:flex;gap:24px;flex-wrap:wrap;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#475569;margin-bottom:20px}.summary-bar strong{color:#0f172a}table{border-collapse:collapse;font-size:12px;background:#fff;margin-bottom:16px}th{background:#f1f5f9;padding:6px 10px;font-weight:700;color:#334155;border:1px solid #e2e8f0;font-size:11px}td{padding:6px 10px;border:1px solid #e2e8f0;color:#1f2937}tr:nth-child(even) td{background:#f8fafc}@media print{body{margin:16px}h2{break-before:avoid}}</style></head><body><h1>Probabilistic Margin Analysis Report</h1><div class="meta">Generated: ${new Date().toLocaleString()}</div><div class="summary-bar"><span>Method: <strong>${esc(method)}</strong></span><span>Search depth: <strong>${result.depth}</strong></span><span>Convention: <strong>${esc(convention)}</strong></span><span>Elements: <strong>${n}</strong></span></div><h2>Incoming vs Outgoing Risk</h2><table><thead><tr><th>#</th><th>Element</th><th style="text-align:right">Incoming</th><th style="text-align:right">Outgoing</th></tr></thead><tbody>${riskTableRows}</tbody></table><h2>Input Data</h2>${settingsTable}${marginsTable}${dependencyMatrixHtml('Dependency Matrix', dsm.dependency)}${matrixTableHtml('Input Likelihood Matrix (L)', dsm.likelihood)}${matrixTableHtml('Input Impact Matrix (I)', dsm.impact)}<h2>Visualizations</h2>${imageSection('Risk: Incoming vs Outgoing Propagation', 'scatter')}${imageSection('Distance Network', 'distance')}${imageSection('Risk Network', 'riskNetwork')}${imageSection('Propagation Tree', 'tree')}${imageSection('Critical Components (Betweenness)', 'centrality')}${imageSection('Risk Distribution (Treemap)', 'treemap')}${imageSection('Matrix Network', 'matrixNetwork')}<h2>Computed Outputs</h2>${matrixTableHtml('Combined Risk Matrix', risk)}${matrixTableHtml('Combined Likelihood Matrix', likelihood)}${matrixTableHtml('Combined Impact Matrix', impact)}${isMarginAware && effectiveLikelihood.length ? matrixTableHtml('M-CPM Effective Likelihood (L*)', effectiveLikelihood) : ''}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>PMA Report - ${esc(method)}</title><style>body{font-family:Arial,sans-serif;margin:32px;color:#111827;background:#f8fafc}h1{margin:0 0 6px;font-size:22px;color:#1e293b}h2{margin:24px 0 8px;font-size:15px;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px}.meta{color:#64748b;font-size:12px;margin-bottom:4px}.summary-bar{display:flex;gap:24px;flex-wrap:wrap;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#475569;margin-bottom:20px}.summary-bar strong{color:#0f172a}.note{font-size:12px;color:#64748b;margin:0 0 10px}table{border-collapse:collapse;font-size:12px;background:#fff;margin-bottom:16px}th{background:#f1f5f9;padding:6px 10px;font-weight:700;color:#334155;border:1px solid #e2e8f0;font-size:11px}td{padding:6px 10px;border:1px solid #e2e8f0;color:#1f2937}tr:nth-child(even) td{background:#f8fafc}@media print{body{margin:16px}h2{break-before:avoid}table,img{break-inside:avoid}}</style></head><body><h1>Probabilistic Margin Analysis Report</h1><div class="meta">Generated: ${new Date().toLocaleString()}</div><div class="summary-bar"><span>Method: <strong>${esc(method)}</strong></span><span>Search depth: <strong>${result.depth}</strong></span><span>Convention: <strong>${esc(convention)}</strong></span><span>Elements: <strong>${n}</strong></span></div><h2>Results Summary</h2><table><thead><tr><th>#</th><th>Element</th><th style="text-align:right">Incoming</th><th style="text-align:right">Outgoing</th></tr></thead><tbody>${riskTableRows}</tbody></table>${gatesTable}${allocationTable}${comparisonTable}<h2>Visualizations</h2>${imageSection('Risk: Incoming vs Outgoing Propagation', 'scatter')}${imageSection('Distance Network', 'distance')}${imageSection('Risk Network', 'riskNetwork')}${imageSection('Propagation Tree', 'tree')}${imageSection('Critical Components (Betweenness)', 'centrality')}${imageSection('Risk Distribution (Treemap)', 'treemap')}${imageSection('Matrix Network', 'matrixNetwork')}<h2>Computed Outputs</h2>${matrixTableHtml('Combined Risk Matrix', risk)}${matrixTableHtml('Combined Likelihood Matrix', likelihood)}${matrixTableHtml('Combined Impact Matrix', impact)}${isMarginAware && effectiveLikelihood.length ? matrixTableHtml('M-CPM Effective Likelihood (L*)', effectiveLikelihood) : ''}<h2>Input Data</h2>${settingsTable}${marginsTable}${distributionTable}${dependencyMatrixHtml('Dependency Matrix', dsm.dependency)}${matrixTableHtml('Input Likelihood Matrix (L)', dsm.likelihood)}${matrixTableHtml('Input Impact Matrix (I)', dsm.impact)}</body></html>`;
 }
 
 function buildCombinedImpactMatrix(riskMatrix, probMatrix) {
@@ -305,17 +331,93 @@ function parseNonNegative(raw) {
   return { ok: true, empty: false, value };
 }
 
-function getMaxMatrixValue(matrix) {
-  if (!matrix?.length) return 0;
-  let maxVal = 0;
-  for (let i = 0; i < matrix.length; i++) {
-    for (let j = 0; j < matrix[i].length; j++) {
-      if (i === j) continue;
-      const v = matrix[i][j];
-      if (Number.isFinite(v) && v > maxVal) maxVal = v;
-    }
+function parsePositive(raw) {
+  const parsed = parseNonNegative(raw);
+  if (!parsed.ok || parsed.value <= 0) return { ok: false, empty: parsed.empty, value: null };
+  return parsed;
+}
+
+const DIST_TYPES = ['normal', 'uniform', 'beta', 'triangular'];
+
+function normaliseDistType(type) {
+  const normalized = String(type ?? '').trim().toLowerCase();
+  return DIST_TYPES.includes(normalized) ? normalized : 'normal';
+}
+
+function defaultDistParams(type) {
+  switch (type) {
+    case 'beta':
+      return { first: '2', second: '5' };
+    case 'triangular':
+      return { first: '0.3', second: '' };
+    case 'uniform':
+      return { first: '', second: '' };
+    case 'normal':
+    default:
+      return { first: '0.3', second: '0.15' };
   }
-  return maxVal;
+}
+
+function buildDistributionConfig(typeRaw, firstRaw, secondRaw) {
+  const type = normaliseDistType(typeRaw);
+  if (type === 'uniform') return { ok: true, config: { type: 'uniform' } };
+
+  if (type === 'normal') {
+    const mu = parseUnitInterval(firstRaw);
+    const sigma = parsePositive(secondRaw);
+    if (!mu.ok || !sigma.ok) {
+      return { ok: false, error: 'Normal distribution requires μ between 0 and 1 and σ greater than 0.' };
+    }
+    return { ok: true, config: { type: 'normal', mu: mu.value, sigma: sigma.value } };
+  }
+
+  if (type === 'beta') {
+    const alpha = parsePositive(firstRaw);
+    const beta = parsePositive(secondRaw);
+    if (!alpha.ok || !beta.ok) {
+      return { ok: false, error: 'Beta distribution requires α and β greater than 0.' };
+    }
+    return { ok: true, config: { type: 'beta', alpha: alpha.value, beta: beta.value } };
+  }
+
+  const c = parseUnitInterval(firstRaw);
+  if (!c.ok) {
+    return { ok: false, error: 'Triangular distribution requires peak c between 0 and 1.' };
+  }
+  return { ok: true, config: { type: 'triangular', a: 0, b: 1, c: c.value } };
+}
+
+function distributionInputLabels(typeRaw) {
+  const type = normaliseDistType(typeRaw);
+  if (type === 'beta') return { first: 'α', second: 'β', firstPlaceholder: '2', secondPlaceholder: '5' };
+  if (type === 'triangular') return { first: 'Peak (c)', second: '', firstPlaceholder: '0.3', secondPlaceholder: '' };
+  return { first: 'μ', second: 'σ', firstPlaceholder: '0.3', secondPlaceholder: '0.15' };
+}
+
+function distributionSummary(config) {
+  if (Array.isArray(config)) return `Per-node (${config.length})`;
+  if (!config || typeof config !== 'object') return 'n/a';
+  if (config.type === 'uniform') return 'Uniform [0, 1]';
+  if (config.type === 'beta') return `Beta(α=${config.alpha ?? 'n/a'}, β=${config.beta ?? 'n/a'})`;
+  if (config.type === 'triangular') return `Triangular(c=${config.c ?? 'n/a'})`;
+  return `Normal(μ=${config.mu ?? 'n/a'}, σ=${config.sigma ?? 'n/a'})`;
+}
+
+function expectedPropagationFromSources(riskMatrix, sourceProbabilities, instigator = 'column') {
+  if (!riskMatrix?.length || !sourceProbabilities?.length) return 0;
+  const n = riskMatrix.length;
+  let total = 0;
+  for (let source = 0; source < n; source++) {
+    let sourceExposure = 0;
+    for (let target = 0; target < n; target++) {
+      if (source === target) continue;
+      sourceExposure += instigator === 'row'
+        ? Number(riskMatrix[source]?.[target] ?? 0)
+        : Number(riskMatrix[target]?.[source] ?? 0);
+    }
+    total += (Number(sourceProbabilities[source]) || 0) * sourceExposure;
+  }
+  return total;
 }
 
 function valueToRiskColor(value, maxValue) {
@@ -419,12 +521,20 @@ export default function ProbabilisticMarginAnalysis() {
   const [distType, setDistType] = useState('normal');
   const [distMu, setDistMu] = useState('0.3');
   const [distSigma, setDistSigma] = useState('0.15');
+  const [perComponentDist, setPerComponentDist] = useState(false);
+  const [perCompDistTypes, setPerCompDistTypes] = useState([]);
+  const [perCompMus, setPerCompMus] = useState([]);
+  const [perCompSigmas, setPerCompSigmas] = useState([]);
+  const [sourceProbs, setSourceProbs] = useState([]);
+  const [marginCosts, setMarginCosts] = useState([]);
+  const [allocationStep, setAllocationStep] = useState('0.10');
   const [defaultL, setDefaultL] = useState('0.5');
   const [defaultI, setDefaultI] = useState('0.5');
   const elementCounterRef = useRef(0);
 
   const [result, setResult] = useState(null);
   const [classicResult, setClassicResult] = useState(null);
+  const [allocationResult, setAllocationResult] = useState(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
   const [plotlyReady, setPlotlyReady] = useState(false);
@@ -445,7 +555,7 @@ export default function ProbabilisticMarginAnalysis() {
   const [imageExportOverlayPoints, setImageExportOverlayPoints] = useState([]);
   const [imageExportPlotData, setImageExportPlotData] = useState(null);
   const [imageExportPreset, setImageExportPreset] = useState(null);
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [, setHeaderMenuOpen] = useState(false);
 
   const fileMenuRef = useRef(null);
   const dragFromIdx = useRef(-1);
@@ -476,7 +586,37 @@ export default function ProbabilisticMarginAnalysis() {
       if (next.length > n) next.length = n;
       return next;
     });
-  }, [n]);
+    setPerCompMus((prev) => {
+      const next = [...prev];
+      while (next.length < n) next.push(distMu);
+      if (next.length > n) next.length = n;
+      return next;
+    });
+    setPerCompSigmas((prev) => {
+      const next = [...prev];
+      while (next.length < n) next.push(distSigma);
+      if (next.length > n) next.length = n;
+      return next;
+    });
+    setPerCompDistTypes((prev) => {
+      const next = [...prev];
+      while (next.length < n) next.push(distType);
+      if (next.length > n) next.length = n;
+      return next.map(normaliseDistType);
+    });
+    setSourceProbs((prev) => {
+      const next = [...prev];
+      while (next.length < n) next.push('1');
+      if (next.length > n) next.length = n;
+      return next;
+    });
+    setMarginCosts((prev) => {
+      const next = [...prev];
+      while (next.length < n) next.push('1');
+      if (next.length > n) next.length = n;
+      return next;
+    });
+  }, [n, distType, distMu, distSigma]);
 
   /* ---------- Element CRUD ---------- */
 
@@ -495,7 +635,12 @@ export default function ProbabilisticMarginAnalysis() {
       return next;
     });
     setMargins(prev => [...prev, marginValue]);
-  }, [defaultMargin]);
+    setPerCompDistTypes(prev => [...prev, distType]);
+    setPerCompMus(prev => [...prev, distMu]);
+    setPerCompSigmas(prev => [...prev, distSigma]);
+    setSourceProbs(prev => [...prev, '1']);
+    setMarginCosts(prev => [...prev, '1']);
+  }, [defaultMargin, distType, distMu, distSigma]);
 
   const removeElement = useCallback((idx) => {
     setDsm(prev => {
@@ -505,6 +650,11 @@ export default function ProbabilisticMarginAnalysis() {
       return next;
     });
     setMargins(prev => prev.filter((_, i) => i !== idx));
+    setPerCompDistTypes(prev => prev.filter((_, i) => i !== idx));
+    setPerCompMus(prev => prev.filter((_, i) => i !== idx));
+    setPerCompSigmas(prev => prev.filter((_, i) => i !== idx));
+    setSourceProbs(prev => prev.filter((_, i) => i !== idx));
+    setMarginCosts(prev => prev.filter((_, i) => i !== idx));
     setSelectedRow(prev => {
       if (prev === idx) return -1;
       if (prev > idx) return prev - 1;
@@ -534,14 +684,53 @@ export default function ProbabilisticMarginAnalysis() {
       next.splice(to, 0, moved);
       return next;
     });
+    setPerCompMus(prev => {
+      const next = [...prev];
+      const moved = next.splice(from, 1)[0] ?? '0.3';
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setPerCompSigmas(prev => {
+      const next = [...prev];
+      const moved = next.splice(from, 1)[0] ?? '0.15';
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setPerCompDistTypes(prev => {
+      const next = [...prev];
+      const moved = next.splice(from, 1)[0] ?? 'normal';
+      next.splice(to, 0, normaliseDistType(moved));
+      return next;
+    });
+    setSourceProbs(prev => {
+      const next = [...prev];
+      const moved = next.splice(from, 1)[0] ?? '1';
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setMarginCosts(prev => {
+      const next = [...prev];
+      const moved = next.splice(from, 1)[0] ?? '1';
+      next.splice(to, 0, moved);
+      return next;
+    });
     setSelectedRow(to);
   }, []);
 
   const clearAll = useCallback(() => {
     setDsm(EMPTY_DSM());
     setMargins([]);
+    setPerCompDistTypes([]);
+    setPerCompMus([]);
+    setPerCompSigmas([]);
+    setPerComponentDist(false);
+    setSourceProbs([]);
+    setMarginCosts([]);
+    setAllocationStep('0.10');
     setSelectedRow(-1);
     setResult(null);
+    setClassicResult(null);
+    setAllocationResult(null);
     setError(null);
     elementCounterRef.current = 0;
     setActiveTab('dependencies');
@@ -574,9 +763,17 @@ export default function ProbabilisticMarginAnalysis() {
       impact: I.map(r => [...r]),
     });
     setMargins([0.2, 0.4, 0.55, 0.5, 0.6, 0.3]);
+    setPerCompDistTypes(new Array(labels.length).fill('normal'));
+    setPerCompMus(new Array(labels.length).fill('0.3'));
+    setPerCompSigmas(new Array(labels.length).fill('0.15'));
+    setPerComponentDist(false);
+    setSourceProbs(['0.12', '0.14', '0.22', '0.12', '0.08', '0.32']);
+    setMarginCosts(['1.0', '1.3', '1.8', '2.0', '0.5', '1.5']);
+    setAllocationStep('0.10');
     elementCounterRef.current = labels.length;
     setResult(null);
     setClassicResult(null);
+    setAllocationResult(null);
     setError(null);
     setAnalysisMode('margin_aware');
   }, []);
@@ -589,6 +786,11 @@ export default function ProbabilisticMarginAnalysis() {
       state: {
         dsm,
         margins,
+        perCompDistTypes,
+        perCompMus,
+        perCompSigmas,
+        sourceProbs,
+        marginCosts,
         options: {
           symmetric,
           instigator,
@@ -597,6 +799,8 @@ export default function ProbabilisticMarginAnalysis() {
           distType,
           distMu,
           distSigma,
+          perComponentDist,
+          allocationStep,
           defaultL,
           defaultI,
           defaultMargin,
@@ -613,7 +817,7 @@ export default function ProbabilisticMarginAnalysis() {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
-  }, [analysisMode, defaultI, defaultL, defaultMargin, depth, distMu, distSigma, distType, dsm, instigator, margins, symmetric]);
+  }, [allocationStep, analysisMode, defaultI, defaultL, defaultMargin, depth, distMu, distSigma, distType, dsm, instigator, marginCosts, margins, perComponentDist, perCompDistTypes, perCompMus, perCompSigmas, sourceProbs, symmetric]);
 
   const importProjectJson = useCallback((text, filename = 'import.json') => {
     const parsed = JSON.parse(text);
@@ -651,6 +855,14 @@ export default function ProbabilisticMarginAnalysis() {
       })
       : new Array(nIncoming).fill(0);
     while (nextMargins.length < nIncoming) nextMargins.push(0);
+    const nextSourceProbs = Array.isArray(state?.sourceProbs)
+      ? state.sourceProbs.slice(0, nIncoming).map((v) => String(v ?? '1'))
+      : new Array(nIncoming).fill('1');
+    while (nextSourceProbs.length < nIncoming) nextSourceProbs.push('1');
+    const nextMarginCosts = Array.isArray(state?.marginCosts)
+      ? state.marginCosts.slice(0, nIncoming).map((v) => String(v ?? '1'))
+      : new Array(nIncoming).fill('1');
+    while (nextMarginCosts.length < nIncoming) nextMarginCosts.push('1');
 
     const options = state?.options || {};
     setDsm(nextDsm);
@@ -659,14 +871,36 @@ export default function ProbabilisticMarginAnalysis() {
     setInstigator(options.instigator === 'row' ? 'row' : 'column');
     setDepth(Math.max(1, Math.min(10, Number(options.depth) || 4)));
     setAnalysisMode(options.analysisMode === 'margin_aware' ? 'margin_aware' : 'classic');
-    setDistType(['normal', 'uniform', 'beta', 'triangular'].includes(options.distType) ? options.distType : 'normal');
+    setDistType(normaliseDistType(options.distType));
     setDistMu(String(options.distMu ?? '0.3'));
     setDistSigma(String(options.distSigma ?? '0.15'));
+    setPerComponentDist(Boolean(options.perComponentDist));
+    const fallbackType = normaliseDistType(options.distType);
+    const fallbackParams = defaultDistParams(fallbackType);
+    const nextTypes = Array.isArray(state?.perCompDistTypes)
+      ? state.perCompDistTypes.slice(0, nIncoming).map(normaliseDistType)
+      : new Array(nIncoming).fill(fallbackType);
+    while (nextTypes.length < nIncoming) nextTypes.push(fallbackType);
+    const nextMus = Array.isArray(state?.perCompMus)
+      ? state.perCompMus.slice(0, nIncoming).map((v) => String(v ?? fallbackParams.first))
+      : new Array(nIncoming).fill(String(options.distMu ?? fallbackParams.first));
+    while (nextMus.length < nIncoming) nextMus.push(String(options.distMu ?? fallbackParams.first));
+    const nextSigmas = Array.isArray(state?.perCompSigmas)
+      ? state.perCompSigmas.slice(0, nIncoming).map((v) => String(v ?? fallbackParams.second))
+      : new Array(nIncoming).fill(String(options.distSigma ?? fallbackParams.second));
+    while (nextSigmas.length < nIncoming) nextSigmas.push(String(options.distSigma ?? fallbackParams.second));
+    setPerCompDistTypes(nextTypes);
+    setPerCompMus(nextMus);
+    setPerCompSigmas(nextSigmas);
+    setSourceProbs(nextSourceProbs);
+    setMarginCosts(nextMarginCosts);
+    setAllocationStep(String(options.allocationStep ?? '0.10'));
     setDefaultL(String(options.defaultL ?? '0.5'));
     setDefaultI(String(options.defaultI ?? '0.5'));
     setDefaultMargin(String(options.defaultMargin ?? '0'));
     setSelectedRow(-1);
     setResult(null);
+    setAllocationResult(null);
     setError(null);
     setActiveTab('dependencies');
     setVizRoot(0);
@@ -766,6 +1000,106 @@ export default function ProbabilisticMarginAnalysis() {
     setMargins(new Array(n).fill(val));
   }, [defaultMargin, n]);
 
+  const setGlobalDistType = useCallback((typeRaw) => {
+    const nextType = normaliseDistType(typeRaw);
+    setDistType(nextType);
+    const defaults = defaultDistParams(nextType);
+    setDistMu(defaults.first);
+    setDistSigma(defaults.second);
+  }, []);
+
+  const setPerNodeDistType = useCallback((index, typeRaw) => {
+    const nextType = normaliseDistType(typeRaw);
+    const defaults = defaultDistParams(nextType);
+    setPerCompDistTypes(prev => {
+      const next = [...prev];
+      next[index] = nextType;
+      return next;
+    });
+    setPerCompMus(prev => {
+      const next = [...prev];
+      next[index] = defaults.first;
+      return next;
+    });
+    setPerCompSigmas(prev => {
+      const next = [...prev];
+      next[index] = defaults.second;
+      return next;
+    });
+  }, []);
+
+  const setPerNodeDistParam = useCallback((index, which, value) => {
+    const setter = which === 'first' ? setPerCompMus : setPerCompSigmas;
+    setter(prev => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  }, []);
+
+  const setSourceProbAt = useCallback((index, value) => {
+    setSourceProbs(prev => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  }, []);
+
+  const setMarginCostAt = useCallback((index, value) => {
+    setMarginCosts(prev => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  }, []);
+
+  const parseAllocationInputs = useCallback(() => {
+    const rawProbs = [];
+    const rawCosts = [];
+    for (let i = 0; i < n; i++) {
+      const p = parseNonNegative(sourceProbs[i] ?? '0');
+      if (!p.ok) return { ok: false, error: `${dsm.elements[i] || `Element ${i + 1}`}: source probability must be non-negative.` };
+      const c = parsePositive(marginCosts[i] ?? '1');
+      if (!c.ok) return { ok: false, error: `${dsm.elements[i] || `Element ${i + 1}`}: margin cost must be greater than 0.` };
+      rawProbs.push(p.value);
+      rawCosts.push(c.value);
+    }
+    const totalProb = rawProbs.reduce((sum, v) => sum + v, 0);
+    if (totalProb <= 0) return { ok: false, error: 'At least one source probability must be greater than 0.' };
+    const stepParsed = parsePositive(allocationStep);
+    if (!stepParsed.ok) return { ok: false, error: 'Allocation step must be greater than 0.' };
+    return {
+      ok: true,
+      probabilities: rawProbs.map((v) => v / totalProb),
+      rawProbabilities: rawProbs,
+      costs: rawCosts,
+      step: Math.min(1, stepParsed.value),
+    };
+  }, [allocationStep, dsm.elements, marginCosts, n, sourceProbs]);
+
+  const buildActiveDistribution = useCallback(() => {
+    if (!perComponentDist) {
+      const built = buildDistributionConfig(distType, distMu, distSigma);
+      if (!built.ok) return built;
+      return { ok: true, distribution: built.config };
+    }
+    const configs = [];
+    for (let i = 0; i < n; i++) {
+      const type = perCompDistTypes[i] || distType;
+      const defaults = defaultDistParams(type);
+      const built = buildDistributionConfig(
+        type,
+        perCompMus[i] ?? defaults.first,
+        perCompSigmas[i] ?? defaults.second,
+      );
+      if (!built.ok) {
+        return { ok: false, error: `${dsm.elements[i] || `Element ${i + 1}`}: ${built.error}` };
+      }
+      configs.push(built.config);
+    }
+    return { ok: true, distribution: configs };
+  }, [dsm.elements, distType, distMu, distSigma, n, perComponentDist, perCompDistTypes, perCompMus, perCompSigmas]);
+
   /* ---------- Run CPM ---------- */
 
   const runCpm = useCallback(async () => {
@@ -812,15 +1146,23 @@ export default function ProbabilisticMarginAnalysis() {
         const parsed = parseNonNegative(m);
         return parsed.ok ? parsed.value : 0;
       });
-      payload.distribution = {
-        type: distType,
-        mu: parseFloat(distMu) || 0.3,
-        sigma: parseFloat(distSigma) || 0.15,
-      };
+      const builtDistribution = buildActiveDistribution();
+      if (!builtDistribution.ok) {
+        setError(builtDistribution.error);
+        return;
+      }
+      payload.distribution = builtDistribution.distribution;
+      const allocationInputs = parseAllocationInputs();
+      if (!allocationInputs.ok) {
+        setError(allocationInputs.error);
+        return;
+      }
+      payload.allocationInputs = allocationInputs;
     }
 
     setRunning(true);
     setError(null);
+    setAllocationResult(null);
 
     const fetchCpm = async (fetchPayload) => {
       const res = await fetch('/api/pma/run-cpm', {
@@ -846,6 +1188,42 @@ export default function ProbabilisticMarginAnalysis() {
       return data;
     };
 
+    const computeAllocationSensitivity = async (basePayload, baseData) => {
+      const allocationInputs = basePayload.allocationInputs;
+      if (!allocationInputs || !baseData?.combinedRisk?.length) return null;
+      const baseExpected = expectedPropagationFromSources(baseData.combinedRisk, allocationInputs.probabilities, instigator);
+      const rows = await Promise.all(dsm.elements.map(async (element, idx) => {
+        const nextMargins = [...basePayload.margins];
+        nextMargins[idx] = Math.min(1, (nextMargins[idx] || 0) + allocationInputs.step);
+        const nextData = await fetchCpm({
+          ...basePayload,
+          margins: nextMargins,
+          allocationInputs: undefined,
+        });
+        const nextExpected = expectedPropagationFromSources(nextData.combinedRisk, allocationInputs.probabilities, instigator);
+        const benefit = baseExpected - nextExpected;
+        const cost = allocationInputs.costs[idx] || 1;
+        return {
+          index: idx,
+          element,
+          sourceProbability: allocationInputs.probabilities[idx],
+          sourceProbabilityRaw: allocationInputs.rawProbabilities[idx],
+          cost,
+          currentMargin: basePayload.margins[idx] || 0,
+          testedMargin: nextMargins[idx],
+          expectedRisk: nextExpected,
+          benefit,
+          benefitCost: benefit / cost,
+        };
+      }));
+      rows.sort((a, b) => b.benefitCost - a.benefitCost);
+      return {
+        baselineExpectedRisk: baseExpected,
+        step: allocationInputs.step,
+        rows,
+      };
+    };
+
     try {
       if (analysisMode === 'margin_aware') {
         // Run M-CPM and baseline classic CPM in parallel for comparison table
@@ -863,10 +1241,12 @@ export default function ProbabilisticMarginAnalysis() {
         ]);
         setResult(maData);
         setClassicResult(classicData);
+        setAllocationResult(await computeAllocationSensitivity(payload, maData));
       } else {
         const data = await fetchCpm(payload);
         setResult(data);
         setClassicResult(null);
+        setAllocationResult(null);
       }
       setActiveTab('results');
     } catch (e) {
@@ -878,10 +1258,11 @@ export default function ProbabilisticMarginAnalysis() {
       }
       setResult(null);
       setClassicResult(null);
+      setAllocationResult(null);
     } finally {
       setRunning(false);
     }
-  }, [analysisMode, dsm, n, depth, instigator, margins, distType, distMu, distSigma]);
+  }, [analysisMode, dsm, n, depth, instigator, margins, buildActiveDistribution, parseAllocationInputs]);
 
   /* ---------- File menu outside-click close ---------- */
   useEffect(() => {
@@ -1487,7 +1868,7 @@ export default function ProbabilisticMarginAnalysis() {
     setImageExportName(exportName);
     setShowImageExportDialog(true);
     setError(null);
-  }, [capturePlotDataUrl, extractScatterExportPoints]);
+  }, [capturePlotDataUrl, extractScatterExportPoints, resultsDecimals, scatterScale]);
 
   const exportPmaReport = useCallback(async (mode) => {
     if (!result) return;
@@ -1516,8 +1897,10 @@ export default function ProbabilisticMarginAnalysis() {
       inputs: {
         dependencyCount: depCount,
         margins,
-        distribution: { type: distType, mu: distMu, sigma: distSigma },
+        distribution: result.distribution,
       },
+      classicResult,
+      allocationResult,
       visualizationImages: visuals,
     });
 
@@ -1530,9 +1913,67 @@ export default function ProbabilisticMarginAnalysis() {
     win.document.write(html);
     win.document.close();
     setTimeout(() => { try { win.focus(); win.print(); } catch { /* no-op */ } }, 120);
-  }, [result, capturePlotDataUrl, dsm, depCount, margins, distType, distMu, distSigma]);
+  }, [result, capturePlotDataUrl, dsm, depCount, margins, classicResult, allocationResult]);
 
   /* ---------- Render helpers ---------- */
+
+  const renderDistributionParamInputs = (typeRaw, firstValue, secondValue, onFirstChange, onSecondChange, compact = false) => {
+    const type = normaliseDistType(typeRaw);
+    if (type === 'uniform') {
+      return compact ? null : <p className="pma-dist-hint">P({'\u03B4'} &gt; m) = 1 &minus; m on [0, 1]</p>;
+    }
+    const labels = distributionInputLabels(type);
+    if (compact) {
+      return (
+        <>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={firstValue}
+            onChange={(e) => onFirstChange(e.target.value)}
+            placeholder={labels.firstPlaceholder}
+            aria-label={labels.first}
+          />
+          {labels.second && (
+            <input
+              type="text"
+              inputMode="decimal"
+              value={secondValue}
+              onChange={(e) => onSecondChange(e.target.value)}
+              placeholder={labels.secondPlaceholder}
+              aria-label={labels.second}
+            />
+          )}
+        </>
+      );
+    }
+    return (
+      <>
+        <div className="pma-panel-field">
+          <label>{labels.first}{type === 'normal' ? ' (typical change size)' : ''}</label>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={firstValue}
+            onChange={(e) => onFirstChange(e.target.value)}
+            placeholder={labels.firstPlaceholder}
+          />
+        </div>
+        {labels.second && (
+          <div className="pma-panel-field">
+            <label>{labels.second}{type === 'normal' ? ' (variability)' : ''}</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={secondValue}
+              onChange={(e) => onSecondChange(e.target.value)}
+              placeholder={labels.secondPlaceholder}
+            />
+          </div>
+        )}
+      </>
+    );
+  };
 
   const renderMatrixTable = () => {
     if (n === 0) {
@@ -1966,6 +2407,7 @@ export default function ProbabilisticMarginAnalysis() {
                   <tr>
                     <th className="pma-sn-col">#</th>
                     <th className="pma-corner">Element</th>
+                    <th>Distribution</th>
                     <th className="pma-result-numcol">m<sub>u</sub> (margin)</th>
                     <th className="pma-result-numcol">g<sub>u</sub> = P(Δ &gt; m<sub>u</sub>)</th>
                   </tr>
@@ -1981,6 +2423,7 @@ export default function ProbabilisticMarginAnalysis() {
                         <td className="pma-row-header" title={el}>
                           <span className="pma-element-name">{el}</span>
                         </td>
+                        <td>{distributionSummary(Array.isArray(result.distribution) ? result.distribution[i] : result.distribution)}</td>
                         <td className="pma-result-numcol">{mu.toFixed(resultsDecimals)}</td>
                         <td className="pma-result-numcol" style={{ color: guColor, fontWeight: 600 }}>
                           {gu.toFixed(resultsDecimals)}
@@ -1988,6 +2431,42 @@ export default function ProbabilisticMarginAnalysis() {
                       </tr>
                     );
                   })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        {isMarginAware && allocationResult && (
+          <div className="pma-result-block">
+            <h3>Margin Allocation Sensitivity</h3>
+            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 8 }}>
+              Expected propagation risk is weighted by source-change probabilities. Benefit is the reduction from adding {allocationResult.step.toFixed(resultsDecimals)} margin to one subsystem; value divides benefit by relative margin cost.
+            </div>
+            <div className="pma-result-scroll">
+              <table className="pma-table pma-result-table">
+                <thead>
+                  <tr>
+                    <th className="pma-sn-col">Rank</th>
+                    <th className="pma-corner">Element</th>
+                    <th className="pma-result-numcol">q<sub>s</sub></th>
+                    <th className="pma-result-numcol">Cost</th>
+                    <th className="pma-result-numcol">m &rarr; m'</th>
+                    <th className="pma-result-numcol">Risk Reduction</th>
+                    <th className="pma-result-numcol">Benefit / Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allocationResult.rows.map((row, rank) => (
+                    <tr key={row.index}>
+                      <td className="pma-sn-cell">{rank + 1}</td>
+                      <td className="pma-row-header" title={row.element}><span className="pma-element-name">{row.element}</span></td>
+                      <td className="pma-result-numcol">{row.sourceProbability.toFixed(resultsDecimals)}</td>
+                      <td className="pma-result-numcol">{row.cost.toFixed(resultsDecimals)}</td>
+                      <td className="pma-result-numcol">{row.currentMargin.toFixed(resultsDecimals)} &rarr; {row.testedMargin.toFixed(resultsDecimals)}</td>
+                      <td className="pma-result-numcol">{row.benefit.toFixed(resultsDecimals)}</td>
+                      <td className="pma-result-numcol" style={{ fontWeight: rank === 0 ? 700 : 500, color: rank === 0 ? '#16A34A' : '#0F172A' }}>{row.benefitCost.toFixed(resultsDecimals)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -2310,77 +2789,136 @@ export default function ProbabilisticMarginAnalysis() {
                 {dsm.elements.length === 0 ? (
                   <p className="pma-margin-empty">Add elements first.</p>
                 ) : (
-                  dsm.elements.map((el, idx) => (
-                    <label className="pma-margin-row" key={`${el}-${idx}`}>
-                      <span title={el}>{idx + 1}. {el}</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={margins[idx] ?? 0}
-                        onChange={(e) => setMarginAt(idx, e.target.value)}
-                      />
-                    </label>
-                  ))
+                  <>
+                    <div className="pma-margin-row pma-margin-header">
+                      <span>Node</span>
+                      <span>Margin</span>
+                      <span>Cost</span>
+                    </div>
+                    {dsm.elements.map((el, idx) => (
+                      <div className="pma-margin-row" key={`${el}-${idx}`}>
+                        <span title={el}>{idx + 1}. {el}</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={margins[idx] ?? 0}
+                          onChange={(e) => setMarginAt(idx, e.target.value)}
+                          aria-label="Margin threshold"
+                          title="Margin threshold"
+                        />
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={marginCosts[idx] ?? '1'}
+                          onChange={(e) => setMarginCostAt(idx, e.target.value)}
+                          aria-label="Margin cost"
+                          title="Relative margin cost"
+                        />
+                      </div>
+                    ))}
+                  </>
                 )}
               </div>
             </div>
             <div className="pma-panel-section">
               <h3 className="pma-panel-heading">Change Magnitude Distribution</h3>
+              <label className="pma-panel-checkbox">
+                <input
+                  type="checkbox"
+                  checked={perComponentDist}
+                  onChange={(e) => setPerComponentDist(e.target.checked)}
+                />
+                <span>Set per node</span>
+              </label>
               <div className="pma-panel-field">
                 <label>Type</label>
-                <select value={distType} onChange={(e) => setDistType(e.target.value)}>
+                <select value={distType} onChange={(e) => setGlobalDistType(e.target.value)}>
                   <option value="normal">Truncated Normal</option>
                   <option value="uniform">Uniform</option>
                   <option value="beta">Beta</option>
                   <option value="triangular">Triangular</option>
                 </select>
               </div>
-              {distType === 'normal' && (
-                <>
-                  <div className="pma-panel-field">
-                    <label>{'\u03BC'} (typical change size)</label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={distMu}
-                      onChange={(e) => setDistMu(e.target.value)}
-                      placeholder="0.3"
-                    />
-                  </div>
-                  <div className="pma-panel-field">
-                    <label>{'\u03C3'} (variability)</label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={distSigma}
-                      onChange={(e) => setDistSigma(e.target.value)}
-                      placeholder="0.15"
-                    />
-                  </div>
-                </>
+              {!perComponentDist && renderDistributionParamInputs(
+                distType,
+                distMu,
+                distSigma,
+                setDistMu,
+                setDistSigma,
               )}
-              {distType === 'uniform' && (
-                <p className="pma-dist-hint">P({'\u03B4'} &gt; m) = 1 &minus; m on [0, 1]</p>
-              )}
-              {distType === 'beta' && (
-                <>
-                  <div className="pma-panel-field">
-                    <label>{'\u03B1'}</label>
-                    <input type="text" inputMode="decimal" value={distMu} onChange={(e) => setDistMu(e.target.value)} placeholder="2" />
-                  </div>
-                  <div className="pma-panel-field">
-                    <label>{'\u03B2'}</label>
-                    <input type="text" inputMode="decimal" value={distSigma} onChange={(e) => setDistSigma(e.target.value)} placeholder="5" />
-                  </div>
-                </>
-              )}
-              {distType === 'triangular' && (
-                <div className="pma-panel-field">
-                  <label>Peak (c)</label>
-                  <input type="text" inputMode="decimal" value={distMu} onChange={(e) => setDistMu(e.target.value)} placeholder="0.3" />
+              {perComponentDist && (
+                <div className="pma-node-dist-list">
+                  {dsm.elements.length === 0 ? (
+                    <p className="pma-margin-empty">Add elements first.</p>
+                  ) : (
+                    dsm.elements.map((el, idx) => {
+                      const type = normaliseDistType(perCompDistTypes[idx] || distType);
+                      const labels = distributionInputLabels(type);
+                      return (
+                        <div className="pma-node-dist-row" key={`${el}-${idx}-dist`}>
+                          <span className="pma-node-dist-name" title={el}>{idx + 1}. {el}</span>
+                          <select value={type} onChange={(e) => setPerNodeDistType(idx, e.target.value)} aria-label="Distribution type">
+                            <option value="normal">Normal</option>
+                            <option value="uniform">Uniform</option>
+                            <option value="beta">Beta</option>
+                            <option value="triangular">Triangular</option>
+                          </select>
+                          <div className={`pma-node-dist-params ${type === 'uniform' ? 'pma-node-dist-params-empty' : ''}`} title={type === 'uniform' ? 'Uniform [0, 1]' : `${labels.first}${labels.second ? `, ${labels.second}` : ''}`}>
+                            {renderDistributionParamInputs(
+                              type,
+                              perCompMus[idx] ?? defaultDistParams(type).first,
+                              perCompSigmas[idx] ?? defaultDistParams(type).second,
+                              (value) => setPerNodeDistParam(idx, 'first', value),
+                              (value) => setPerNodeDistParam(idx, 'second', value),
+                              true,
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               )}
+            </div>
+            <div className="pma-panel-section">
+              <h3 className="pma-panel-heading">Allocation Inputs</h3>
+              <div className="pma-panel-field">
+                <label>Margin Step</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={allocationStep}
+                  onChange={(e) => setAllocationStep(e.target.value)}
+                  placeholder="0.10"
+                />
+              </div>
+              <div className="pma-dist-hint">q is normalized when the analysis runs. Margin costs are set beside the margin thresholds above.</div>
+              <div className="pma-allocation-list">
+                {dsm.elements.length === 0 ? (
+                  <p className="pma-margin-empty">Add elements first.</p>
+                ) : (
+                  <>
+                    <div className="pma-allocation-row pma-allocation-header">
+                      <span>Node</span>
+                      <span>q</span>
+                    </div>
+                    {dsm.elements.map((el, idx) => (
+                      <div className="pma-allocation-row" key={`${el}-${idx}-allocation`}>
+                        <span title={el}>{idx + 1}. {el}</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={sourceProbs[idx] ?? '1'}
+                          onChange={(e) => setSourceProbAt(idx, e.target.value)}
+                          aria-label="Source probability"
+                          title="Source probability"
+                        />
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
             </div>
           </aside>
         )}
