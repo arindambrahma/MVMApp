@@ -1796,6 +1796,46 @@ export default function ProbabilisticMarginAnalysis() {
             <div ref={matrixNetworkRef} className="pma-plot-container pma-plot-container-sm" />
           </div>
         </div>
+        {isMarginAware && Array.isArray(result.margins) && Array.isArray(result.exceedance) && (
+          <div className="pma-result-block">
+            <h3>Margin Thresholds &amp; Exceedance Gates</h3>
+            <div style={{ fontSize: 12, color: '#64748B', marginBottom: 8 }}>
+              <strong>m<sub>u</sub></strong>: margin threshold for each element. &nbsp;
+              <strong>g<sub>u</sub> = P(Δ &gt; m<sub>u</sub>)</strong>: probability that the change magnitude exceeds the margin — acts as a gate multiplier in MA-CPM.
+            </div>
+            <div className="pma-result-scroll">
+              <table className="pma-table pma-result-table">
+                <thead>
+                  <tr>
+                    <th className="pma-sn-col">#</th>
+                    <th className="pma-corner">Element</th>
+                    <th className="pma-result-numcol">m<sub>u</sub> (margin)</th>
+                    <th className="pma-result-numcol">g<sub>u</sub> = P(Δ &gt; m<sub>u</sub>)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dsm.elements.map((el, i) => {
+                    const mu = result.margins[i] ?? 0;
+                    const gu = result.exceedance[i] ?? 0;
+                    const guColor = gu >= 0.7 ? '#DC2626' : gu >= 0.4 ? '#D97706' : '#16A34A';
+                    return (
+                      <tr key={i}>
+                        <td className="pma-sn-cell">{i + 1}</td>
+                        <td className="pma-row-header" title={el}>
+                          <span className="pma-element-name">{el}</span>
+                        </td>
+                        <td className="pma-result-numcol">{mu.toFixed(resultsDecimals)}</td>
+                        <td className="pma-result-numcol" style={{ color: guColor, fontWeight: 600 }}>
+                          {gu.toFixed(resultsDecimals)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
         <div className="pma-result-block">
           <h3>Incoming vs Outgoing Risk</h3>
           <div className="pma-result-scroll">
