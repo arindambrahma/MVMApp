@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { jsPDF } from 'jspdf';
 import { useNavigate } from 'react-router-dom';
 import './ProbabilisticMarginAnalysis.css';
 
@@ -435,6 +436,7 @@ export default function ProbabilisticMarginAnalysis() {
   const [showDirectOverlay, setShowDirectOverlay] = useState(false);
   const [showClassicOverlay, setShowClassicOverlay] = useState(false);
   const [resultsDecimals, setResultsDecimals] = useState(3);
+  const [plotExportFormat, setPlotExportFormat] = useState('svg');
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
 
   const fileMenuRef = useRef(null);
@@ -1343,7 +1345,7 @@ export default function ProbabilisticMarginAnalysis() {
     }
   }, [plotlyReady, result, classicResult, activeTab, edgeMetric, vizRoot, dsm, instigator, depth, matrixMetric, matrixView, scatterScale, showDirectOverlay, showClassicOverlay, margins, resultsDecimals]);
 
-  const exportPlotImage = useCallback(async (plotRef, exportName) => {
+  const exportPlotImage = useCallback(async (plotRef, exportName, format = 'png') => {
     if (!plotlyReady || !window.Plotly || !plotRef?.current) {
       setError('Plot export is not available yet. Please run CPM and wait for the graph to render.');
       return;
@@ -1352,13 +1354,16 @@ export default function ProbabilisticMarginAnalysis() {
       const plotElement = plotRef.current.querySelector('.js-plotly-plot') || plotRef.current;
       const width = Math.max(900, plotElement.clientWidth || 900);
       const height = Math.max(620, plotElement.clientHeight || 620);
-      await window.Plotly.downloadImage(plotElement, {
-        format: 'png',
-        filename: exportName,
-        width,
-        height,
-        scale: 2,
-      });
+      if (format === 'svg') {
+        await window.Plotly.downloadImage(plotElement, { format: 'svg', filename: exportName, width, height });
+      } else if (format === 'pdf') {
+        const dataUrl = await window.Plotly.toImage(plotElement, { format: 'png', width, height, scale: 2 });
+        const pdf = new jsPDF({ orientation: width >= height ? 'landscape' : 'portrait', unit: 'px', format: [width, height] });
+        pdf.addImage(dataUrl, 'PNG', 0, 0, width, height);
+        pdf.save(`${exportName}.pdf`);
+      } else {
+        await window.Plotly.downloadImage(plotElement, { format: 'png', filename: exportName, width, height, scale: 2 });
+      }
       setError(null);
     } catch {
       setError('Could not export the selected graph image. Please try again.');
@@ -1721,13 +1726,27 @@ export default function ProbabilisticMarginAnalysis() {
     const cardTitle = (title, ref, exportName) => (
       <div className="pma-card-title-row">
         <h3>{title}</h3>
-        <button
-          type="button"
-          className="pma-export-plot-btn"
-          onClick={() => exportPlotImage(ref, exportName)}
-        >
-          Export
-        </button>
+        <div className="pma-export-format-row">
+          <div className="pma-viz-mode">
+            {['svg', 'pdf', 'png'].map(fmt => (
+              <button
+                key={fmt}
+                type="button"
+                className={`pma-viz-mode-btn${plotExportFormat === fmt ? ' active' : ''}`}
+                onClick={() => setPlotExportFormat(fmt)}
+              >
+                {fmt.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="pma-export-plot-btn"
+            onClick={() => exportPlotImage(ref, exportName, plotExportFormat)}
+          >
+            Export
+          </button>
+        </div>
       </div>
     );
     return (

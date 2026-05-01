@@ -821,6 +821,21 @@
   align-items: center;
   margin-bottom: 8px;
 }
+.pma-scatter-controls .pma-panel-checkbox {
+  color: #334155;
+}
+.pma-scatter-controls .pma-panel-checkbox:hover {
+  background: rgba(0,0,0,0.04);
+}
+.pma-export-format-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pma-export-format-row .pma-viz-mode-btn {
+  padding: 3px 7px;
+  font-size: 10px;
+}
 .pma-matrix-controls {
   display: flex;
   gap: 16px;
