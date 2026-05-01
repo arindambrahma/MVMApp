@@ -90,7 +90,7 @@ function buildPmaReportHtml({
   const fmtV = v => (typeof v === 'number' && Number.isFinite(v)) ? v.toFixed(4) : '-';
   const elements = dsm.elements;
   const n = elements.length;
-  const method = isMarginAware ? 'MA-CPM (Phase 2)' : 'Classic CPM (Phase 1)';
+  const method = isMarginAware ? 'M-CPM (Phase 2)' : 'Classic CPM (Phase 1)';
   const convention = result.instigator === 'column' ? 'Column -> Row' : 'Row -> Column';
 
   const matrixTableHtml = (title, matrix) => {
@@ -138,7 +138,7 @@ function buildPmaReportHtml({
 
   const riskTableRows = elements.map((el, i) => `<tr><td style="padding:6px 10px;font-weight:600">${i + 1}</td><td style="padding:6px 10px">${esc(el)}</td><td style="padding:6px 10px;text-align:right">${fmtV(result.incoming[i])}</td><td style="padding:6px 10px;text-align:right">${fmtV(result.outgoing[i])}</td></tr>`).join('');
 
-  return `<!doctype html><html><head><meta charset="utf-8"/><title>PMA Report - ${esc(method)}</title><style>body{font-family:Arial,sans-serif;margin:32px;color:#111827;background:#f8fafc}h1{margin:0 0 6px;font-size:22px;color:#1e293b}h2{margin:24px 0 8px;font-size:15px;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px}.meta{color:#64748b;font-size:12px;margin-bottom:4px}.summary-bar{display:flex;gap:24px;flex-wrap:wrap;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#475569;margin-bottom:20px}.summary-bar strong{color:#0f172a}table{border-collapse:collapse;font-size:12px;background:#fff;margin-bottom:16px}th{background:#f1f5f9;padding:6px 10px;font-weight:700;color:#334155;border:1px solid #e2e8f0;font-size:11px}td{padding:6px 10px;border:1px solid #e2e8f0;color:#1f2937}tr:nth-child(even) td{background:#f8fafc}@media print{body{margin:16px}h2{break-before:avoid}}</style></head><body><h1>Probabilistic Margin Analysis Report</h1><div class="meta">Generated: ${new Date().toLocaleString()}</div><div class="summary-bar"><span>Method: <strong>${esc(method)}</strong></span><span>Search depth: <strong>${result.depth}</strong></span><span>Convention: <strong>${esc(convention)}</strong></span><span>Elements: <strong>${n}</strong></span></div><h2>Incoming vs Outgoing Risk</h2><table><thead><tr><th>#</th><th>Element</th><th style="text-align:right">Incoming</th><th style="text-align:right">Outgoing</th></tr></thead><tbody>${riskTableRows}</tbody></table><h2>Input Data</h2>${settingsTable}${marginsTable}${dependencyMatrixHtml('Dependency Matrix', dsm.dependency)}${matrixTableHtml('Input Likelihood Matrix (L)', dsm.likelihood)}${matrixTableHtml('Input Impact Matrix (I)', dsm.impact)}<h2>Visualizations</h2>${imageSection('Risk: Incoming vs Outgoing Propagation', 'scatter')}${imageSection('Distance Network', 'distance')}${imageSection('Risk Network', 'riskNetwork')}${imageSection('Propagation Tree', 'tree')}${imageSection('Critical Components (Betweenness)', 'centrality')}${imageSection('Risk Distribution (Treemap)', 'treemap')}${imageSection('Matrix Network', 'matrixNetwork')}<h2>Computed Outputs</h2>${matrixTableHtml('Combined Risk Matrix', risk)}${matrixTableHtml('Combined Likelihood Matrix', likelihood)}${matrixTableHtml('Combined Impact Matrix', impact)}${isMarginAware && effectiveLikelihood.length ? matrixTableHtml('MA-CPM Effective Likelihood (L*)', effectiveLikelihood) : ''}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>PMA Report - ${esc(method)}</title><style>body{font-family:Arial,sans-serif;margin:32px;color:#111827;background:#f8fafc}h1{margin:0 0 6px;font-size:22px;color:#1e293b}h2{margin:24px 0 8px;font-size:15px;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px}.meta{color:#64748b;font-size:12px;margin-bottom:4px}.summary-bar{display:flex;gap:24px;flex-wrap:wrap;padding:10px 14px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:#475569;margin-bottom:20px}.summary-bar strong{color:#0f172a}table{border-collapse:collapse;font-size:12px;background:#fff;margin-bottom:16px}th{background:#f1f5f9;padding:6px 10px;font-weight:700;color:#334155;border:1px solid #e2e8f0;font-size:11px}td{padding:6px 10px;border:1px solid #e2e8f0;color:#1f2937}tr:nth-child(even) td{background:#f8fafc}@media print{body{margin:16px}h2{break-before:avoid}}</style></head><body><h1>Probabilistic Margin Analysis Report</h1><div class="meta">Generated: ${new Date().toLocaleString()}</div><div class="summary-bar"><span>Method: <strong>${esc(method)}</strong></span><span>Search depth: <strong>${result.depth}</strong></span><span>Convention: <strong>${esc(convention)}</strong></span><span>Elements: <strong>${n}</strong></span></div><h2>Incoming vs Outgoing Risk</h2><table><thead><tr><th>#</th><th>Element</th><th style="text-align:right">Incoming</th><th style="text-align:right">Outgoing</th></tr></thead><tbody>${riskTableRows}</tbody></table><h2>Input Data</h2>${settingsTable}${marginsTable}${dependencyMatrixHtml('Dependency Matrix', dsm.dependency)}${matrixTableHtml('Input Likelihood Matrix (L)', dsm.likelihood)}${matrixTableHtml('Input Impact Matrix (I)', dsm.impact)}<h2>Visualizations</h2>${imageSection('Risk: Incoming vs Outgoing Propagation', 'scatter')}${imageSection('Distance Network', 'distance')}${imageSection('Risk Network', 'riskNetwork')}${imageSection('Propagation Tree', 'tree')}${imageSection('Critical Components (Betweenness)', 'centrality')}${imageSection('Risk Distribution (Treemap)', 'treemap')}${imageSection('Matrix Network', 'matrixNetwork')}<h2>Computed Outputs</h2>${matrixTableHtml('Combined Risk Matrix', risk)}${matrixTableHtml('Combined Likelihood Matrix', likelihood)}${matrixTableHtml('Combined Impact Matrix', impact)}${isMarginAware && effectiveLikelihood.length ? matrixTableHtml('M-CPM Effective Likelihood (L*)', effectiveLikelihood) : ''}</body></html>`;
 }
 
 function buildCombinedImpactMatrix(riskMatrix, probMatrix) {
@@ -841,7 +841,7 @@ export default function ProbabilisticMarginAnalysis() {
 
     try {
       if (analysisMode === 'margin_aware') {
-        // Run MA-CPM and baseline classic CPM in parallel for comparison table
+        // Run M-CPM and baseline classic CPM in parallel for comparison table
         const classicPayload = {
           elements: dsm.elements,
           likelihood: dsm.likelihood,
@@ -977,8 +977,8 @@ export default function ProbabilisticMarginAnalysis() {
           line: { color: '#fff', width: 1 },
           colorbar: { title: 'Risk', thickness: 10 },
         },
-        hovertemplate: `%{text}<br>${isMA && showClassicOverlay ? 'MA-CPM — ' : ''}Outgoing: %{x:${fixedFmt}}<br>Incoming: %{y:${fixedFmt}}<extra></extra>`,
-        name: isMA && showClassicOverlay ? 'MA-CPM' : 'Combined',
+        hovertemplate: `%{text}<br>${isMA && showClassicOverlay ? 'M-CPM — ' : ''}Outgoing: %{x:${fixedFmt}}<br>Incoming: %{y:${fixedFmt}}<extra></extra>`,
+        name: isMA && showClassicOverlay ? 'M-CPM' : 'Combined',
       }];
       // Classic CPM overlay — dotted connectors + open-square markers
       if (isMA && showClassicOverlay && classicResult) {
@@ -1736,7 +1736,7 @@ export default function ProbabilisticMarginAnalysis() {
     return (
       <div className="pma-results-layout">
         <div className="pma-result-summary">
-          <span>Method: <strong>{isMarginAware ? 'MA-CPM (Phase 2)' : 'Classic CPM (Phase 1)'}</strong></span>
+          <span>Method: <strong>{isMarginAware ? 'M-CPM (Phase 2)' : 'Classic CPM (Phase 1)'}</strong></span>
           <span>Search depth: <strong>{result.depth}</strong></span>
           <span>Convention: <strong>{result.instigator === 'column' ? 'Column \u2192 Row' : 'Row \u2192 Column'}</strong></span>
           <span>Elements: <strong>{dsm.elements.length}</strong></span>
@@ -1839,7 +1839,7 @@ export default function ProbabilisticMarginAnalysis() {
         <div className="pma-matrix-network-grid">
           <div>
             {matrixView === 'color'
-              ? renderClarksonMatrix(risk, likelihood, isMarginAware ? 'MA-CPM Combined Risk Plot' : 'Combined Risk Plot')
+              ? renderClarksonMatrix(risk, likelihood, isMarginAware ? 'M-CPM Combined Risk Plot' : 'Combined Risk Plot')
               : renderResultsTable(numericRisk, `Risk Matrix - ${matrixMetric === 'risk' ? 'Combined Risk' : (matrixMetric === 'likelihood' ? 'Combined Likelihood' : 'Combined Impact')}`)}
           </div>
           <div className="pma-viz-card">
@@ -1852,7 +1852,7 @@ export default function ProbabilisticMarginAnalysis() {
             <h3>Margin Thresholds &amp; Exceedance Gates</h3>
             <div style={{ fontSize: 12, color: '#64748B', marginBottom: 8 }}>
               <strong>m<sub>u</sub></strong>: margin threshold for each element. &nbsp;
-              <strong>g<sub>u</sub> = P(Δ &gt; m<sub>u</sub>)</strong>: probability that the change magnitude exceeds the margin — acts as a gate multiplier in MA-CPM.
+              <strong>g<sub>u</sub> = P(Δ &gt; m<sub>u</sub>)</strong>: probability that the change magnitude exceeds the margin — acts as a gate multiplier in M-CPM.
             </div>
             <div className="pma-result-scroll">
               <table className="pma-table pma-result-table">
@@ -1889,9 +1889,9 @@ export default function ProbabilisticMarginAnalysis() {
         )}
         {isMarginAware && classicResult && (
           <div className="pma-result-block">
-            <h3>CPM vs MA-CPM Comparison</h3>
+            <h3>CPM vs M-CPM Comparison</h3>
             <div style={{ fontSize: 12, color: '#64748B', marginBottom: 8 }}>
-              Δ shows the percentage change from CPM to MA-CPM.
+              Δ shows the percentage change from CPM to M-CPM.
               Ratio = Incoming / Outgoing (higher values indicate elements that receive more risk than they propagate).
             </div>
             <div className="pma-result-scroll">
@@ -1906,13 +1906,13 @@ export default function ProbabilisticMarginAnalysis() {
                   </tr>
                   <tr>
                     <th className="pma-result-numcol">CPM</th>
-                    <th className="pma-result-numcol">MA-CPM</th>
+                    <th className="pma-result-numcol">M-CPM</th>
                     <th className="pma-result-numcol">Δ</th>
                     <th className="pma-result-numcol">CPM</th>
-                    <th className="pma-result-numcol">MA-CPM</th>
+                    <th className="pma-result-numcol">M-CPM</th>
                     <th className="pma-result-numcol">Δ</th>
                     <th className="pma-result-numcol">CPM</th>
-                    <th className="pma-result-numcol">MA-CPM</th>
+                    <th className="pma-result-numcol">M-CPM</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2041,7 +2041,7 @@ export default function ProbabilisticMarginAnalysis() {
             onClick={runCpm}
             disabled={running || n < 2}
           >
-            {running ? 'Running…' : (analysisMode === 'margin_aware' ? '\u25B6 Run MA-CPM' : '\u25B6 Run CPM')}
+            {running ? 'Running…' : (analysisMode === 'margin_aware' ? '\u25B6 Run M-CPM' : '\u25B6 Run CPM')}
           </button>
         </div>
         <input
@@ -2283,7 +2283,7 @@ export default function ProbabilisticMarginAnalysis() {
       <div className="pma-footer">
         <span className="pma-footer-title">MARVIN &mdash; Probabilistic Margin Analysis</span>
         <span className="pma-footer-copy">
-          &copy; {new Date().getFullYear()} Arindam Brahma &nbsp;&middot;&nbsp; {analysisMode === 'margin_aware' ? 'MA-CPM (phase 2)' : 'Clarkson CPM (phase 1)'} via cpm-lib
+          &copy; {new Date().getFullYear()} Arindam Brahma &nbsp;&middot;&nbsp; {analysisMode === 'margin_aware' ? 'M-CPM (phase 2)' : 'Clarkson CPM (phase 1)'} via cpm-lib
         </span>
       </div>
     </div>
